@@ -117,7 +117,14 @@ async function initDb() {
       );
     `);
 
-    console.log('✅ Supabase PostgreSQL tables verified/created successfully.');
+    // 6. Enable Row Level Security (RLS) on all tables
+    await pool.query(`ALTER TABLE users ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE exams ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE questions ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE exam_questions ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE attempts ENABLE ROW LEVEL SECURITY;`);
+
+    console.log('✅ Supabase PostgreSQL tables verified/created & RLS enabled successfully.');
     await seedDefaultData();
   } catch (err) {
     console.error('❌ Error initializing database tables in Supabase:', err.message);

@@ -236,10 +236,10 @@ async function loadAdminDashboard() {
 
       tbody.innerHTML += `
         <tr>
-          <td><strong>${escapeHtml(row.student_name)}</strong></td>
+          <td>${escapeHtml(row.student_name)}</td>
           <td>${escapeHtml(row.exam_title)}</td>
           <td>${row.obtained_marks} / ${row.total_marks}</td>
-          <td><strong>${row.percentage}%</strong></td>
+          <td>${row.percentage}%</td>
           <td>${statusBadge}</td>
           <td>${dateStr}</td>
         </tr>
@@ -277,11 +277,11 @@ async function loadStudents() {
           <td><input type="checkbox" class="student-select-chk" value="${s.id}" onchange="updateStudentSelection()"></td>
           <td><span class="badge badge-secondary">${escapeHtml(s.roll_no || '-')}</span></td>
           <td><code>${escapeHtml(s.admission_no || '-')}</code></td>
-          <td><strong>${escapeHtml(s.full_name)}</strong></td>
+          <td>${escapeHtml(s.full_name)}</td>
           <td><code>${escapeHtml(s.username)}</code></td>
           <td>${escapeHtml(s.email || '-')}</td>
           <td><span class="badge badge-info">${s.exams_taken}</span></td>
-          <td><strong>${avgScore}</strong></td>
+          <td>${avgScore}</td>
           <td class="text-right">
             <button class="btn btn-sm btn-outline" onclick="editStudent(${s.id}, '${escapeHtml(s.full_name)}', '${escapeHtml(s.username)}', '${escapeHtml(s.email)}', '${escapeHtml(s.roll_no || '')}', '${escapeHtml(s.admission_no || '')}')">
               <i class="fa-solid fa-pen"></i> Edit
@@ -826,13 +826,13 @@ async function loadAdminResults() {
       tbody.innerHTML += `
         <tr>
           <td>
-            <strong>${escapeHtml(r.student_name)}</strong><br>
+            ${escapeHtml(r.student_name)}<br>
             <span class="text-muted" style="font-size: 0.78rem;">@${escapeHtml(r.student_username)}</span>
           </td>
           <td>${escapeHtml(r.exam_title)}</td>
           <td><span class="text-success">${r.correct_answers}</span> / <span class="text-danger">${r.wrong_answers}</span></td>
-          <td><strong>${r.obtained_marks} / ${r.total_marks}</strong></td>
-          <td><strong>${r.percentage}%</strong></td>
+          <td>${r.obtained_marks} / ${r.total_marks}</td>
+          <td>${r.percentage}%</td>
           <td>${statusBadge}</td>
           <td style="font-size: 0.85rem;">${new Date(r.submit_time).toLocaleString()}</td>
           <td class="text-right">
@@ -900,9 +900,9 @@ async function loadStudentDashboard() {
 
       tbody.innerHTML += `
         <tr>
-          <td><strong>${escapeHtml(r.exam_title)}</strong></td>
+          <td>${escapeHtml(r.exam_title)}</td>
           <td>${r.obtained_marks} / ${r.total_marks}</td>
-          <td><strong>${r.percentage}%</strong></td>
+          <td>${r.percentage}%</td>
           <td>${statusBadge}</td>
           <td>${new Date(r.submit_time).toLocaleString()}</td>
           <td class="text-right">

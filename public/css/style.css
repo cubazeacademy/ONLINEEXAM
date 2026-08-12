@@ -476,10 +476,10 @@ body {
 }
 
 .sidebar-brand-name {
-  font-size: 1.1rem;
-  font-weight: 800;
+  font-size: 1.05rem;
+  font-weight: 700;
   color: var(--text-main);
-  letter-spacing: -0.3px;
+  letter-spacing: -0.2px;
 }
 
 .sidebar-role-pill {
@@ -487,24 +487,24 @@ body {
   background: #eff6ff;
   color: var(--primary);
   font-size: 0.72rem;
-  font-weight: 800;
-  padding: 4px 12px;
+  font-weight: 600;
+  padding: 3px 10px;
   border-radius: 20px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .nav-menu {
   flex: 1;
-  padding: 20px 14px;
+  padding: 16px 12px;
   overflow-y: auto;
 }
 
 .nav-category {
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 1.2px;
-  margin: 18px 12px 8px 12px;
+  letter-spacing: 0.8px;
+  margin: 16px 10px 6px 10px;
   text-transform: uppercase;
   display: flex;
   align-items: center;
@@ -512,21 +512,21 @@ body {
 }
 
 .nav-category i {
-  font-size: 10px;
-  opacity: 0.7;
+  font-size: 9px;
+  opacity: 0.6;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  color: #64748b;
+  padding: 10px 14px;
+  color: #475569;
   text-decoration: none;
-  font-size: 0.92rem;
-  font-weight: 600;
-  border-radius: 12px;
-  margin-bottom: 4px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  border-radius: 10px;
+  margin-bottom: 2px;
   transition: var(--transition);
 }
 
@@ -538,9 +538,9 @@ body {
 .nav-item.active {
   background: #eff6ff;
   color: var(--primary);
-  font-weight: 800;
-  border-left: 4px solid var(--primary);
-  border-radius: 10px;
+  font-weight: 600;
+  border-left: 3.5px solid var(--primary);
+  border-radius: 8px;
   box-shadow: none;
 }
 
@@ -554,27 +554,27 @@ body {
 }
 
 .sidebar-user-footer {
-  padding: 14px;
-  margin: 14px;
+  padding: 12px;
+  margin: 12px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .user-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   background: linear-gradient(135deg, #4f46e5, #3b82f6);
   color: #fff;
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 1.1rem;
+  font-weight: 600;
+  font-size: 1rem;
 }
 
 .user-info {
@@ -582,8 +582,8 @@ body {
 }
 
 .user-name {
-  font-size: 0.88rem;
-  font-weight: 700;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -602,25 +602,25 @@ body {
 .hero-banner {
   background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
   color: #ffffff;
-  padding: 32px 36px;
+  padding: 28px 32px;
   border-radius: var(--radius-xl);
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.22);
+  box-shadow: 0 10px 25px rgba(79, 70, 229, 0.18);
 }
 
 .hero-banner h2 {
-  font-size: 1.85rem;
-  font-weight: 800;
-  letter-spacing: -0.5px;
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
   margin-bottom: 4px;
 }
 
 .hero-banner p {
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.95rem;
-  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 400;
 }
 
 .hero-watermark {

@@ -667,31 +667,28 @@
 
       <!-- LEFT: QUESTION PANEL -->
       <div class="question-main-panel">
-        <div class="question-header">
-          <span class="q-number-pill" id="current-q-number-badge">Question 1 of 10</span>
-          <span class="q-marks-pill" id="current-q-marks-badge">5 Marks</span>
+        <div class="batch-header-bar">
+          <div class="batch-info-pill">
+            <i class="fa-solid fa-layer-group"></i> <span id="current-batch-badge">Questions 1 - 5 of 100</span>
+          </div>
+          <div class="batch-page-indicator">
+            Page <span id="current-page-num">1</span> of <span id="total-page-num">20</span>
+          </div>
         </div>
 
-        <div class="question-text-box" id="exam-question-text">
-          Loading question text...
-        </div>
-
-        <div class="options-group" id="exam-options-container">
-          <!-- 4 Answer Option Cards inserted dynamically -->
+        <!-- CONTAINER FOR 5 QUESTIONS PER PAGE -->
+        <div id="questions-container-batch" class="batch-questions-list">
+          <!-- 5 Question Cards rendered dynamically -->
         </div>
 
         <!-- EXAM CONTROLS -->
         <div class="question-footer-controls">
-          <button type="button" class="btn btn-outline" id="btn-prev-question" onclick="navigateQuestion(-1)">
-            <i class="fa-solid fa-arrow-left"></i> Previous
+          <button type="button" class="btn btn-outline btn-lg" id="btn-prev-page" onclick="navigatePage(-1)">
+            <i class="fa-solid fa-arrow-left"></i> Previous Page
           </button>
 
-          <button type="button" class="btn btn-warning btn-sm" onclick="clearOptionSelection()">
-            <i class="fa-solid fa-eraser"></i> Clear Choice
-          </button>
-
-          <button type="button" class="btn btn-primary" id="btn-next-question" onclick="navigateQuestion(1)">
-            Next <i class="fa-solid fa-arrow-right"></i>
+          <button type="button" class="btn btn-primary btn-lg" id="btn-next-page" onclick="navigatePage(1)">
+            Next 5 Questions <i class="fa-solid fa-arrow-right"></i>
           </button>
         </div>
       </div>

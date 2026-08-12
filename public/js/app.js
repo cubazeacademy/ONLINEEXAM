@@ -985,7 +985,9 @@ async function loadStudentAvailableExams() {
   }
 }
 
-// 3. EXAM TAKING ENGINE
+/// 3. EXAM TAKING ENGINE (5 QUESTIONS PER PAGE)
+const QUESTIONS_PER_PAGE = 5;
+
 async function startStudentExam(examId) {
   if (!confirm('Are you ready to begin the exam? The countdown timer will start immediately once loaded.')) return;
 
@@ -1007,7 +1009,7 @@ async function startStudentExam(examId) {
       attemptId: data.attempt_id,
       exam: data.exam,
       questions: data.questions,
-      currentQIndex: 0,
+      currentPage: 0,
       userAnswers: {},
       timerInterval: null,
       secondsRemaining: (data.exam.duration_minutes || 15) * 60
@@ -1020,7 +1022,7 @@ async function startStudentExam(examId) {
 
     document.getElementById('exam-taker-container').classList.remove('hidden');
 
-    renderCurrentQuestion();
+    renderBatchQuestions();
     renderQuestionPalette();
     startExamTimer();
 
@@ -1029,95 +1031,150 @@ async function startStudentExam(examId) {
   }
 }
 
-function renderCurrentQuestion() {
-  const q = examState.questions[examState.currentQIndex];
-  if (!q) return;
+function renderBatchQuestions() {
+  const totalQuestions = examState.questions.length;
+  const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE) || 1;
+  const startIdx = examState.currentPage * QUESTIONS_PER_PAGE;
+  const endIdx = Math.min(startIdx + QUESTIONS_PER_PAGE, totalQuestions);
+  const currentBatch = examState.questions.slice(startIdx, endIdx);
 
-  document.getElementById('current-q-number-badge').textContent = `Question ${examState.currentQIndex + 1} of ${examState.questions.length}`;
-  document.getElementById('current-q-marks-badge').textContent = `${q.marks} Marks`;
-  document.getElementById('exam-question-text').textContent = q.question_text;
+  // Update header badges
+  const batchBadge = document.getElementById('current-batch-badge');
+  if (batchBadge) batchBadge.textContent = `Questions ${startIdx + 1} - ${endIdx} of ${totalQuestions}`;
+  
+  const pageNum = document.getElementById('current-page-num');
+  if (pageNum) pageNum.textContent = examState.currentPage + 1;
+  
+  const totalPageNum = document.getElementById('total-page-num');
+  if (totalPageNum) totalPageNum.textContent = totalPages;
 
-  const optionsContainer = document.getElementById('exam-options-container');
-  optionsContainer.innerHTML = '';
+  const container = document.getElementById('questions-container-batch');
+  if (!container) return;
+  container.innerHTML = '';
 
-  const options = [
-    { letter: 'A', text: q.option_a },
-    { letter: 'B', text: q.option_b },
-    { letter: 'C', text: q.option_c },
-    { letter: 'D', text: q.option_d }
-  ];
+  currentBatch.forEach((q, offset) => {
+    const globalIdx = startIdx + offset;
+    const selectedChoice = examState.userAnswers[q.id];
 
-  const selectedChoice = examState.userAnswers[q.id];
+    const options = [
+      { letter: 'A', text: q.option_a },
+      { letter: 'B', text: q.option_b },
+      { letter: 'C', text: q.option_c },
+      { letter: 'D', text: q.option_d }
+    ];
 
-  options.forEach(opt => {
-    const isSelected = selectedChoice === opt.letter;
-    optionsContainer.innerHTML += `
-      <div class="option-card ${isSelected ? 'selected' : ''}" onclick="selectOption('${q.id}', '${opt.letter}')">
-        <div class="option-letter-badge">${opt.letter}</div>
-        <div class="option-text-val">${escapeHtml(opt.text)}</div>
+    let optionsHtml = '';
+    options.forEach(opt => {
+      const isSelected = selectedChoice === opt.letter;
+      optionsHtml += `
+        <div class="option-card ${isSelected ? 'selected' : ''}" onclick="selectBatchOption('${q.id}', '${opt.letter}')">
+          <div class="option-letter-badge">${opt.letter}</div>
+          <div class="option-text-val">${escapeHtml(opt.text)}</div>
+        </div>
+      `;
+    });
+
+    const hasSelection = !!selectedChoice;
+
+    container.innerHTML += `
+      <div class="batch-question-card" id="q-card-${globalIdx}">
+        <div class="batch-q-header">
+          <span class="q-number-badge"><i class="fa-solid fa-circle-question"></i> Question ${globalIdx + 1}</span>
+          <span class="q-marks-pill"><i class="fa-solid fa-award"></i> ${q.marks} Marks</span>
+        </div>
+        <div class="batch-question-text">
+          ${escapeHtml(q.question_text)}
+        </div>
+        <div class="options-group">
+          ${optionsHtml}
+        </div>
+        <div class="batch-card-actions">
+          ${hasSelection ? `
+            <button type="button" class="btn btn-sm btn-outline text-muted" onclick="clearBatchOption('${q.id}')">
+              <i class="fa-solid fa-eraser"></i> Clear Choice
+            </button>
+          ` : ''}
+        </div>
       </div>
     `;
   });
 
-  // Prev / Next button states
-  document.getElementById('btn-prev-question').disabled = examState.currentQIndex === 0;
-  
-  const nextBtn = document.getElementById('btn-next-question');
-  if (examState.currentQIndex === examState.questions.length - 1) {
-    nextBtn.innerHTML = 'Review & Finish <i class="fa-solid fa-check"></i>';
-    nextBtn.onclick = () => promptSubmitExam();
-  } else {
-    nextBtn.innerHTML = 'Next <i class="fa-solid fa-arrow-right"></i>';
-    nextBtn.onclick = () => navigateQuestion(1);
+  // Update Page Prev/Next buttons
+  const prevBtn = document.getElementById('btn-prev-page');
+  const nextBtn = document.getElementById('btn-next-page');
+
+  if (prevBtn) prevBtn.disabled = examState.currentPage === 0;
+
+  if (nextBtn) {
+    if (examState.currentPage === totalPages - 1) {
+      nextBtn.className = 'btn btn-success btn-lg';
+      nextBtn.innerHTML = 'Review & Finish Exam <i class="fa-solid fa-check"></i>';
+      nextBtn.onclick = () => promptSubmitExam();
+    } else {
+      nextBtn.className = 'btn btn-primary btn-lg';
+      nextBtn.innerHTML = `Next ${Math.min(QUESTIONS_PER_PAGE, totalQuestions - endIdx)} Questions <i class="fa-solid fa-arrow-right"></i>`;
+      nextBtn.onclick = () => navigatePage(1);
+    }
   }
 
   updatePaletteSummary();
 }
 
-function selectOption(questionId, letter) {
+function selectBatchOption(questionId, letter) {
   examState.userAnswers[questionId] = letter;
-  renderCurrentQuestion();
+  renderBatchQuestions();
   renderQuestionPalette();
 }
 
-function clearOptionSelection() {
-  const q = examState.questions[examState.currentQIndex];
-  if (q && examState.userAnswers[q.id]) {
-    delete examState.userAnswers[q.id];
-    renderCurrentQuestion();
-    renderQuestionPalette();
-  }
-}
-
-function navigateQuestion(dir) {
-  const newIndex = examState.currentQIndex + dir;
-  if (newIndex >= 0 && newIndex < examState.questions.length) {
-    examState.currentQIndex = newIndex;
-    renderCurrentQuestion();
-    renderQuestionPalette();
-  }
-}
-
-function jumpToQuestion(index) {
-  examState.currentQIndex = index;
-  renderCurrentQuestion();
+function clearBatchOption(questionId) {
+  delete examState.userAnswers[questionId];
+  renderBatchQuestions();
   renderQuestionPalette();
+}
+
+function navigatePage(dir) {
+  const totalPages = Math.ceil(examState.questions.length / QUESTIONS_PER_PAGE);
+  const newPage = examState.currentPage + dir;
+  if (newPage >= 0 && newPage < totalPages) {
+    examState.currentPage = newPage;
+    renderBatchQuestions();
+    renderQuestionPalette();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function jumpToQuestion(globalIdx) {
+  const targetPage = Math.floor(globalIdx / QUESTIONS_PER_PAGE);
+  examState.currentPage = targetPage;
+  renderBatchQuestions();
+  renderQuestionPalette();
+
+  setTimeout(() => {
+    const targetCard = document.getElementById(`q-card-${globalIdx}`);
+    if (targetCard) {
+      targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 100);
 }
 
 function renderQuestionPalette() {
   const grid = document.getElementById('question-palette-grid');
+  if (!grid) return;
   grid.innerHTML = '';
+
+  const startIdx = examState.currentPage * QUESTIONS_PER_PAGE;
+  const endIdx = startIdx + QUESTIONS_PER_PAGE;
 
   examState.questions.forEach((q, idx) => {
     const isAnswered = !!examState.userAnswers[q.id];
-    const isCurrent = idx === examState.currentQIndex;
+    const isCurrentBatch = idx >= startIdx && idx < endIdx;
 
     let classes = 'pal-btn';
     if (isAnswered) classes += ' answered';
-    if (isCurrent) classes += ' current';
+    if (isCurrentBatch) classes += ' current-batch';
 
     grid.innerHTML += `
-      <button type="button" class="${classes}" onclick="jumpToQuestion(${idx})">
+      <button type="button" class="${classes}" onclick="jumpToQuestion(${idx})" title="Question ${idx + 1}">
         ${idx + 1}
       </button>
     `;

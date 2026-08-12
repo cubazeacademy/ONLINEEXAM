@@ -723,6 +723,30 @@
       </div>
 
     </div>
+
+    <!-- MODAL: CONFIRM EXAM SUBMISSION (INSIDE EXAM POPUP) -->
+    <div id="modal-confirm-submit" class="modal-overlay hidden" style="z-index: 100005;">
+      <div class="modal-content text-center" style="max-width: 480px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.3);">
+        <div class="confirm-icon" style="width: 60px; height: 60px; background: #eff6ff; color: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px auto;">
+          <i class="fa-solid fa-file-circle-check"></i>
+        </div>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: #0f172a;">Submit Your Exam?</h3>
+        <p class="mt-2 text-muted" style="font-size: 0.9rem;">Are you sure you want to finish and submit your answers now? Once submitted, your score will be calculated.</p>
+        <div class="confirm-stats mt-4" style="display: flex; justify-content: center; gap: 16px;">
+          <div class="stat-pill" style="background: #ecfdf5; color: #047857; font-weight: 600; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem;"><span id="confirm-ans-count">0</span> Answered</div>
+          <div class="stat-pill" style="background: #fffbeb; color: #b45309; font-weight: 600; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem;"><span id="confirm-unans-count">0</span> Unanswered</div>
+        </div>
+        <div class="modal-footer mt-6" style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
+          <button type="button" class="btn btn-outline" style="border-radius: 10px; padding: 10px 20px;" onclick="closeModal('modal-confirm-submit')">
+            <i class="fa-solid fa-rotate-left"></i> Continue Exam
+          </button>
+          <button type="button" class="btn btn-success" style="border-radius: 10px; padding: 10px 22px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff;" onclick="confirmSubmitExam()">
+            <i class="fa-solid fa-paper-plane"></i> Yes, Submit Exam
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
 
@@ -906,25 +930,7 @@
     </div>
   </div>
 
-  <!-- MODAL: CONFIRM EXAM SUBMISSION -->
-  <div id="modal-confirm-submit" class="modal-overlay hidden">
-    <div class="modal-content text-center">
-      <div class="confirm-icon"><i class="fa-solid fa-circle-question"></i></div>
-      <h3>Submit Your Exam?</h3>
-      <p class="mt-2 text-muted">Are you sure you want to finish and submit your answers now? Once submitted, you cannot
-        change your choices.</p>
-      <div class="confirm-stats mt-4">
-        <div class="stat-pill"><span id="confirm-ans-count">0</span> Answered</div>
-        <div class="stat-pill"><span id="confirm-unans-count">0</span> Unanswered</div>
-      </div>
-      <div class="modal-footer mt-6 flex-center">
-        <button type="button" class="btn btn-outline" onclick="closeModal('modal-confirm-submit')">Continue
-          Exam</button>
-        <button type="button" class="btn btn-success" onclick="confirmSubmitExam()"><i class="fa-solid fa-check"></i>
-          Yes, Submit Exam</button>
-      </div>
-    </div>
-  </div>
+
 
   <!-- MODAL: IMPORT STUDENTS CSV -->
   <div id="modal-import-students-csv" class="modal-overlay hidden">

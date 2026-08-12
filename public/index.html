@@ -66,23 +66,27 @@
 
     <!-- SIDEBAR NAVIGATION -->
     <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></div>
-        <div class="brand-text">
-          <h3>Online Examination</h3>
-          <span id="user-role-badge" class="badge badge-role">Admin</span>
+      <div class="sidebar-brand-box">
+        <div class="sidebar-crown-avatar">
+          <i class="fa-solid fa-crown"></i>
         </div>
+        <div class="sidebar-brand-name">Cubaze Examination</div>
+        <div id="sidebar-role-pill" class="sidebar-role-pill">@admin - Admin</div>
       </div>
 
       <!-- ADMIN SIDEBAR NAVIGATION -->
       <nav id="nav-admin" class="nav-menu">
-        <div class="nav-category">MAIN MENU</div>
+        <div class="nav-category">OVERVIEW <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-dashboard" class="nav-item active" onclick="switchTab('admin-dashboard')">
           <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
         </a>
+
+        <div class="nav-category">PEOPLE <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-students" class="nav-item" onclick="switchTab('admin-students')">
           <i class="fa-solid fa-users"></i> <span>Students</span>
         </a>
+
+        <div class="nav-category">ASSESSMENT <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-exams" class="nav-item" onclick="switchTab('admin-exams')">
           <i class="fa-solid fa-file-signature"></i> <span>Exams</span>
         </a>
@@ -92,7 +96,8 @@
         <a href="#admin-results" class="nav-item" onclick="switchTab('admin-results')">
           <i class="fa-solid fa-trophy"></i> <span>Results</span>
         </a>
-        <div class="nav-category">SYSTEM</div>
+
+        <div class="nav-category">SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
           <i class="fa-solid fa-sliders"></i> <span>Settings</span>
         </a>
@@ -103,17 +108,20 @@
 
       <!-- STUDENT SIDEBAR NAVIGATION -->
       <nav id="nav-student" class="nav-menu hidden">
-        <div class="nav-category">STUDENT MENU</div>
+        <div class="nav-category">OVERVIEW <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#student-dashboard" class="nav-item active" onclick="switchTab('student-dashboard')">
           <i class="fa-solid fa-house"></i> <span>Dashboard</span>
         </a>
+
+        <div class="nav-category">ASSESSMENT <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#student-exams" class="nav-item" onclick="switchTab('student-exams')">
           <i class="fa-solid fa-pen-to-square"></i> <span>Exams</span>
         </a>
         <a href="#student-results" class="nav-item" onclick="switchTab('student-results')">
           <i class="fa-solid fa-square-poll-vertical"></i> <span>My Results</span>
         </a>
-        <div class="nav-category">ACCOUNT</div>
+
+        <div class="nav-category">ACCOUNT <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#student-profile" class="nav-item" onclick="switchTab('student-profile')">
           <i class="fa-solid fa-id-card"></i> <span>Profile</span>
         </a>
@@ -160,6 +168,12 @@
         <!-- ADMIN 1: DASHBOARD VIEW                    -->
         <!-- ========================================== -->
         <section id="view-admin-dashboard" class="tab-view active">
+          <div class="hero-banner">
+            <h2>Activity Log & System Overview</h2>
+            <p>Full audit trail of all admin actions, student assessments, and overall system metrics.</p>
+            <i class="fa-solid fa-graduation-cap hero-watermark"></i>
+          </div>
+
           <div class="metrics-grid">
             <div class="metric-card bg-blue">
               <div class="metric-icon"><i class="fa-solid fa-user-graduate"></i></div>
@@ -235,6 +249,12 @@
         <!-- ADMIN 2: STUDENTS MANAGEMENT VIEW           -->
         <!-- ========================================== -->
         <section id="view-admin-students" class="tab-view hidden">
+          <div class="hero-banner">
+            <h2>Student Accounts Management</h2>
+            <p>Manage student profiles, import CSV records, and track academic performance.</p>
+            <i class="fa-solid fa-users hero-watermark"></i>
+          </div>
+
           <div class="action-bar">
             <div class="search-box">
               <i class="fa-solid fa-magnifying-glass"></i>
@@ -289,6 +309,12 @@
         <!-- ADMIN 3: EXAMS MANAGEMENT VIEW              -->
         <!-- ========================================== -->
         <section id="view-admin-exams" class="tab-view hidden">
+          <div class="hero-banner">
+            <h2>Examinations Management</h2>
+            <p>Create, configure, publish, and assign question sets to active exams.</p>
+            <i class="fa-solid fa-file-signature hero-watermark"></i>
+          </div>
+
           <div class="action-bar">
             <div class="page-desc">
               Create, configure duration, set pass marks, assign questions, and publish exams for students.
@@ -307,6 +333,11 @@
         <!-- ADMIN 4: QUESTIONS MANAGEMENT VIEW          -->
         <!-- ========================================== -->
         <section id="view-admin-questions" class="tab-view hidden">
+          <div class="hero-banner">
+            <h2>Question Bank & Assignments</h2>
+            <p>Add, edit, organize, and assign multiple-choice questions to tests.</p>
+            <i class="fa-solid fa-list-check hero-watermark"></i>
+          </div>
           <div class="action-bar flex-wrap">
             <div class="filter-group">
               <label for="filter-question-exam">Filter by Exam:</label>
@@ -360,6 +391,12 @@
         <!-- ADMIN 5: RESULTS & ANALYTICS VIEW           -->
         <!-- ========================================== -->
         <section id="view-admin-results" class="tab-view hidden">
+          <div class="hero-banner">
+            <h2>Results & Performance Analytics</h2>
+            <p>View comprehensive audit logs, scorecards, and student performance metrics.</p>
+            <i class="fa-solid fa-trophy hero-watermark"></i>
+          </div>
+
           <div class="action-bar flex-wrap">
             <div class="search-box">
               <i class="fa-solid fa-magnifying-glass"></i>

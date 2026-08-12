@@ -114,12 +114,19 @@ function showPortalLayout() {
   document.getElementById('app-portal').classList.remove('hidden');
 
   const roleBadge = document.getElementById('user-role-badge');
+  const rolePill = document.getElementById('sidebar-role-pill');
   const avatarInit = document.getElementById('sidebar-avatar-initial');
   const userName = document.getElementById('sidebar-user-name');
   const userSub = document.getElementById('sidebar-user-sub');
 
-  roleBadge.textContent = currentUser.role.toUpperCase();
-  roleBadge.className = `badge ${currentUser.role === 'admin' ? 'badge-role' : 'badge-success'}`;
+  if (roleBadge) {
+    roleBadge.textContent = currentUser.role.toUpperCase();
+    roleBadge.className = `badge ${currentUser.role === 'admin' ? 'badge-role' : 'badge-success'}`;
+  }
+
+  if (rolePill) {
+    rolePill.textContent = `@${currentUser.username || 'user'} - ${currentUser.role === 'admin' ? 'Admin' : 'Student'}`;
+  }
 
   avatarInit.textContent = currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U';
   userName.textContent = currentUser.full_name;

@@ -36,8 +36,19 @@ async function run(text, params = []) {
   };
 }
 
+let isDbInitialized = false;
+
 async function initDb() {
+  if (isDbInitialized) return;
+
   try {
+    // Fast check if database is already set up (1 fast query ~20ms instead of 50+ queries)
+    const check = await pool.query(`SELECT 1 FROM users LIMIT 1;`).catch(() => null);
+    if (check && check.rows) {
+      isDbInitialized = true;
+      return;
+    }
+
     // 1. Users table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -126,6 +137,7 @@ async function initDb() {
 
     console.log('✅ Supabase PostgreSQL tables verified/created & RLS enabled successfully.');
     await seedDefaultData();
+    isDbInitialized = true;
   } catch (err) {
     console.error('❌ Error initializing database tables in Supabase:', err.message);
   }
@@ -144,60 +156,67 @@ async function seedDefaultData() {
       console.log('Seeded default Admin user (admin / admin123)');
     }
 
-    // Seed sample students list
+    // Seed sample students list using single bulk query
     const studentsList = [
-      { roll: '1', adm: '4049', name: 'MOHAMMED SWALIH O' },
-      { roll: '2', adm: '4075', name: 'MUHAMMAD AYMAN ABDUSSAMAD' },
-      { roll: '3', adm: '4081', name: 'MUZAMMIL N A' },
-      { roll: '4', adm: '4074', name: 'ABDURAHEEM. M. P' },
-      { roll: '5', adm: '4062', name: 'MUHAMMED FARHAN NV' },
-      { roll: '6', adm: '4040', name: 'MUHAMMED FINAN. K.' },
-      { roll: '7', adm: '4047', name: 'MUHAMMED BASITH PP' },
-      { roll: '8', adm: '4079', name: 'MUHAMMED FAHEEM' },
-      { roll: '9', adm: '4041', name: 'SHANIL MUHAMMED' },
-      { roll: '10', adm: '4069', name: 'MUHAMMAD RADEEF' },
-      { roll: '11', adm: '4070', name: 'MUHAMMED SAMEEH' },
-      { roll: '12', adm: '4045', name: 'ZAHRAN AHMED AP' },
-      { roll: '13', adm: '4042', name: 'MOHAMMED AFNAN TP' },
-      { roll: '14', adm: '4077', name: 'MOHAMED SWALIH. E. P' },
-      { roll: '15', adm: '4043', name: 'RAYYAN AHMED BEHISHTH' },
-      { roll: '16', adm: '4067', name: 'MUHAMMED ZAYAN RASHID' },
-      { roll: '17', adm: '4059', name: 'MUHAMMED SHADHI.P' },
-      { roll: '18', adm: '4080', name: 'ABDULLAH V S' },
-      { roll: '19', adm: '4044', name: 'MUHAMMED NISHMAL A V' },
-      { roll: '20', adm: '4066', name: 'AHMAD RIZAN' },
-      { roll: '21', adm: '4056', name: 'MUHAMMED FAHEEM K M' },
-      { roll: '22', adm: '4073', name: 'MUHAMMED AMEEN AK' },
-      { roll: '23', adm: '4063', name: 'MUHAMMED MASOOD P P' },
-      { roll: '24', adm: '4005', name: 'FASLU RAHMAN' },
-      { roll: '25', adm: '4072', name: 'MOHAMED SHAB. U' },
-      { roll: '26', adm: '4048', name: 'MUHAMMED SHAREEF T' },
-      { roll: '27', adm: '4076', name: 'AMEENSHA K' },
-      { roll: '28', adm: '4078', name: 'ABDUL BASITH VT' },
-      { roll: '29', adm: '4051', name: 'MUHAMED RAYYAN P.K' },
-      { roll: '30', adm: '4052', name: 'MUHAMMED RAYYAN E K' },
-      { roll: '31', adm: '4053', name: 'AHMAD. C.M' },
-      { roll: '32', adm: '4055', name: 'MUHAMMED HADI .K' },
-      { roll: '33', adm: '4061', name: 'MUHAMMED THASNEEM KT' },
-      { roll: '34', adm: '4058', name: 'AJUVAD AMEEN P' },
-      { roll: '35', adm: '4017', name: 'MUHAMMED RAJIB E.K' },
-      { roll: '36', adm: '4054', name: 'MUHAMMED HANAN C P' },
-      { roll: '37', adm: '4057', name: 'MOHAMMED HUSSAINSHA VP' },
-      { roll: '38', adm: '4064', name: 'MUHAMMED MINHAL M' },
-      { roll: '39', adm: '4046', name: 'RAYYAN MUSTHAFA PC' },
-      { roll: '40', adm: '4060', name: 'MUHAMMED HASHIM E' },
-      { roll: '41', adm: '4039', name: 'MOHAMMED HAMDHAN' }
+      ['4049', '40492026', 'MOHAMMED SWALIH O', '4049@school.com', '1', '4049'],
+      ['4075', '40752026', 'MUHAMMAD AYMAN ABDUSSAMAD', '4075@school.com', '2', '4075'],
+      ['4081', '40812026', 'MUZAMMIL N A', '4081@school.com', '3', '4081'],
+      ['4074', '40742026', 'ABDURAHEEM. M. P', '4074@school.com', '4', '4074'],
+      ['4062', '40622026', 'MUHAMMED FARHAN NV', '4062@school.com', '5', '4062'],
+      ['4040', '40402026', 'MUHAMMED FINAN. K.', '4040@school.com', '6', '4040'],
+      ['4047', '40472026', 'MUHAMMED BASITH PP', '4047@school.com', '7', '4047'],
+      ['4079', '40792026', 'MUHAMMED FAHEEM', '4079@school.com', '8', '4079'],
+      ['4041', '40412026', 'SHANIL MUHAMMED', '4041@school.com', '9', '4041'],
+      ['4069', '40692026', 'MUHAMMAD RADEEF', '4069@school.com', '10', '4069'],
+      ['4070', '40702026', 'MUHAMMED SAMEEH', '4070@school.com', '11', '4070'],
+      ['4045', '40452026', 'ZAHRAN AHMED AP', '4045@school.com', '12', '4045'],
+      ['4042', '40422026', 'MOHAMMED AFNAN TP', '4042@school.com', '13', '4042'],
+      ['4077', '40772026', 'MOHAMED SWALIH. E. P', '4077@school.com', '14', '4077'],
+      ['4043', '40432026', 'RAYYAN AHMED BEHISHTH', '4043@school.com', '15', '4043'],
+      ['4067', '40672026', 'MUHAMMED ZAYAN RASHID', '4067@school.com', '16', '4067'],
+      ['4059', '40592026', 'MUHAMMED SHADHI.P', '4059@school.com', '17', '4059'],
+      ['4080', '40802026', 'ABDULLAH V S', '4080@school.com', '18', '4080'],
+      ['4044', '40442026', 'MUHAMMED NISHMAL A V', '4044@school.com', '19', '4044'],
+      ['4066', '40662026', 'AHMAD RIZAN', '4066@school.com', '20', '4066'],
+      ['4056', '40562026', 'MUHAMMED FAHEEM K M', '4056@school.com', '21', '4056'],
+      ['4073', '40732026', 'MUHAMMED AMEEN AK', '4073@school.com', '22', '4073'],
+      ['4063', '40632026', 'MUHAMMED MASOOD P P', '4063@school.com', '23', '4063'],
+      ['4005', '40052026', 'FASLU RAHMAN', '4005@school.com', '24', '4005'],
+      ['4072', '40722026', 'MOHAMED SHAB. U', '4072@school.com', '25', '4072'],
+      ['4048', '40482026', 'MUHAMMED SHAREEF T', '4048@school.com', '26', '4048'],
+      ['4076', '40762026', 'AMEENSHA K', '4076@school.com', '27', '4076'],
+      ['4078', '40782026', 'ABDUL BASITH VT', '4078@school.com', '28', '4078'],
+      ['4051', '40512026', 'MUHAMED RAYYAN P.K', '4051@school.com', '29', '4051'],
+      ['4052', '40522026', 'MUHAMMED RAYYAN E K', '4052@school.com', '30', '4052'],
+      ['4053', '40532026', 'AHMAD. C.M', '4053@school.com', '31', '4053'],
+      ['4055', '40552026', 'MUHAMMED HADI .K', '4055@school.com', '32', '4055'],
+      ['4061', '40612026', 'MUHAMMED THASNEEM KT', '4061@school.com', '33', '4061'],
+      ['4058', '40582026', 'AJUVAD AMEEN P', '4058@school.com', '34', '4058'],
+      ['4017', '40172026', 'MUHAMMED RAJIB E.K', '4017@school.com', '35', '4017'],
+      ['4054', '40542026', 'MUHAMMED HANAN C P', '4054@school.com', '36', '4054'],
+      ['4057', '40572026', 'MOHAMMED HUSSAINSHA VP', '4057@school.com', '37', '4057'],
+      ['4064', '40642026', 'MUHAMMED MINHAL M', '4064@school.com', '38', '4064'],
+      ['4046', '40462026', 'RAYYAN MUSTHAFA PC', '4046@school.com', '39', '4046'],
+      ['4060', '40602026', 'MUHAMMED HASHIM E', '4060@school.com', '40', '4060'],
+      ['4039', '40392026', 'MOHAMMED HAMDHAN', '4039@school.com', '41', '4039']
     ];
 
-    for (const s of studentsList) {
-      const existing = await get('SELECT id FROM users WHERE username = $1', [s.adm]);
-      if (!existing) {
-        const pass = `${s.adm}2026`;
-        await pool.query(`
-          INSERT INTO users (username, password, full_name, email, roll_no, admission_no, role)
-          VALUES ($1, $2, $3, $4, $5, $6, 'student')
-        `, [s.adm, pass, s.name, `${s.adm}@school.com`, s.roll, s.adm]);
-      }
+    const valueClauses = [];
+    const params = [];
+    let paramIdx = 1;
+
+    studentsList.forEach(s => {
+      valueClauses.push(`($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, 'student')`);
+      params.push(...s);
+      paramIdx += 6;
+    });
+
+    if (params.length > 0) {
+      await pool.query(`
+        INSERT INTO users (username, password, full_name, email, roll_no, admission_no, role)
+        VALUES ${valueClauses.join(', ')}
+        ON CONFLICT (username) DO NOTHING;
+      `, params);
     }
 
     // Check if exams exist

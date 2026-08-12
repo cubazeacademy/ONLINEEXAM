@@ -44,13 +44,23 @@ app.post('/api/auth/login', async (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/admin/dashboard', async (req, res) => {
   try {
-    const totalStudentsRes = await db.get(`SELECT count(*)::int as count FROM users WHERE role = 'student'`);
-    const totalExamsRes = await db.get(`SELECT count(*)::int as count FROM exams`);
-    const activeExamsRes = await db.get(`SELECT count(*)::int as count FROM exams WHERE status = 'published' OR status = 'active'`);
-    const totalAttemptsRes = await db.get(`SELECT count(*)::int as count FROM attempts WHERE status != 'in_progress'`);
-    
-    const passCountRes = await db.get(`SELECT count(*)::int as count FROM attempts WHERE passed = 1 AND status != 'in_progress'`);
-    
+    const [totalStudentsRes, totalExamsRes, activeExamsRes, totalAttemptsRes, passCountRes, recentAttempts] = await Promise.all([
+      db.get(`SELECT count(*)::int as count FROM users WHERE role = 'student'`),
+      db.get(`SELECT count(*)::int as count FROM exams`),
+      db.get(`SELECT count(*)::int as count FROM exams WHERE status = 'published' OR status = 'active'`),
+      db.get(`SELECT count(*)::int as count FROM attempts WHERE status != 'in_progress'`),
+      db.get(`SELECT count(*)::int as count FROM attempts WHERE passed = 1 AND status != 'in_progress'`),
+      db.all(`
+        SELECT a.id, u.full_name as student_name, e.title as exam_title, a.obtained_marks, a.total_marks, a.percentage, a.passed, a.submit_time
+        FROM attempts a
+        JOIN users u ON a.student_id = u.id
+        JOIN exams e ON a.exam_id = e.id
+        WHERE a.status != 'in_progress'
+        ORDER BY a.submit_time DESC
+        LIMIT 5
+      `)
+    ]);
+
     const totalStudents = totalStudentsRes ? totalStudentsRes.count : 0;
     const totalExams = totalExamsRes ? totalExamsRes.count : 0;
     const activeExams = activeExamsRes ? activeExamsRes.count : 0;
@@ -58,16 +68,6 @@ app.get('/api/admin/dashboard', async (req, res) => {
     const passCount = passCountRes ? passCountRes.count : 0;
 
     const passRate = totalAttempts > 0 ? ((passCount / totalAttempts) * 100).toFixed(1) : 0;
-
-    const recentAttempts = await db.all(`
-      SELECT a.id, u.full_name as student_name, e.title as exam_title, a.obtained_marks, a.total_marks, a.percentage, a.passed, a.submit_time
-      FROM attempts a
-      JOIN users u ON a.student_id = u.id
-      JOIN exams e ON a.exam_id = e.id
-      WHERE a.status != 'in_progress'
-      ORDER BY a.submit_time DESC
-      LIMIT 5
-    `);
 
     res.json({
       totalStudents,
@@ -648,26 +648,26 @@ app.get('/api/student/dashboard', async (req, res) => {
     const student = await db.get('SELECT id, full_name, username, email FROM users WHERE id = $1 AND role = \'student\'', [student_id]);
     if (!student) return res.status(404).json({ error: 'Student not found' });
 
-    const availableExamsRes = await db.get(`SELECT count(*)::int as count FROM exams WHERE status IN ('published', 'active')`);
+    const [availableExamsRes, attempts, recentResults] = await Promise.all([
+      db.get(`SELECT count(*)::int as count FROM exams WHERE status IN ('published', 'active')`),
+      db.get(`
+        SELECT count(*)::int as total_attempts,
+               SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END)::int as passed_count,
+               AVG(percentage) as avg_percentage
+        FROM attempts
+        WHERE student_id = $1 AND status != 'in_progress'
+      `, [student_id]),
+      db.all(`
+        SELECT a.*, e.title as exam_title
+        FROM attempts a
+        JOIN exams e ON a.exam_id = e.id
+        WHERE a.student_id = $1 AND a.status != 'in_progress'
+        ORDER BY a.submit_time DESC
+        LIMIT 5
+      `, [student_id])
+    ]);
+
     const availableExams = availableExamsRes ? availableExamsRes.count : 0;
-
-    const attempts = await db.get(`
-      SELECT count(*)::int as total_attempts,
-             SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END)::int as passed_count,
-             AVG(percentage) as avg_percentage
-      FROM attempts
-      WHERE student_id = $1 AND status != 'in_progress'
-    `, [student_id]);
-
-    const recentResults = await db.all(`
-      SELECT a.*, e.title as exam_title
-      FROM attempts a
-      JOIN exams e ON a.exam_id = e.id
-      WHERE a.student_id = $1 AND a.status != 'in_progress'
-      ORDER BY a.submit_time DESC
-      LIMIT 5
-    `, [student_id]);
-
     const completedExams = attempts ? (attempts.total_attempts || 0) : 0;
     const passedExams = attempts ? (attempts.passed_count || 0) : 0;
     const avgPercentage = (attempts && attempts.avg_percentage) ? parseFloat(attempts.avg_percentage).toFixed(1) : 0;

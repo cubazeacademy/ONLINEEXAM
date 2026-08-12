@@ -927,21 +927,24 @@ async function loadStudentAvailableExams() {
     exams.forEach(exam => {
       const isCompleted = exam.attempt_status && exam.attempt_status !== 'in_progress';
       const actionButton = isCompleted
-        ? `<button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`
-        : `<button class="btn btn-sm btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam</button>`;
+        ? `<button class="btn btn-block btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`
+        : `<button class="btn btn-block btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam Now</button>`;
 
       const statusTag = isCompleted
-        ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Completed (${exam.percentage}%)</span>`
-        : `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> Ready</span>`;
+        ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>`
+        : `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> READY</span>`;
 
       grid.innerHTML += `
-        <div class="exam-card">
-          <div>
+        <div class="exam-card lms-exam-card ${isCompleted ? 'completed' : ''}">
+          <div class="exam-card-top">
             <div class="exam-card-header">
-              <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
+              <div class="exam-icon-badge">
+                <i class="fa-solid fa-graduation-cap"></i>
+              </div>
               ${statusTag}
             </div>
-            <p class="exam-card-desc">${escapeHtml(exam.description || 'No description.')}</p>
+            <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
+            <p class="exam-card-desc">${escapeHtml(exam.description || 'Comprehensive assessment designed to evaluate core knowledge and problem-solving skills.')}</p>
 
             <div class="exam-meta-pills">
               <span class="meta-pill"><i class="fa-regular fa-clock"></i> ${exam.duration_minutes} Mins</span>
@@ -949,10 +952,21 @@ async function loadStudentAvailableExams() {
               <span class="meta-pill"><i class="fa-solid fa-trophy"></i> Total: ${exam.total_marks}</span>
               <span class="meta-pill"><i class="fa-solid fa-flag"></i> Pass: ${exam.pass_marks}</span>
             </div>
+
+            ${isCompleted ? `
+              <div class="exam-progress-box">
+                <div class="progress-bar-bg">
+                  <div class="progress-bar-fill ${exam.passed === 1 ? 'fill-pass' : 'fill-fail'}" style="width: ${Math.min(100, Math.max(0, exam.percentage))}%;"></div>
+                </div>
+                <div class="progress-info-row">
+                  <span>Score: <strong>${exam.obtained_marks} / ${exam.total_marks}</strong></span>
+                  <span class="score-pct-tag ${exam.passed === 1 ? 'text-success' : 'text-danger'}">${exam.percentage}%</span>
+                </div>
+              </div>
+            ` : ''}
           </div>
 
           <div class="exam-card-footer">
-            <span></span>
             ${actionButton}
           </div>
         </div>

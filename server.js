@@ -952,10 +952,15 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`=================================================`);
-  console.log(` Online Exam Website Server running on port ${PORT}`);
-  console.log(` Connected to Supabase PostgreSQL Database`);
-  console.log(` Access Admin & Student portal at: http://localhost:${PORT}`);
-  console.log(`=================================================`);
-});
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`=================================================`);
+    console.log(` Online Exam Website Server running on port ${PORT}`);
+    console.log(` Connected to Supabase PostgreSQL Database`);
+    console.log(` Access Admin & Student portal at: http://localhost:${PORT}`);
+    console.log(`=================================================`);
+  });
+}
+
+module.exports = app;
+

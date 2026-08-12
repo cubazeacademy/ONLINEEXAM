@@ -951,6 +951,7 @@ async function loadStudentAvailableExams() {
               ${statusTag}
             </div>
             <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
+            <div class="exam-tag-pill">TEST</div>
             <p class="exam-card-desc">${escapeHtml(exam.description || 'Comprehensive assessment designed to evaluate core knowledge and problem-solving skills.')}</p>
 
             <div class="exam-meta-pills">
@@ -966,7 +967,7 @@ async function loadStudentAvailableExams() {
                   <div class="progress-bar-fill ${exam.passed === 1 ? 'fill-pass' : 'fill-fail'}" style="width: ${Math.min(100, Math.max(0, exam.percentage))}%;"></div>
                 </div>
                 <div class="progress-info-row">
-                  <span>Score: <strong>${exam.obtained_marks} / ${exam.total_marks}</strong></span>
+                  <span>Score: ${exam.obtained_marks} / ${exam.total_marks}</span>
                   <span class="score-pct-tag ${exam.passed === 1 ? 'text-success' : 'text-danger'}">${exam.percentage}%</span>
                 </div>
               </div>

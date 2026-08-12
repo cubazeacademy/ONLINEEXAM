@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EduPulse - Modern Online Exam Portal</title>
+  <title>Cubaze Academy - Online Exam Portal</title>
   <!-- Google Fonts & Font Awesome Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,33 +17,53 @@
   <!-- 1. LOGIN SCREEN CONTAINER                  -->
   <!-- ========================================== -->
   <div id="login-screen" class="login-wrapper">
-    <div class="login-card glass-panel">
-      <div class="brand-header">
-        <div class="brand-logo">
-          <i class="fa-solid fa-graduation-cap"></i>
+    <div class="login-card">
+      
+      <!-- TOP LOGO & CLOSE HEADER -->
+      <div class="login-top-bar">
+        <div class="cubaze-logo">
+          <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="10" fill="#4F46E5"/>
+            <path d="M12 14L20 10L28 14L20 18L12 14Z" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 14V22L20 26V18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M28 14V22L20 26" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="logo-text">
+            <span class="brand-title">CUBAZE</span>
+            <span class="brand-sub">ACADEMY</span>
+          </div>
         </div>
-        <h2>EduPulse Portal</h2>
-        <p>Online Examination & Assessment Management System</p>
+        <button class="modal-close-btn" type="button" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
 
+      <!-- ROLE SELECTOR TABS -->
       <div class="role-selector">
         <button type="button" class="role-tab active" id="tab-btn-student" onclick="setLoginRole('student')">
-          <i class="fa-solid fa-user-graduate"></i> Student Login
+          Login
         </button>
         <button type="button" class="role-tab" id="tab-btn-admin" onclick="setLoginRole('admin')">
-          <i class="fa-solid fa-user-shield"></i> Admin Login
+          Register
         </button>
       </div>
 
+      <!-- WELCOME HEADER -->
+      <div class="welcome-header">
+        <h2>Welcome Back 👋</h2>
+        <p>Continue your creative learning journey.</p>
+      </div>
+
+      <!-- LOGIN FORM -->
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
-          <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+          <label for="login-username"><i class="fa-solid fa-user"></i> Username or Gmail Address</label>
+          <input type="text" id="login-username" placeholder="Username or Gmail address" required autocomplete="username">
         </div>
 
         <div class="form-group">
           <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
-          <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
         </div>
 
         <div class="demo-helpers">
@@ -60,8 +80,8 @@
 
         <div id="login-error" class="alert-box alert-error hidden"></div>
 
-        <button type="submit" class="btn btn-primary btn-block btn-lg">
-          <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
+        <button type="submit" class="btn btn-primary btn-block btn-lg btn-login-cubaze">
+          Login <i class="fa-solid fa-arrow-right"></i>
         </button>
       </form>
     </div>
@@ -76,9 +96,16 @@
     <!-- SIDEBAR NAVIGATION -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+        <div class="brand-icon">
+          <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="10" fill="#4F46E5"/>
+            <path d="M12 14L20 10L28 14L20 18L12 14Z" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 14V22L20 26V18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M28 14V22L20 26" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div class="brand-text">
-          <h3>EduPulse</h3>
+          <h3>Cubaze Academy</h3>
           <span id="user-role-badge" class="badge badge-role">Admin</span>
         </div>
       </div>

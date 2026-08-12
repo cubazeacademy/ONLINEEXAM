@@ -156,7 +156,7 @@ app.post('/api/admin/students/import-csv', async (req, res) => {
       const full_name = (item.full_name || item.name || item.studentname || item.student_name || '').trim();
       const roll_no = (item.roll_no || item.roll || item.rollnumber || item.roll_number || item.rollnum || '').toString().trim();
       const admission_no = (item.admission_no || item.admission || item.admissionno || item.admission_number || item.adm_no || item.admno || '').toString().trim();
-      
+
       let username = (item.username || admission_no || roll_no || '').toString().trim();
       let password = (item.password || `${username}2026`).toString().trim();
       const email = (item.email || (admission_no ? `${admission_no}@school.com` : '')).trim();
@@ -375,7 +375,7 @@ app.get('/api/admin/questions', async (req, res) => {
 
 app.post('/api/admin/questions', async (req, res) => {
   const { exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks } = req.body;
-  
+
   if (!question_text || !option_a || !option_b || !option_c || !option_d || !correct_option) {
     return res.status(400).json({ error: 'All question fields and correct option are required' });
   }

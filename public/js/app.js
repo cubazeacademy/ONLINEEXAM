@@ -2,8 +2,9 @@
    EDUPULSE ONLINE EXAM SYSTEM - FULL CLIENT APPLICATION LOGIC
    ========================================================================== */
 
-// DYNAMIC API BASE URL (Handles both Express port 3000 and Live Server port 5500)
-const API_BASE = (window.location.port !== '3000' && window.location.protocol.startsWith('http')) ? 'http://localhost:3000' : '';
+// DYNAMIC API BASE URL (Handles both Express port 3000 and Live Server port 5500, and production hosts like Vercel)
+const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const API_BASE = (isLocalhost && window.location.port && window.location.port !== '3000') ? 'http://localhost:3000' : '';
 function apiUrl(path) {
   return API_BASE + path;
 }

@@ -634,88 +634,95 @@
 
 
   <!-- ========================================== -->
-  <!-- 3. EXAM TAKING INTERFACE (FULL SCREEN MODE)-->
+  <!-- 3. EXAM TAKING INTERFACE (SECURE POPUP MODAL)-->
   <!-- ========================================== -->
   <div id="exam-taker-container" class="exam-fullscreen-wrapper hidden">
+    <div class="exam-modal-window">
 
-    <!-- EXAM HEADER -->
-    <header class="exam-header">
-      <div class="exam-title-badge">
-        <i class="fa-solid fa-pen-nib"></i>
-        <div>
-          <h3 id="exam-take-title">Mathematics Quiz</h3>
-          <span class="sub-text" id="exam-take-total-q">10 Questions</span>
-        </div>
-      </div>
-
-      <!-- TIMER COUNTDOWN -->
-      <div class="exam-timer-box" id="exam-timer-widget">
-        <i class="fa-regular fa-clock"></i>
-        <div class="timer-display">
-          <span class="timer-label">Time Remaining</span>
-          <span id="exam-countdown" class="timer-time">00:00</span>
-        </div>
-      </div>
-
-      <button type="button" class="btn btn-danger btn-sm" onclick="promptSubmitExam()">
-        <i class="fa-solid fa-check-circle"></i> Finish & Submit Exam
-      </button>
-    </header>
-
-    <!-- EXAM BODY LAYOUT -->
-    <div class="exam-body-grid">
-
-      <!-- LEFT: QUESTION PANEL -->
-      <div class="question-main-panel">
-        <div class="batch-header-bar">
-          <div class="batch-info-pill">
-            <i class="fa-solid fa-layer-group"></i> <span id="current-batch-badge">Questions 1 - 5 of 100</span>
-          </div>
-          <div class="batch-page-indicator">
-            Page <span id="current-page-num">1</span> of <span id="total-page-num">20</span>
+      <!-- EXAM HEADER -->
+      <header class="exam-header">
+        <div class="exam-title-badge">
+          <i class="fa-solid fa-shield-halved" style="font-size: 22px; color: #4f46e5;"></i>
+          <div>
+            <h3 id="exam-take-title">Mathematics Quiz</h3>
+            <span class="sub-text" id="exam-take-total-q">10 Questions</span>
           </div>
         </div>
 
-        <!-- CONTAINER FOR 5 QUESTIONS PER PAGE -->
-        <div id="questions-container-batch" class="batch-questions-list">
-          <!-- 5 Question Cards rendered dynamically -->
+        <!-- SECURE EXAM SESSION BADGE -->
+        <div class="secure-mode-pill">
+          <i class="fa-solid fa-lock"></i> SECURE EXAM SESSION
         </div>
 
-        <!-- EXAM CONTROLS -->
-        <div class="question-footer-controls">
-          <button type="button" class="btn btn-outline btn-lg" id="btn-prev-page" onclick="navigatePage(-1)">
-            <i class="fa-solid fa-arrow-left"></i> Previous Page
-          </button>
-
-          <button type="button" class="btn btn-primary btn-lg" id="btn-next-page" onclick="navigatePage(1)">
-            Next 5 Questions <i class="fa-solid fa-arrow-right"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- RIGHT: QUESTION NAVIGATION PALETTE -->
-      <div class="question-palette-panel">
-        <h4><i class="fa-solid fa-grip"></i> Question Palette</h4>
-        <div class="palette-legend">
-          <span class="legend-item"><span class="badge-dot dot-current"></span> Current</span>
-          <span class="legend-item"><span class="badge-dot dot-answered"></span> Answered</span>
-          <span class="legend-item"><span class="badge-dot dot-unanswered"></span> Unanswered</span>
-        </div>
-        <div id="question-palette-grid" class="palette-grid">
-          <!-- Palette buttons 1..N inserted dynamically -->
-        </div>
-
-        <div class="palette-summary mt-6">
-          <div class="summary-row"><span>Total Questions:</span> <strong id="pal-total">0</strong></div>
-          <div class="summary-row"><span>Answered:</span> <strong id="pal-answered" class="text-success">0</strong>
-          </div>
-          <div class="summary-row"><span>Unanswered:</span> <strong id="pal-unanswered" class="text-amber">0</strong>
+        <!-- TIMER COUNTDOWN -->
+        <div class="exam-timer-box" id="exam-timer-widget">
+          <i class="fa-regular fa-clock"></i>
+          <div class="timer-display">
+            <span class="timer-label">Time Remaining</span>
+            <span id="exam-countdown" class="timer-time">00:00</span>
           </div>
         </div>
+
+        <button type="button" class="btn btn-danger btn-sm" onclick="promptSubmitExam()">
+          <i class="fa-solid fa-check-circle"></i> Finish & Submit Exam
+        </button>
+      </header>
+
+      <!-- EXAM BODY LAYOUT -->
+      <div class="exam-body-grid">
+
+        <!-- LEFT: QUESTION PANEL -->
+        <div class="question-main-panel">
+          <div class="batch-header-bar">
+            <div class="batch-info-pill">
+              <i class="fa-solid fa-layer-group"></i> <span id="current-batch-badge">Questions 1 - 5 of 100</span>
+            </div>
+            <div class="batch-page-indicator">
+              Page <span id="current-page-num">1</span> of <span id="total-page-num">20</span>
+            </div>
+          </div>
+
+          <!-- CONTAINER FOR 5 QUESTIONS PER PAGE -->
+          <div id="questions-container-batch" class="batch-questions-list">
+            <!-- 5 Question Cards rendered dynamically -->
+          </div>
+
+          <!-- EXAM CONTROLS -->
+          <div class="question-footer-controls">
+            <button type="button" class="btn btn-outline btn-lg" id="btn-prev-page" onclick="navigatePage(-1)">
+              <i class="fa-solid fa-arrow-left"></i> Previous Page
+            </button>
+
+            <button type="button" class="btn btn-primary btn-lg" id="btn-next-page" onclick="navigatePage(1)">
+              Next 5 Questions <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- RIGHT: QUESTION NAVIGATION PALETTE -->
+        <div class="question-palette-panel">
+          <h4><i class="fa-solid fa-grip"></i> Question Palette</h4>
+          <div class="palette-legend">
+            <span class="legend-item"><span class="badge-dot dot-current"></span> Current Batch</span>
+            <span class="legend-item"><span class="badge-dot dot-answered"></span> Answered</span>
+            <span class="legend-item"><span class="badge-dot dot-unanswered"></span> Unanswered</span>
+          </div>
+          <div id="question-palette-grid" class="palette-grid">
+            <!-- Palette buttons 1..N inserted dynamically -->
+          </div>
+
+          <div class="palette-summary mt-6">
+            <div class="summary-row"><span>Total Questions:</span> <strong id="pal-total">0</strong></div>
+            <div class="summary-row"><span>Answered:</span> <strong id="pal-answered" class="text-success">0</strong>
+            </div>
+            <div class="summary-row"><span>Unanswered:</span> <strong id="pal-unanswered" class="text-amber">0</strong>
+            </div>
+          </div>
+        </div>
+
       </div>
 
     </div>
-
   </div>
 
 

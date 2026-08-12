@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EduPulse - Modern Online Exam Portal</title>
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ========================================== -->
+  <!-- 1. LOGIN SCREEN CONTAINER                  -->
+  <!-- ========================================== -->
+  <div id="login-screen" class="login-wrapper">
+    <div class="login-card glass-panel">
+      <div class="brand-header">
+        <div class="brand-logo">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <h2>EduPulse Portal</h2>
+        <p>Online Examination & Assessment Management System</p>
+      </div>
+
+      <div class="role-selector">
+        <button type="button" class="role-tab active" id="tab-btn-student" onclick="setLoginRole('student')">
+          <i class="fa-solid fa-user-graduate"></i> Student Login
+        </button>
+        <button type="button" class="role-tab" id="tab-btn-admin" onclick="setLoginRole('admin')">
+          <i class="fa-solid fa-user-shield"></i> Admin Login
+        </button>
+      </div>
+
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
+          <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+          <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+        </div>
+
+        <div class="demo-helpers">
+          <p class="demo-title">Quick Demo Login Credentials:</p>
+          <div class="demo-btns">
+            <button type="button" class="btn-demo" onclick="fillDemoCredentials('admin')">
+              <i class="fa-solid fa-key"></i> Fill Admin (admin / admin123)
+            </button>
+            <button type="button" class="btn-demo" onclick="fillDemoCredentials('student')">
+              <i class="fa-solid fa-key"></i> Fill Student (4049 / 40492026)
+            </button>
+          </div>
+        </div>
+
+        <div id="login-error" class="alert-box alert-error hidden"></div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
+        </button>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- 2. MAIN APPLICATION PORTAL CONTAINER       -->
+  <!-- ========================================== -->
+  <div id="app-portal" class="app-layout hidden">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+        <div class="brand-text">
+          <h3>EduPulse</h3>
+          <span id="user-role-badge" class="badge badge-role">Admin</span>
+        </div>
+      </div>
+
+      <!-- ADMIN SIDEBAR NAVIGATION -->
+      <nav id="nav-admin" class="nav-menu">
+        <div class="nav-category">MAIN MENU</div>
+        <a href="#admin-dashboard" class="nav-item active" onclick="switchTab('admin-dashboard')">
+          <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
+        </a>
+        <a href="#admin-students" class="nav-item" onclick="switchTab('admin-students')">
+          <i class="fa-solid fa-users"></i> <span>Students</span>
+        </a>
+        <a href="#admin-exams" class="nav-item" onclick="switchTab('admin-exams')">
+          <i class="fa-solid fa-file-signature"></i> <span>Exams</span>
+        </a>
+        <a href="#admin-questions" class="nav-item" onclick="switchTab('admin-questions')">
+          <i class="fa-solid fa-list-check"></i> <span>Questions</span>
+        </a>
+        <a href="#admin-results" class="nav-item" onclick="switchTab('admin-results')">
+          <i class="fa-solid fa-trophy"></i> <span>Results</span>
+        </a>
+        <div class="nav-category">SYSTEM</div>
+        <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
+          <i class="fa-solid fa-sliders"></i> <span>Settings</span>
+        </a>
+        <a href="#" class="nav-item text-danger" onclick="logout()">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i> <span>Logout</span>
+        </a>
+      </nav>
+
+      <!-- STUDENT SIDEBAR NAVIGATION -->
+      <nav id="nav-student" class="nav-menu hidden">
+        <div class="nav-category">STUDENT MENU</div>
+        <a href="#student-dashboard" class="nav-item active" onclick="switchTab('student-dashboard')">
+          <i class="fa-solid fa-house"></i> <span>Dashboard</span>
+        </a>
+        <a href="#student-exams" class="nav-item" onclick="switchTab('student-exams')">
+          <i class="fa-solid fa-pen-to-square"></i> <span>Exams</span>
+        </a>
+        <a href="#student-results" class="nav-item" onclick="switchTab('student-results')">
+          <i class="fa-solid fa-square-poll-vertical"></i> <span>My Results</span>
+        </a>
+        <div class="nav-category">ACCOUNT</div>
+        <a href="#student-profile" class="nav-item" onclick="switchTab('student-profile')">
+          <i class="fa-solid fa-id-card"></i> <span>Profile</span>
+        </a>
+        <a href="#" class="nav-item text-danger" onclick="logout()">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i> <span>Logout</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-user-footer">
+        <div class="user-avatar" id="sidebar-avatar-initial">A</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-user-name">Administrator</div>
+          <div class="user-sub" id="sidebar-user-sub">admin@onlineexam.com</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <main class="main-wrapper">
+      
+      <!-- TOP HEADER BAR -->
+      <header class="top-header">
+        <div class="header-left">
+          <button type="button" class="btn-icon mobile-toggle" onclick="toggleSidebar()">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <h2 id="page-title" class="page-title">Dashboard</h2>
+        </div>
+
+        <div class="header-right">
+          <div class="header-time" id="current-clock-display">
+            <i class="fa-regular fa-clock"></i> <span id="live-clock">12:00:00 PM</span>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="logout()">
+            <i class="fa-solid fa-power-off"></i> Logout
+          </button>
+        </div>
+      </header>
+
+      <!-- VIEW PAGES -->
+      <div class="content-container">
+
+        <!-- ========================================== -->
+        <!-- ADMIN 1: DASHBOARD VIEW                    -->
+        <!-- ========================================== -->
+        <section id="view-admin-dashboard" class="tab-view active">
+          <div class="metrics-grid">
+            <div class="metric-card bg-blue">
+              <div class="metric-icon"><i class="fa-solid fa-user-graduate"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-total-students">0</span>
+                <span class="metric-label">Total Students</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-indigo">
+              <div class="metric-icon"><i class="fa-solid fa-file-lines"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-total-exams">0</span>
+                <span class="metric-label">Total Exams</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-green">
+              <div class="metric-icon"><i class="fa-solid fa-circle-check"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-active-exams">0</span>
+                <span class="metric-label">Active / Published</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-purple">
+              <div class="metric-icon"><i class="fa-solid fa-square-poll-vertical"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-total-attempts">0</span>
+                <span class="metric-label">Completed Attempts</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-amber">
+              <div class="metric-icon"><i class="fa-solid fa-chart-line"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-pass-rate">0%</span>
+                <span class="metric-label">Overall Pass Rate</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card mt-6">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Exam Submissions</h3>
+              <button class="btn btn-sm btn-outline" onclick="switchTab('admin-results')">
+                View All Results <i class="fa-solid fa-arrow-right"></i>
+              </button>
+            </div>
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Student Name</th>
+                    <th>Exam Title</th>
+                    <th>Score / Total</th>
+                    <th>Percentage</th>
+                    <th>Status</th>
+                    <th>Submitted At</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admin-recent-attempts">
+                  <tr><td colspan="6" class="text-center">Loading submissions...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ADMIN 2: STUDENTS MANAGEMENT VIEW           -->
+        <!-- ========================================== -->
+        <section id="view-admin-students" class="tab-view hidden">
+          <div class="action-bar">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="search-students" placeholder="Search student name, username or email..." oninput="loadStudents()">
+            </div>
+            <div class="btn-group" style="display:flex; gap:10px;">
+              <button class="btn btn-warning hidden" id="btn-delete-selected-students" onclick="deleteSelectedStudents()">
+                <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-students">0</span>)
+              </button>
+              <button class="btn btn-danger" onclick="clearAllStudents()">
+                <i class="fa-solid fa-trash-can"></i> Clear All Students
+              </button>
+              <button class="btn btn-success" onclick="openImportStudentsModal()">
+                <i class="fa-solid fa-file-csv"></i> Import Students CSV
+              </button>
+              <button class="btn btn-primary" onclick="openStudentModal()">
+                <i class="fa-solid fa-user-plus"></i> Add New Student
+              </button>
+            </div>
+          </div>
+
+          <div class="panel-card mt-4">
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 40px;"><input type="checkbox" id="select-all-students" onchange="toggleSelectAllStudents(this)"></th>
+                    <th>Roll No</th>
+                    <th>Admission No</th>
+                    <th>Student Name</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Exams Taken</th>
+                    <th>Avg Percentage</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admin-students">
+                  <tr><td colspan="9" class="text-center">Loading students list...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ADMIN 3: EXAMS MANAGEMENT VIEW              -->
+        <!-- ========================================== -->
+        <section id="view-admin-exams" class="tab-view hidden">
+          <div class="action-bar">
+            <div class="page-desc">
+              Create, configure duration, set pass marks, assign questions, and publish exams for students.
+            </div>
+            <button class="btn btn-primary" onclick="openExamModal()">
+              <i class="fa-solid fa-plus"></i> Create New Exam
+            </button>
+          </div>
+
+          <div id="exams-cards-grid" class="cards-grid mt-4">
+            <!-- Exam Cards populated dynamically -->
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ADMIN 4: QUESTIONS MANAGEMENT VIEW          -->
+        <!-- ========================================== -->
+        <section id="view-admin-questions" class="tab-view hidden">
+          <div class="action-bar flex-wrap">
+            <div class="filter-group">
+              <label for="filter-question-exam">Filter by Exam:</label>
+              <select id="filter-question-exam" onchange="loadQuestions()">
+                <option value="">-- All Exams & Bank Questions --</option>
+              </select>
+            </div>
+            <div class="btn-group" style="display:flex; gap:10px;">
+              <button class="btn btn-warning hidden" id="btn-delete-selected-questions" onclick="deleteSelectedQuestions()">
+                <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-questions">0</span>)
+              </button>
+              <button class="btn btn-danger" onclick="clearAllQuestions()">
+                <i class="fa-solid fa-trash-can"></i> Clear All Questions
+              </button>
+              <button class="btn btn-success" onclick="openImportQuestionsModal()">
+                <i class="fa-solid fa-file-csv"></i> Import Questions CSV
+              </button>
+              <button class="btn btn-primary" onclick="openQuestionModal()">
+                <i class="fa-solid fa-circle-plus"></i> Add Question
+              </button>
+            </div>
+          </div>
+
+          <div class="panel-card mt-4">
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 40px;"><input type="checkbox" id="select-all-questions" onchange="toggleSelectAllQuestions(this)"></th>
+                    <th style="width: 35%;">Question Text</th>
+                    <th>Options (A / B / C / D)</th>
+                    <th>Correct Answer</th>
+                    <th>Marks</th>
+                    <th>Assigned Exam</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admin-questions">
+                  <tr><td colspan="7" class="text-center">Loading questions...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ADMIN 5: RESULTS & ANALYTICS VIEW           -->
+        <!-- ========================================== -->
+        <section id="view-admin-results" class="tab-view hidden">
+          <div class="action-bar flex-wrap">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="search-admin-results" placeholder="Search student name, username, or exam..." oninput="loadAdminResults()">
+            </div>
+            
+            <div class="filter-group">
+              <select id="filter-result-exam" onchange="loadAdminResults()">
+                <option value="">-- Filter All Exams --</option>
+              </select>
+            </div>
+
+            <button class="btn btn-success" onclick="exportResultsCSV()">
+              <i class="fa-solid fa-file-csv"></i> Export Results CSV
+            </button>
+          </div>
+
+          <div class="panel-card mt-4">
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Student Name</th>
+                    <th>Exam Title</th>
+                    <th>Correct / Wrong</th>
+                    <th>Obtained Marks</th>
+                    <th>Percentage</th>
+                    <th>Status</th>
+                    <th>Date Submitted</th>
+                    <th class="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admin-results">
+                  <tr><td colspan="8" class="text-center">Loading results...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ADMIN 6: SETTINGS VIEW                     -->
+        <!-- ========================================== -->
+        <section id="view-admin-settings" class="tab-view hidden">
+          <div class="panel-card max-w-xl">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-sliders"></i> System & Admin Settings</h3>
+            </div>
+            <div class="panel-body">
+              <div class="info-alert">
+                <i class="fa-solid fa-circle-info"></i> Admin login credentials can be adjusted here.
+              </div>
+              <form id="admin-settings-form" onsubmit="saveAdminSettings(event)">
+                <div class="form-group">
+                  <label>Admin Username</label>
+                  <input type="text" id="setting-admin-username" value="admin" readonly disabled>
+                </div>
+                <div class="form-group">
+                  <label>Full Name</label>
+                  <input type="text" id="setting-admin-fullname" value="System Administrator" required>
+                </div>
+                <div class="form-group">
+                  <label>System Email</label>
+                  <input type="email" id="setting-admin-email" value="admin@onlineexam.com">
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- STUDENT 1: DASHBOARD VIEW                  -->
+        <!-- ========================================== -->
+        <section id="view-student-dashboard" class="tab-view hidden">
+          <div class="welcome-banner">
+            <div class="banner-content">
+              <h2>Welcome back, <span id="student-welcome-name">Student</span>! 👋</h2>
+              <p>Ready to test your knowledge? View available examinations or check your performance history.</p>
+            </div>
+            <button class="btn btn-light" onclick="switchTab('student-exams')">
+              <i class="fa-solid fa-pen-to-square"></i> Browse Available Exams
+            </button>
+          </div>
+
+          <div class="metrics-grid mt-6">
+            <div class="metric-card bg-indigo">
+              <div class="metric-icon"><i class="fa-solid fa-file-pen"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="student-stat-available">0</span>
+                <span class="metric-label">Available Exams</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-green">
+              <div class="metric-icon"><i class="fa-solid fa-circle-check"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="student-stat-completed">0</span>
+                <span class="metric-label">Exams Completed</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-purple">
+              <div class="metric-icon"><i class="fa-solid fa-award"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="student-stat-passed">0</span>
+                <span class="metric-label">Passed Exams</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-amber">
+              <div class="metric-icon"><i class="fa-solid fa-percent"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="student-stat-avg">0%</span>
+                <span class="metric-label">Average Score</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card mt-6">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-clock-rotate-left"></i> My Recent Exam Results</h3>
+            </div>
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Exam Title</th>
+                    <th>Obtained / Total Marks</th>
+                    <th>Percentage</th>
+                    <th>Result Status</th>
+                    <th>Submitted At</th>
+                    <th class="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="table-student-recent-results">
+                  <tr><td colspan="6" class="text-center">No exam attempts yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- STUDENT 2: EXAMS LIST VIEW                 -->
+        <!-- ========================================== -->
+        <section id="view-student-exams" class="tab-view hidden">
+          <div class="page-header-title">
+            <h3>Available Examinations</h3>
+            <p>Select an exam below to begin. Make sure you have an active internet connection before starting.</p>
+          </div>
+
+          <div id="student-exams-grid" class="cards-grid mt-4">
+            <!-- Student exam cards rendered dynamically -->
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- STUDENT 3: RESULTS HISTORY VIEW            -->
+        <!-- ========================================== -->
+        <section id="view-student-results" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-trophy"></i> My Exam Performance & Scorecards</h3>
+            </div>
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Exam Title</th>
+                    <th>Correct Answers</th>
+                    <th>Wrong Answers</th>
+                    <th>Unanswered</th>
+                    <th>Marks</th>
+                    <th>Percentage</th>
+                    <th>Status</th>
+                    <th class="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="table-student-all-results">
+                  <tr><td colspan="8" class="text-center">Loading your exam records...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- STUDENT 4: PROFILE VIEW                    -->
+        <!-- ========================================== -->
+        <section id="view-student-profile" class="tab-view hidden">
+          <div class="panel-card max-w-xl">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-id-card"></i> Student Profile</h3>
+            </div>
+            <div class="panel-body">
+              <form id="student-profile-form" onsubmit="saveStudentProfile(event)">
+                <div class="form-group">
+                  <label>Username</label>
+                  <input type="text" id="profile-username" readonly disabled>
+                </div>
+                <div class="form-group">
+                  <label>Full Name</label>
+                  <input type="text" id="profile-fullname" required>
+                </div>
+                <div class="form-group">
+                  <label>Email Address</label>
+                  <input type="email" id="profile-email">
+                </div>
+                <div class="form-group">
+                  <label>Change Password (leave blank to keep current)</label>
+                  <input type="password" id="profile-password" placeholder="New password">
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Update Profile</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- 3. EXAM TAKING INTERFACE (FULL SCREEN MODE)-->
+  <!-- ========================================== -->
+  <div id="exam-taker-container" class="exam-fullscreen-wrapper hidden">
+    
+    <!-- EXAM HEADER -->
+    <header class="exam-header">
+      <div class="exam-title-badge">
+        <i class="fa-solid fa-pen-nib"></i>
+        <div>
+          <h3 id="exam-take-title">Mathematics Quiz</h3>
+          <span class="sub-text" id="exam-take-total-q">10 Questions</span>
+        </div>
+      </div>
+
+      <!-- TIMER COUNTDOWN -->
+      <div class="exam-timer-box" id="exam-timer-widget">
+        <i class="fa-regular fa-clock"></i>
+        <div class="timer-display">
+          <span class="timer-label">Time Remaining</span>
+          <span id="exam-countdown" class="timer-time">00:00</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-danger btn-sm" onclick="promptSubmitExam()">
+        <i class="fa-solid fa-check-circle"></i> Finish & Submit Exam
+      </button>
+    </header>
+
+    <!-- EXAM BODY LAYOUT -->
+    <div class="exam-body-grid">
+      
+      <!-- LEFT: QUESTION PANEL -->
+      <div class="question-main-panel">
+        <div class="question-header">
+          <span class="q-number-pill" id="current-q-number-badge">Question 1 of 10</span>
+          <span class="q-marks-pill" id="current-q-marks-badge">5 Marks</span>
+        </div>
+
+        <div class="question-text-box" id="exam-question-text">
+          Loading question text...
+        </div>
+
+        <div class="options-group" id="exam-options-container">
+          <!-- 4 Answer Option Cards inserted dynamically -->
+        </div>
+
+        <!-- EXAM CONTROLS -->
+        <div class="question-footer-controls">
+          <button type="button" class="btn btn-outline" id="btn-prev-question" onclick="navigateQuestion(-1)">
+            <i class="fa-solid fa-arrow-left"></i> Previous
+          </button>
+          
+          <button type="button" class="btn btn-warning btn-sm" onclick="clearOptionSelection()">
+            <i class="fa-solid fa-eraser"></i> Clear Choice
+          </button>
+
+          <button type="button" class="btn btn-primary" id="btn-next-question" onclick="navigateQuestion(1)">
+            Next <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: QUESTION NAVIGATION PALETTE -->
+      <div class="question-palette-panel">
+        <h4><i class="fa-solid fa-grip"></i> Question Palette</h4>
+        <div class="palette-legend">
+          <span class="legend-item"><span class="badge-dot dot-current"></span> Current</span>
+          <span class="legend-item"><span class="badge-dot dot-answered"></span> Answered</span>
+          <span class="legend-item"><span class="badge-dot dot-unanswered"></span> Unanswered</span>
+        </div>
+        <div id="question-palette-grid" class="palette-grid">
+          <!-- Palette buttons 1..N inserted dynamically -->
+        </div>
+
+        <div class="palette-summary mt-6">
+          <div class="summary-row"><span>Total Questions:</span> <strong id="pal-total">0</strong></div>
+          <div class="summary-row"><span>Answered:</span> <strong id="pal-answered" class="text-success">0</strong></div>
+          <div class="summary-row"><span>Unanswered:</span> <strong id="pal-unanswered" class="text-amber">0</strong></div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- MODAL DIALOGS                              -->
+  <!-- ========================================== -->
+
+  <!-- MODAL: ADD / EDIT STUDENT -->
+  <div id="modal-student" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-student-title">Add New Student</h3>
+        <button class="btn-close" onclick="closeModal('modal-student')">&times;</button>
+      </div>
+      <form id="form-student" onsubmit="saveStudentForm(event)">
+        <input type="hidden" id="student-id">
+        <div class="form-row">
+          <div class="form-group col-6">
+            <label>Roll Number</label>
+            <input type="text" id="student-rollno" placeholder="e.g. 1">
+          </div>
+          <div class="form-group col-6">
+            <label>Admission No</label>
+            <input type="text" id="student-admissionno" placeholder="e.g. 4049">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Full Name <span class="text-danger">*</span></label>
+          <input type="text" id="student-fullname" placeholder="e.g. MOHAMMED SWALIH O" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-6">
+            <label>Username <span class="text-muted">(Defaults to Admission No)</span></label>
+            <input type="text" id="student-username" placeholder="e.g. 4049">
+          </div>
+          <div class="form-group col-6">
+            <label>Password <span class="text-muted">(Defaults to Admission No)</span></label>
+            <input type="text" id="student-password" placeholder="e.g. 4049">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="student-email" placeholder="e.g. student@school.com">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-student')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Student</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT EXAM -->
+  <div id="modal-exam" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-exam-title">Create New Exam</h3>
+        <button class="btn-close" onclick="closeModal('modal-exam')">&times;</button>
+      </div>
+      <form id="form-exam" onsubmit="saveExamForm(event)">
+        <input type="hidden" id="exam-id">
+        <div class="form-group">
+          <label>Exam Title <span class="text-danger">*</span></label>
+          <input type="text" id="exam-title" placeholder="e.g. Web Development Quiz" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="exam-desc" rows="2" placeholder="Brief overview of topics covered"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-6">
+            <label>Duration (Minutes) <span class="text-danger">*</span></label>
+            <input type="number" id="exam-duration" value="30" min="1" required>
+          </div>
+          <div class="form-group col-6">
+            <label>Total Marks <span class="text-danger">*</span></label>
+            <input type="number" id="exam-total-marks" value="100" min="1" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-6">
+            <label>Pass Marks <span class="text-danger">*</span></label>
+            <input type="number" id="exam-pass-marks" value="40" min="1" required>
+          </div>
+          <div class="form-group col-6">
+            <label>Exam Status <span class="text-danger">*</span></label>
+            <select id="exam-status" required>
+              <option value="draft">Draft (Hidden)</option>
+              <option value="published">Published (Available to Students)</option>
+              <option value="active">Active (Ongoing)</option>
+              <option value="stopped">Stopped (Closed)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-exam')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Exam</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT QUESTION -->
+  <div id="modal-question" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg">
+      <div class="modal-header">
+        <h3 id="modal-question-title">Add Multiple Choice Question</h3>
+        <button class="btn-close" onclick="closeModal('modal-question')">&times;</button>
+      </div>
+      <form id="form-question" onsubmit="saveQuestionForm(event)">
+        <input type="hidden" id="question-id">
+        
+        <div class="form-group">
+          <label>Assign to Exam</label>
+          <select id="question-exam-id">
+            <option value="">-- Store in Question Bank (No Exam Assigned) --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Question Text <span class="text-danger">*</span></label>
+          <textarea id="question-text" rows="3" placeholder="Enter question statement here..." required></textarea>
+        </div>
+
+        <div class="options-grid">
+          <div class="form-group">
+            <label>Option A <span class="text-danger">*</span></label>
+            <input type="text" id="option-a" placeholder="First choice" required>
+          </div>
+          <div class="form-group">
+            <label>Option B <span class="text-danger">*</span></label>
+            <input type="text" id="option-b" placeholder="Second choice" required>
+          </div>
+          <div class="form-group">
+            <label>Option C <span class="text-danger">*</span></label>
+            <input type="text" id="option-c" placeholder="Third choice" required>
+          </div>
+          <div class="form-group">
+            <label>Option D <span class="text-danger">*</span></label>
+            <input type="text" id="option-d" placeholder="Fourth choice" required>
+          </div>
+        </div>
+
+        <div class="form-row mt-2">
+          <div class="form-group col-6">
+            <label>Correct Answer Option <span class="text-danger">*</span></label>
+            <select id="correct-option" required>
+              <option value="A">Option A</option>
+              <option value="B">Option B</option>
+              <option value="C">Option C</option>
+              <option value="D">Option D</option>
+            </select>
+          </div>
+          <div class="form-group col-6">
+            <label>Question Marks <span class="text-danger">*</span></label>
+            <input type="number" id="question-marks" value="5" min="1" required>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-question')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Question</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: VIEW DETAILED ATTEMPT RESULT -->
+  <div id="modal-view-result" class="modal-overlay hidden">
+    <div class="modal-content max-w-xl">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-file-invoice"></i> Detailed Exam Scorecard</h3>
+        <button class="btn-close" onclick="closeModal('modal-view-result')">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-result-content">
+        <!-- Result Details Rendered Here -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" onclick="closeModal('modal-view-result')">Close Report</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRM EXAM SUBMISSION -->
+  <div id="modal-confirm-submit" class="modal-overlay hidden">
+    <div class="modal-content text-center">
+      <div class="confirm-icon"><i class="fa-solid fa-circle-question"></i></div>
+      <h3>Submit Your Exam?</h3>
+      <p class="mt-2 text-muted">Are you sure you want to finish and submit your answers now? Once submitted, you cannot change your choices.</p>
+      <div class="confirm-stats mt-4">
+        <div class="stat-pill"><span id="confirm-ans-count">0</span> Answered</div>
+        <div class="stat-pill"><span id="confirm-unans-count">0</span> Unanswered</div>
+      </div>
+      <div class="modal-footer mt-6 flex-center">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-confirm-submit')">Continue Exam</button>
+        <button type="button" class="btn btn-success" onclick="confirmSubmitExam()"><i class="fa-solid fa-check"></i> Yes, Submit Exam</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPORT STUDENTS CSV -->
+  <div id="modal-import-students-csv" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-file-csv"></i> Batch Import Students via CSV</h3>
+        <button class="btn-close" onclick="closeModal('modal-import-students-csv')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="info-alert" style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:12px; border-radius:8px; margin-bottom:16px;">
+          <i class="fa-solid fa-circle-info"></i> <strong>CSV Format:</strong> Columns can be <code>Roll Number, Admission No, Name</code> or <code>roll_no, admission_no, full_name, password</code>.
+        </div>
+        
+        <div class="flex-between mb-4" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleStudentsCSV()">
+            <i class="fa-solid fa-download"></i> Download Sample CSV Template
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label>Select CSV File</label>
+          <input type="file" id="csv-students-file-input" accept=".csv" onchange="previewStudentsCSV(event)">
+        </div>
+
+        <div id="students-csv-preview-container" class="hidden mt-4">
+          <h4 style="font-size:0.9rem; font-weight:700; margin-bottom:8px;">
+            Preview (<span id="students-csv-count">0</span> Records Found):
+          </h4>
+          <div class="table-responsive" style="max-height: 200px; border:1px solid var(--border-color); border-radius:8px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Roll No</th>
+                  <th>Admission No</th>
+                  <th>Full Name</th>
+                  <th>Username</th>
+                </tr>
+              </thead>
+              <tbody id="table-csv-students-preview"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="csv-students-error-box" class="alert-box alert-error hidden mt-4"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-import-students-csv')">Cancel</button>
+        <button type="button" class="btn btn-success" id="btn-submit-import-students" onclick="submitImportStudentsCSV()" disabled>
+          <i class="fa-solid fa-upload"></i> Upload & Import Students
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPORT QUESTIONS CSV -->
+  <div id="modal-import-questions-csv" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-file-csv"></i> Batch Import Questions via CSV</h3>
+        <button class="btn-close" onclick="closeModal('modal-import-questions-csv')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Target Exam (Optional)</label>
+          <select id="csv-question-target-exam">
+            <option value="">-- Store in Question Bank --</option>
+          </select>
+        </div>
+
+        <div class="info-alert" style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:12px; border-radius:8px; margin-bottom:16px;">
+          <i class="fa-solid fa-circle-info"></i> <strong>CSV Format:</strong> Ensure headers: <code>question_text, option_a, option_b, option_c, option_d, correct_option, marks</code>.
+        </div>
+
+        <div class="flex-between mb-4" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleQuestionsCSV()">
+            <i class="fa-solid fa-download"></i> Download Sample Questions Template
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label>Select Questions CSV File</label>
+          <input type="file" id="csv-questions-file-input" accept=".csv" onchange="previewQuestionsCSV(event)">
+        </div>
+
+        <div id="questions-csv-preview-container" class="hidden mt-4">
+          <h4 style="font-size:0.9rem; font-weight:700; margin-bottom:8px;">
+            Preview (<span id="questions-csv-count">0</span> Questions Found):
+          </h4>
+          <div class="table-responsive" style="max-height: 200px; border:1px solid var(--border-color); border-radius:8px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Question Text</th>
+                  <th>Options (A/B/C/D)</th>
+                  <th>Correct</th>
+                  <th>Marks</th>
+                </tr>
+              </thead>
+              <tbody id="table-csv-questions-preview"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="csv-questions-error-box" class="alert-box alert-error hidden mt-4"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-import-questions-csv')">Cancel</button>
+        <button type="button" class="btn btn-success" id="btn-submit-import-questions" onclick="submitImportQuestionsCSV()" disabled>
+          <i class="fa-solid fa-upload"></i> Upload & Import Questions
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS APP LOGIC -->
+  <script src="js/app.js"></script>
+</body>
+</html>

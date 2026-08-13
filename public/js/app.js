@@ -10,7 +10,7 @@ function apiUrl(path) {
 }
 
 // CONFIG & CONSTANTS
-const QUESTIONS_PER_PAGE = 5;
+const QUESTIONS_PER_PAGE = 999999;
 
 // STATE MANAGEMENT
 let currentUser = null;

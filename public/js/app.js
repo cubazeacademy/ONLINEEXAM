@@ -1221,6 +1221,12 @@ function exitExamFullscreen() {
 }
 
 async function startStudentExam(examId) {
+  if (!currentUser || !currentUser.id) {
+    alert('Session expired or student user not identified. Please log in again.');
+    logout();
+    return;
+  }
+
   if (!confirm('Are you ready to begin the exam? The countdown timer will start immediately once loaded.')) return;
 
   try {
@@ -1272,13 +1278,27 @@ async function startStudentExam(examId) {
       console.warn('Fullscreen request failed:', fsErr);
     }
 
-    renderBatchQuestions();
-    renderQuestionPalette();
-    startExamTimer();
+    try {
+      renderBatchQuestions();
+    } catch (e) {
+      console.error('Error rendering questions batch:', e);
+    }
+
+    try {
+      renderQuestionPalette();
+    } catch (e) {
+      console.error('Error rendering question palette:', e);
+    }
+
+    try {
+      startExamTimer();
+    } catch (e) {
+      console.error('Error starting timer:', e);
+    }
 
   } catch (err) {
     console.error('Error starting exam session:', err);
-    alert('Failed to connect to exam engine server.');
+    alert((err && err.message) ? err.message : 'Unable to connect to exam server.');
   }
 }
 

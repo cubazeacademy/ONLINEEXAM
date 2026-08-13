@@ -1172,8 +1172,26 @@ async function loadStudentAvailableExams() {
   }
 }
 
-/// 3. EXAM TAKING ENGINE (5 QUESTIONS PER PAGE)
-const QUESTIONS_PER_PAGE = 5;
+function requestExamFullscreen() {
+  const elem = document.documentElement;
+  if (elem.requestFullscreen) {
+    elem.requestFullscreen().catch(() => {});
+  } else if (elem.webkitRequestFullscreen) {
+    elem.webkitRequestFullscreen().catch(() => {});
+  } else if (elem.msRequestFullscreen) {
+    elem.msRequestFullscreen().catch(() => {});
+  }
+}
+
+function exitExamFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen().catch(() => {});
+    }
+  }
+}
 
 async function startStudentExam(examId) {
   if (!confirm('Are you ready to begin the exam? The countdown timer will start immediately once loaded.')) return;
@@ -1208,6 +1226,9 @@ async function startStudentExam(examId) {
     document.getElementById('pal-total').textContent = data.questions.length;
 
     document.getElementById('exam-taker-container').classList.remove('hidden');
+
+    // Trigger browser fullscreen to hide Chrome tab bar and URL bar
+    requestExamFullscreen();
 
     renderBatchQuestions();
     renderQuestionPalette();
@@ -1442,8 +1463,9 @@ async function confirmSubmitExam() {
       return;
     }
 
-    // Hide Exam View
+    // Hide Exam View & Exit Fullscreen
     document.getElementById('exam-taker-container').classList.add('hidden');
+    exitExamFullscreen();
 
     const resultData = data.result;
     if (resultData && resultData.show_results === 1) {

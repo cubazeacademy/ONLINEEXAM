@@ -157,6 +157,10 @@ function toggleSidebar() {
 
 // SPA TAB SWITCHER
 function switchTab(tabId) {
+  // Close mobile sidebar if open
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.classList.remove('show');
+
   // Hide all tab views
   document.querySelectorAll('.tab-view').forEach(view => view.classList.add('hidden'));
 

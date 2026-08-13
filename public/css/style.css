@@ -1759,10 +1759,47 @@ body {
   border-left: 5px solid var(--warning);
 }
 
-/* RESPONSIVE BREAKPOINTS */
+/* ==========================================================================
+   6. RESPONSIVE MOBILE & TABLET BREAKPOINTS
+   ========================================================================== */
+
+/* Mobile Sidebar Overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 998;
+}
+
 @media (max-width: 900px) {
+  .sidebar-overlay {
+    display: block;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .sidebar.show ~ .sidebar-overlay,
+  .sidebar.show + .sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 270px;
+    z-index: 999;
     transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   }
 
   .sidebar.show {
@@ -1770,20 +1807,188 @@ body {
   }
 
   .main-wrapper {
-    margin-left: 0;
+    margin-left: 0 !important;
+    width: 100% !important;
   }
 
   .mobile-toggle {
-    display: flex;
+    display: flex !important;
     align-items: center;
     justify-content: center;
   }
 
+  .top-header {
+    padding: 0 16px;
+  }
+
+  .header-left .page-title {
+    font-size: 1.05rem;
+  }
+
+  .header-time {
+    display: none;
+  }
+
+  .content-container {
+    padding: 16px 14px;
+  }
+
+  .metrics-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .action-bar .search-box,
+  .action-bar .filter-group,
+  .action-bar .btn {
+    width: 100%;
+  }
+
+  /* Exam Engine Responsive Adjustments */
+  .exam-fullscreen-wrapper {
+    padding: 0 !important;
+  }
+
+  .exam-modal-window {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
+
+  .exam-header {
+    height: auto !important;
+    min-height: 56px;
+    padding: 10px 14px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .exam-title-badge h3 {
+    font-size: 0.95rem;
+  }
+
+  .exam-timer-box {
+    padding: 4px 12px;
+  }
+
+  .timer-time {
+    font-size: 0.95rem;
+  }
+
+  .secure-mode-pill {
+    display: none;
+  }
+
   .exam-body-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
   }
 
   .question-palette-panel {
     display: none;
+  }
+
+  .question-main-panel {
+    padding: 14px 14px 8px 14px !important;
+  }
+
+  .batch-header-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+  }
+
+  .batch-question-card {
+    padding: 16px !important;
+  }
+
+  .batch-question-text {
+    font-size: 0.98rem;
+    margin-bottom: 14px;
+  }
+
+  .option-card {
+    padding: 12px 14px;
+    font-size: 0.9rem;
+  }
+
+  .question-footer-controls {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .question-footer-controls .btn {
+    flex: 1;
+    font-size: 0.82rem;
+    padding: 10px 8px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 576px) {
+  .metrics-grid,
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .hero-banner {
+    padding: 20px 16px;
+  }
+
+  .hero-banner h2 {
+    font-size: 1.25rem;
+  }
+
+  .modal-content {
+    padding: 16px;
+    width: 95%;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .form-group.col-6 {
+    width: 100% !important;
+  }
+
+  .options-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-group .btn {
+    width: 100%;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+  }
+
+  .exam-meta-pills {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .meta-pill {
+    font-size: 0.75rem;
+    padding: 3px 8px;
   }
 }

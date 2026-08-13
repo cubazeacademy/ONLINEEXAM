@@ -1052,14 +1052,14 @@ async function loadStudentDashboard() {
     data.recentResults.forEach(r => {
       const isResultsVisible = r.show_results === 1;
       const statusBadge = isResultsVisible
-        ? (r.passed === 1 ? '<span class="badge badge-success">PASS</span>' : '<span class="badge badge-danger">FAIL</span>')
-        : '<span class="badge" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</span>';
+        ? (r.passed === 1 ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> PASS</span>' : '<span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> FAIL</span>')
+        : '<span class="badge badge-success" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;"><i class="fa-solid fa-user-check"></i> ATTENDED (RESULT COMING SOON)</span>';
 
       const marksDisplay = isResultsVisible ? `${r.obtained_marks} / ${r.total_marks}` : '---';
       const pctDisplay = isResultsVisible ? `${r.percentage}%` : '---';
       const actionBtn = isResultsVisible
         ? `<button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">View Result</button>`
-        : `<button class="btn btn-sm btn-disabled" disabled style="opacity:0.65; cursor:not-allowed; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-solid fa-lock"></i> Result Coming Soon</button>`;
+        : `<button class="btn btn-sm btn-disabled" disabled style="opacity:0.8; cursor:not-allowed; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;"><i class="fa-solid fa-user-check"></i> Attended</button>`;
 
       tbody.innerHTML += `
         <tr>
@@ -1109,10 +1109,10 @@ function renderStudentExamCards(exams, containerId) {
     if (isCompleted) {
       if (isResultsVisible) {
         actionButton = `<button class="btn btn-block btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`;
-        statusTag = `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>`;
+        statusTag = `<span class="badge badge-success" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;"><i class="fa-solid fa-user-check"></i> ATTENDED</span>`;
       } else {
-        actionButton = `<button class="btn btn-block btn-disabled" disabled style="opacity:0.7; cursor:not-allowed; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</button>`;
-        statusTag = `<span class="badge badge-warning" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</span>`;
+        actionButton = `<button class="btn btn-block btn-disabled" disabled style="opacity:0.85; cursor:not-allowed; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-weight:600;"><i class="fa-solid fa-user-check"></i> ATTENDED (RESULT COMING SOON)</button>`;
+        statusTag = `<span class="badge badge-success" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;"><i class="fa-solid fa-user-check"></i> ATTENDED</span>`;
       }
     } else {
       actionButton = `<button class="btn btn-block btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam Now</button>`;
@@ -1507,7 +1507,7 @@ async function loadStudentResults() {
       const isVisible = r.show_results === 1;
       const statusBadge = isVisible
         ? (r.passed === 1 ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> PASS</span>' : '<span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> FAIL</span>')
-        : '<span class="badge" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</span>';
+        : '<span class="badge badge-success" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;"><i class="fa-solid fa-user-check"></i> ATTENDED (RESULT COMING SOON)</span>';
 
       const correctDisplay = isVisible ? `<span class="text-success">${r.correct_answers}</span>` : '---';
       const wrongDisplay = isVisible ? `<span class="text-danger">${r.wrong_answers}</span>` : '---';
@@ -1517,7 +1517,7 @@ async function loadStudentResults() {
 
       const actionButton = isVisible
         ? `<button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})"><i class="fa-solid fa-file-lines"></i> View Scorecard</button>`
-        : `<button class="btn btn-sm btn-disabled" disabled style="opacity:0.65; cursor:not-allowed; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-solid fa-lock"></i> Result Coming Soon</button>`;
+        : `<button class="btn btn-sm btn-disabled" disabled style="opacity:0.8; cursor:not-allowed; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;"><i class="fa-solid fa-user-check"></i> Attended (Result Pending)</button>`;
 
       tbody.innerHTML += `
         <tr>

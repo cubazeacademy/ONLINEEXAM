@@ -856,7 +856,7 @@ app.post('/api/student/exams/:id/start', async (req, res) => {
         VALUES ($1, $2, CURRENT_TIMESTAMP, 'in_progress')
         RETURNING *
       `, [student_id, id]);
-      attempt = info.rows[0];
+      attempt = (info && info.rows && info.rows[0]) ? info.rows[0] : (await db.get('SELECT * FROM attempts WHERE student_id = $1 AND exam_id = $2 AND status = \'in_progress\'', [student_id, id]));
     }
 
     res.json({

@@ -9,6 +9,9 @@ function apiUrl(path) {
   return API_BASE + path;
 }
 
+// CONFIG & CONSTANTS
+const QUESTIONS_PER_PAGE = 5;
+
 // STATE MANAGEMENT
 let currentUser = null;
 let currentRole = 'student';

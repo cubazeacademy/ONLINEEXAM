@@ -94,9 +94,6 @@
         <a href="#admin-exams" class="nav-item" onclick="switchTab('admin-exams')">
           <i class="fa-solid fa-file-signature"></i> <span>Exams</span>
         </a>
-        <a href="#admin-questions" class="nav-item" onclick="switchTab('admin-questions')">
-          <i class="fa-solid fa-list-check"></i> <span>Questions</span>
-        </a>
         <a href="#admin-results" class="nav-item" onclick="switchTab('admin-results')">
           <i class="fa-solid fa-trophy"></i> <span>Results</span>
         </a>
@@ -334,69 +331,7 @@
         </section>
 
         <!-- ========================================== -->
-        <!-- ADMIN 4: QUESTIONS MANAGEMENT VIEW          -->
-        <!-- ========================================== -->
-        <section id="view-admin-questions" class="tab-view hidden">
-          <div class="hero-banner">
-            <h2>Question Bank & Assignments</h2>
-            <p>Add, edit, organize, and assign multiple-choice questions to tests.</p>
-            <i class="fa-solid fa-list-check hero-watermark"></i>
-          </div>
-          <div class="action-bar flex-wrap">
-            <div class="filter-group">
-              <label for="filter-question-exam">Filter by Exam:</label>
-              <select id="filter-question-exam" onchange="loadQuestions()">
-                <option value="">-- All Exams & Bank Questions --</option>
-              </select>
-            </div>
-            <div class="btn-group" style="display:flex; gap:10px; flex-wrap:wrap;">
-              <button class="btn btn-info hidden" id="btn-assign-selected-questions"
-                onclick="openAssignQuestionsModal()">
-                <i class="fa-solid fa-link"></i> Assign Selected to Exam (<span id="count-selected-assign-questions">0</span>)
-              </button>
-              <button class="btn btn-warning hidden" id="btn-delete-selected-questions"
-                onclick="deleteSelectedQuestions()">
-                <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-questions">0</span>)
-              </button>
-              <button class="btn btn-danger" onclick="clearAllQuestions()">
-                <i class="fa-solid fa-trash-can"></i> Clear All Questions
-              </button>
-              <button class="btn btn-success" onclick="openImportQuestionsModal()">
-                <i class="fa-solid fa-file-csv"></i> Import Questions CSV
-              </button>
-              <button class="btn btn-primary" onclick="openQuestionModal()">
-                <i class="fa-solid fa-circle-plus"></i> Add Question
-              </button>
-            </div>
-          </div>
-
-          <div class="panel-card mt-4">
-            <div class="panel-body table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th style="width: 40px;"><input type="checkbox" id="select-all-questions"
-                        onchange="toggleSelectAllQuestions(this)"></th>
-                    <th style="width: 35%;">Question Text</th>
-                    <th>Options (A / B / C / D)</th>
-                    <th>Correct Answer</th>
-                    <th>Marks</th>
-                    <th>Assigned Exam</th>
-                    <th class="text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="table-admin-questions">
-                  <tr>
-                    <td colspan="7" class="text-center">Loading questions...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <!-- ========================================== -->
-        <!-- ADMIN 5: RESULTS & ANALYTICS VIEW           -->
+        <!-- ADMIN 4: RESULTS & ANALYTICS VIEW           -->
         <!-- ========================================== -->
         <section id="view-admin-results" class="tab-view hidden">
           <div class="hero-banner">

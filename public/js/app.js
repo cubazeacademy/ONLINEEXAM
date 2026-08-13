@@ -183,7 +183,6 @@ function switchTab(tabId) {
     'admin-dashboard': 'Admin Dashboard Overview',
     'admin-students': 'Student Accounts Management',
     'admin-exams': 'Examinations Management',
-    'admin-questions': 'Question Bank & Assignments',
     'admin-results': 'Student Results & Performance Analytics',
     'admin-settings': 'System Settings',
     'student-dashboard': 'Student Dashboard Overview',
@@ -198,7 +197,6 @@ function switchTab(tabId) {
   if (tabId === 'admin-dashboard') loadAdminDashboard();
   if (tabId === 'admin-students') loadStudents();
   if (tabId === 'admin-exams') loadExams();
-  if (tabId === 'admin-questions') { loadExamDropdownOptions(); loadQuestions(); }
   if (tabId === 'admin-results') { loadExamFilterDropdownOptions(); loadAdminResults(); }
   if (tabId === 'admin-settings') populateAdminSettings();
   if (tabId === 'student-dashboard') loadStudentDashboard();
@@ -487,19 +485,16 @@ async function loadExams() {
           </div>
 
           <div class="exam-card-footer" style="flex-direction:column; gap:8px;">
-            <button class="btn btn-block btn-primary" onclick="manageExamQuestions(${exam.id})">
-              <i class="fa-solid fa-list-check"></i> Manage Questions (${exam.question_count})
+            <button class="btn btn-block btn-primary" onclick="editExam(${exam.id})">
+              <i class="fa-solid fa-pen-to-square"></i> Edit Exam & Questions (${exam.question_count} Qs)
             </button>
             <div class="btn-group" style="width:100%; justify-content:space-between;">
               ${resultsToggleBtn}
               <button class="btn btn-sm btn-outline" onclick="toggleExamStatusPrompt(${exam.id}, '${exam.status}')" title="Change Status">
                 <i class="fa-solid fa-arrows-rotate"></i> Status
               </button>
-              <button class="btn btn-sm btn-outline" onclick="editExam(${exam.id})" title="Edit Exam">
-                <i class="fa-solid fa-pen"></i> Edit
-              </button>
               <button class="btn btn-sm btn-danger" onclick="deleteExam(${exam.id})" title="Delete Exam">
-                <i class="fa-solid fa-trash"></i>
+                <i class="fa-solid fa-trash"></i> Delete
               </button>
             </div>
           </div>
@@ -509,17 +504,6 @@ async function loadExams() {
   } catch (err) {
     console.error('Error loading exams:', err);
   }
-}
-
-function manageExamQuestions(examId) {
-  switchTab('admin-questions');
-  setTimeout(() => {
-    const select = document.getElementById('filter-question-exam');
-    if (select) {
-      select.value = examId;
-      loadQuestions();
-    }
-  }, 100);
 }
 
 let parsedExamModalCSVData = [];

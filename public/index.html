@@ -811,7 +811,7 @@
         <div class="exam-questions-upload-section mt-4 p-4" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <label style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-file-csv" style="color: #10b981; font-size: 1.1rem;"></i> Attach / Upload Questions CSV (Optional)
+              <i class="fa-solid fa-file-csv" style="color: #10b981; font-size: 1.1rem;"></i> Attach / Upload Questions CSV
             </label>
             <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleQuestionsCSV()">
               <i class="fa-solid fa-download"></i> Sample CSV
@@ -843,9 +843,39 @@
           </div>
         </div>
 
+        <!-- EXISTING ATTACHED QUESTIONS MANAGEMENT SECTION -->
+        <div id="exam-existing-questions-section" class="mt-4 p-4 hidden" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <h4 style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Attached Questions (<span id="exam-questions-count">0</span>)
+            </h4>
+            <button type="button" class="btn btn-sm btn-primary" onclick="openAddQuestionForExam()">
+              <i class="fa-solid fa-plus"></i> Add Question to Exam
+            </button>
+          </div>
+
+          <div class="table-responsive" style="max-height: 280px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <table class="data-table" style="font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th style="width: 35px;">#</th>
+                  <th>Question Statement</th>
+                  <th>Options</th>
+                  <th>Answer</th>
+                  <th>Marks</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="table-exam-existing-questions">
+                <tr><td colspan="6" class="text-center text-muted">Loading questions...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="modal-footer mt-4">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-exam')">Cancel</button>
-          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Exam</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Exam Details</button>
         </div>
       </form>
     </div>

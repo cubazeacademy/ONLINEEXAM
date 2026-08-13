@@ -559,12 +559,19 @@ function previewExamModalCSV(event) {
   reader.readAsText(file);
 }
 
+let currentEditingExamId = null;
+
 function openExamModal() {
+  currentEditingExamId = null;
   document.getElementById('form-exam').reset();
   document.getElementById('exam-id').value = '';
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = false;
   document.getElementById('modal-exam-title').textContent = 'Create New Exam';
+
+  const section = document.getElementById('exam-existing-questions-section');
+  if (section) section.classList.add('hidden');
+
   clearExamModalCSV();
   openModal('modal-exam');
 }
@@ -573,6 +580,7 @@ function editExam(id) {
   const exam = allExamsList.find(e => e.id === id);
   if (!exam) return;
 
+  currentEditingExamId = id;
   document.getElementById('exam-id').value = exam.id;
   document.getElementById('exam-title').value = exam.title;
   document.getElementById('exam-desc').value = exam.description || '';
@@ -584,9 +592,59 @@ function editExam(id) {
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);
 
-  document.getElementById('modal-exam-title').textContent = 'Edit Exam Details';
+  document.getElementById('modal-exam-title').textContent = `Edit Exam & Questions (${exam.title})`;
   clearExamModalCSV();
+
+  loadExamQuestionsInModal(id);
   openModal('modal-exam');
+}
+
+async function loadExamQuestionsInModal(examId) {
+  currentEditingExamId = examId;
+  const section = document.getElementById('exam-existing-questions-section');
+  if (section) section.classList.remove('hidden');
+
+  const tbody = document.getElementById('table-exam-existing-questions');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading attached questions...</td></tr>';
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/questions?exam_id=${examId}`));
+    const questions = await res.json();
+
+    const countEl = document.getElementById('exam-questions-count');
+    if (countEl) countEl.textContent = questions.length;
+
+    if (!questions || questions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No questions attached to this exam yet. Attach a CSV file above or click "Add Question to Exam".</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    questions.forEach((q, idx) => {
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${idx + 1}</strong></td>
+          <td><strong>${escapeHtml(q.question_text)}</strong></td>
+          <td style="font-size:0.78rem;">
+            <div>A: ${escapeHtml(q.option_a)}</div>
+            <div>B: ${escapeHtml(q.option_b)}</div>
+            <div>C: ${escapeHtml(q.option_c)}</div>
+            <div>D: ${escapeHtml(q.option_d)}</div>
+          </td>
+          <td><span class="badge badge-success">Option ${q.correct_option}</span></td>
+          <td><strong>${q.marks || 5}</strong></td>
+          <td class="text-right">
+            <button type="button" class="btn btn-sm btn-outline" onclick="openEditQuestionModal(${q.id})" title="Edit Question"><i class="fa-solid fa-pen"></i></button>
+            <button type="button" class="btn btn-sm btn-danger" onclick="deleteQuestionInExamModal(${q.id}, ${examId})" title="Delete Question"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>
+      `;
+    });
+  } catch (err) {
+    console.error('Error loading exam questions:', err);
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading questions for this exam.</td></tr>';
+  }
 }
 
 async function saveExamForm(e) {
@@ -871,46 +929,70 @@ async function clearAllQuestions() {
   }
 }
 
-function openQuestionModal() {
+function openAddQuestionForExam() {
+  if (!currentEditingExamId) return;
   document.getElementById('form-question').reset();
   document.getElementById('question-id').value = '';
-  document.getElementById('modal-question-title').textContent = 'Add Question';
+  const examSelect = document.getElementById('question-exam-id');
+  if (examSelect) examSelect.value = currentEditingExamId;
+  document.getElementById('modal-question-title').textContent = 'Add Question to Exam';
   openModal('modal-question');
 }
 
-async function editQuestion(id) {
+async function openEditQuestionModal(questionId) {
+  if (!currentEditingExamId) return;
   try {
-    const res = await fetch(apiUrl('/api/admin/questions'));
+    const res = await fetch(apiUrl(`/api/admin/questions?exam_id=${currentEditingExamId}`));
     const questions = await res.json();
-    const q = questions.find(item => item.id === id);
+    const q = questions.find(item => item.id === questionId);
     if (!q) return;
 
     document.getElementById('question-id').value = q.id;
-    document.getElementById('question-exam-id').value = q.exam_id || '';
-    document.getElementById('question-text').value = q.question_text;
-    document.getElementById('option-a').value = q.option_a;
-    document.getElementById('option-b').value = q.option_b;
-    document.getElementById('option-c').value = q.option_c;
-    document.getElementById('option-d').value = q.option_d;
-    document.getElementById('correct-option').value = q.correct_option;
-    document.getElementById('question-marks').value = q.marks;
+    const examSelect = document.getElementById('question-exam-id');
+    if (examSelect) examSelect.value = currentEditingExamId;
+
+    document.getElementById('question-text').value = q.question_text || '';
+    document.getElementById('option-a').value = q.option_a || '';
+    document.getElementById('option-b').value = q.option_b || '';
+    document.getElementById('option-c').value = q.option_c || '';
+    document.getElementById('option-d').value = q.option_d || '';
+    document.getElementById('correct-option').value = q.correct_option || 'A';
+    document.getElementById('question-marks').value = q.marks || 5;
 
     document.getElementById('modal-question-title').textContent = 'Edit Question';
     openModal('modal-question');
-  } catch (err) {}
+  } catch (err) {
+    alert('Error loading question details');
+  }
+}
+
+async function deleteQuestionInExamModal(questionId, examId) {
+  if (confirm('Are you sure you want to delete this question from the exam?')) {
+    try {
+      const res = await fetch(apiUrl(`/api/admin/questions/${questionId}`), { method: 'DELETE' });
+      if (res.ok) {
+        loadExamQuestionsInModal(examId);
+        loadExams();
+      } else {
+        alert('Failed to delete question');
+      }
+    } catch (err) {
+      alert('Error deleting question');
+    }
+  }
 }
 
 async function saveQuestionForm(e) {
   e.preventDefault();
   const id = document.getElementById('question-id').value;
-  const exam_id = document.getElementById('question-exam-id').value || null;
+  const exam_id = document.getElementById('question-exam-id').value || currentEditingExamId;
   const question_text = document.getElementById('question-text').value;
   const option_a = document.getElementById('option-a').value;
   const option_b = document.getElementById('option-b').value;
   const option_c = document.getElementById('option-c').value;
   const option_d = document.getElementById('option-d').value;
   const correct_option = document.getElementById('correct-option').value;
-  const marks = parseInt(document.getElementById('question-marks').value);
+  const marks = parseInt(document.getElementById('question-marks').value) || 5;
 
   const path = id ? `/api/admin/questions/${id}` : '/api/admin/questions';
   const method = id ? 'PUT' : 'POST';
@@ -929,9 +1011,12 @@ async function saveQuestionForm(e) {
     }
 
     closeModal('modal-question');
-    loadQuestions();
+    if (currentEditingExamId) {
+      loadExamQuestionsInModal(currentEditingExamId);
+      loadExams();
+    }
   } catch (err) {
-    alert('Error saving question');
+    alert('Error saving question details.');
   }
 }
 

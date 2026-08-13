@@ -1303,8 +1303,26 @@ async function startStudentExam(examId) {
 }
 
 function renderBatchQuestions() {
+  if (!examState || !Array.isArray(examState.questions)) return;
+
   const totalQuestions = examState.questions.length;
+  const container = document.getElementById('questions-container-batch');
+
+  if (totalQuestions === 0) {
+    if (container) container.innerHTML = '<div class="panel-card p-6 text-center text-muted">No questions available for this exam.</div>';
+    return;
+  }
+
+  // Ensure currentPage is valid integer
+  if (typeof examState.currentPage !== 'number' || isNaN(examState.currentPage) || examState.currentPage < 0) {
+    examState.currentPage = 0;
+  }
+
   const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE) || 1;
+  if (examState.currentPage >= totalPages) {
+    examState.currentPage = totalPages - 1;
+  }
+
   const startIdx = examState.currentPage * QUESTIONS_PER_PAGE;
   const endIdx = Math.min(startIdx + QUESTIONS_PER_PAGE, totalQuestions);
   const currentBatch = examState.questions.slice(startIdx, endIdx);
@@ -1319,19 +1337,19 @@ function renderBatchQuestions() {
   const totalPageNum = document.getElementById('total-page-num');
   if (totalPageNum) totalPageNum.textContent = totalPages;
 
-  const container = document.getElementById('questions-container-batch');
   if (!container) return;
   container.innerHTML = '';
 
   currentBatch.forEach((q, offset) => {
+    if (!q) return;
     const globalIdx = startIdx + offset;
-    const selectedChoice = examState.userAnswers[q.id];
+    const selectedChoice = (examState.userAnswers && q.id) ? examState.userAnswers[q.id] : undefined;
 
     const options = [
-      { letter: 'A', text: q.option_a },
-      { letter: 'B', text: q.option_b },
-      { letter: 'C', text: q.option_c },
-      { letter: 'D', text: q.option_d }
+      { letter: 'A', text: q.option_a || '' },
+      { letter: 'B', text: q.option_b || '' },
+      { letter: 'C', text: q.option_c || '' },
+      { letter: 'D', text: q.option_d || '' }
     ];
 
     let optionsHtml = '';
@@ -1351,10 +1369,10 @@ function renderBatchQuestions() {
       <div class="batch-question-card" id="q-card-${globalIdx}">
         <div class="batch-q-header">
           <span class="q-number-badge"><i class="fa-solid fa-circle-question"></i> Question ${globalIdx + 1}</span>
-          <span class="q-marks-pill"><i class="fa-solid fa-award"></i> ${q.marks} Marks</span>
+          <span class="q-marks-pill"><i class="fa-solid fa-award"></i> ${q.marks || 5} Marks</span>
         </div>
         <div class="batch-question-text">
-          ${escapeHtml(q.question_text)}
+          ${escapeHtml(q.question_text || 'Question text unavailable')}
         </div>
         <div class="options-group">
           ${optionsHtml}
@@ -1374,7 +1392,7 @@ function renderBatchQuestions() {
   const prevBtn = document.getElementById('btn-prev-page');
   const nextBtn = document.getElementById('btn-next-page');
 
-  if (prevBtn) prevBtn.disabled = examState.currentPage === 0;
+  if (prevBtn) prevBtn.disabled = (examState.currentPage === 0);
 
   if (nextBtn) {
     if (examState.currentPage === totalPages - 1) {
@@ -1392,20 +1410,24 @@ function renderBatchQuestions() {
 }
 
 function selectBatchOption(questionId, letter) {
+  if (!examState.userAnswers) examState.userAnswers = {};
   examState.userAnswers[questionId] = letter;
   renderBatchQuestions();
   renderQuestionPalette();
 }
 
 function clearBatchOption(questionId) {
-  delete examState.userAnswers[questionId];
+  if (examState.userAnswers) {
+    delete examState.userAnswers[questionId];
+  }
   renderBatchQuestions();
   renderQuestionPalette();
 }
 
 function navigatePage(dir) {
-  const totalPages = Math.ceil(examState.questions.length / QUESTIONS_PER_PAGE);
-  const newPage = examState.currentPage + dir;
+  if (!examState || !Array.isArray(examState.questions)) return;
+  const totalPages = Math.ceil(examState.questions.length / QUESTIONS_PER_PAGE) || 1;
+  const newPage = (examState.currentPage || 0) + dir;
   if (newPage >= 0 && newPage < totalPages) {
     examState.currentPage = newPage;
     renderBatchQuestions();
@@ -1415,13 +1437,16 @@ function navigatePage(dir) {
 }
 
 function jumpToQuestion(globalIdx) {
-  const targetPage = Math.floor(globalIdx / QUESTIONS_PER_PAGE);
+  const idx = parseInt(globalIdx);
+  if (isNaN(idx) || !examState || !Array.isArray(examState.questions)) return;
+
+  const targetPage = Math.floor(idx / QUESTIONS_PER_PAGE);
   examState.currentPage = targetPage;
   renderBatchQuestions();
   renderQuestionPalette();
 
   setTimeout(() => {
-    const targetCard = document.getElementById(`q-card-${globalIdx}`);
+    const targetCard = document.getElementById(`q-card-${idx}`);
     if (targetCard) {
       targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -1429,15 +1454,19 @@ function jumpToQuestion(globalIdx) {
 }
 
 function renderQuestionPalette() {
+  if (!examState || !Array.isArray(examState.questions)) return;
+
   const grid = document.getElementById('question-palette-grid');
   if (!grid) return;
   grid.innerHTML = '';
 
-  const startIdx = examState.currentPage * QUESTIONS_PER_PAGE;
+  const currentPage = (typeof examState.currentPage === 'number' && !isNaN(examState.currentPage)) ? examState.currentPage : 0;
+  const startIdx = currentPage * QUESTIONS_PER_PAGE;
   const endIdx = startIdx + QUESTIONS_PER_PAGE;
 
   examState.questions.forEach((q, idx) => {
-    const isAnswered = !!examState.userAnswers[q.id];
+    if (!q) return;
+    const isAnswered = examState.userAnswers && !!examState.userAnswers[q.id];
     const isCurrentBatch = idx >= startIdx && idx < endIdx;
 
     let classes = 'pal-btn';
@@ -1453,12 +1482,20 @@ function renderQuestionPalette() {
 }
 
 function updatePaletteSummary() {
-  const total = examState.questions.length;
-  const answeredCount = Object.keys(examState.userAnswers).length;
-  const unansweredCount = total - answeredCount;
+  if (!examState || !Array.isArray(examState.questions)) return;
 
-  document.getElementById('pal-answered').textContent = answeredCount;
-  document.getElementById('pal-unanswered').textContent = unansweredCount;
+  const total = examState.questions.length;
+  const answeredCount = examState.userAnswers ? Object.keys(examState.userAnswers).length : 0;
+  const unansweredCount = Math.max(0, total - answeredCount);
+
+  const palTotal = document.getElementById('pal-total');
+  if (palTotal) palTotal.textContent = total;
+
+  const palAns = document.getElementById('pal-answered');
+  if (palAns) palAns.textContent = answeredCount;
+
+  const palUnans = document.getElementById('pal-unanswered');
+  if (palUnans) palUnans.textContent = unansweredCount;
 }
 
 function startExamTimer() {

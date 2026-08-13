@@ -283,13 +283,13 @@ app.get('/api/admin/exams', async (req, res) => {
 });
 
 app.post('/api/admin/exams', async (req, res) => {
-  const { title, description, duration_minutes, total_marks, pass_marks, status, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, questions } = req.body;
   if (!title) return res.status(400).json({ error: 'Exam title is required' });
 
   try {
     const info = await db.run(`
-      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `, [
       title,
@@ -297,7 +297,8 @@ app.post('/api/admin/exams', async (req, res) => {
       duration_minutes || 30,
       total_marks || 100,
       pass_marks || 40,
-      status || 'draft'
+      status || 'draft',
+      show_results ? 1 : 0
     ]);
     const newExam = info.rows[0];
 
@@ -337,14 +338,14 @@ app.post('/api/admin/exams', async (req, res) => {
 
 app.put('/api/admin/exams/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, description, duration_minutes, total_marks, pass_marks, status, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, questions } = req.body;
 
   try {
     await db.run(`
       UPDATE exams
-      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6
-      WHERE id = $7
-    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, id]);
+      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7
+      WHERE id = $8
+    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, id]);
 
     let uploadedCount = 0;
     if (Array.isArray(questions) && questions.length > 0) {
@@ -372,6 +373,17 @@ app.put('/api/admin/exams/:id', async (req, res) => {
     }
 
     res.json({ message: 'Exam updated successfully', uploaded_questions_count: uploadedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/admin/exams/:id/toggle-results', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.run(`UPDATE exams SET show_results = CASE WHEN show_results = 1 THEN 0 ELSE 1 END WHERE id = $1`, [id]);
+    const updated = await db.get('SELECT id, show_results FROM exams WHERE id = $1', [id]);
+    res.json({ message: `Results visibility updated`, show_results: updated.show_results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -733,7 +745,7 @@ app.get('/api/student/dashboard', async (req, res) => {
         WHERE student_id = $1 AND status != 'in_progress'
       `, [student_id]),
       db.all(`
-        SELECT a.*, e.title as exam_title
+        SELECT a.*, e.title as exam_title, e.show_results
         FROM attempts a
         JOIN exams e ON a.exam_id = e.id
         WHERE a.student_id = $1 AND a.status != 'in_progress'
@@ -940,13 +952,18 @@ app.get('/api/student/attempts/:id/result', async (req, res) => {
   const { id } = req.params;
   try {
     const attempt = await db.get(`
-      SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks
+      SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks, e.show_results
       FROM attempts a
       JOIN exams e ON a.exam_id = e.id
       WHERE a.id = $1
     `, [id]);
 
     if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+
+    // Check if results are published by Admin
+    if (attempt.show_results === 0) {
+      return res.status(403).json({ error: 'Results for this exam have not been published yet. RESULT COMING SOON!' });
+    }
 
     let questions = await db.all(`
       SELECT q.id, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, q.marks
@@ -977,7 +994,7 @@ app.get('/api/student/results', async (req, res) => {
 
   try {
     const results = await db.all(`
-      SELECT a.*, e.title as exam_title, e.pass_marks
+      SELECT a.*, e.title as exam_title, e.pass_marks, e.show_results
       FROM attempts a
       JOIN exams e ON a.exam_id = e.id
       WHERE a.student_id = $1 AND a.status != 'in_progress'

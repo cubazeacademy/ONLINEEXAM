@@ -458,12 +458,19 @@ async function loadExams() {
         stopped: '<span class="badge badge-danger"><i class="fa-solid fa-hand"></i> Stopped</span>'
       };
 
+      const resultsToggleBtn = exam.show_results === 1
+        ? `<button class="btn btn-sm btn-outline text-success" onclick="toggleExamResultsPrompt(${exam.id})" title="Results Visible to Students (Click to Hide)"><i class="fa-solid fa-eye"></i> Results: Visible</button>`
+        : `<button class="btn btn-sm btn-outline text-amber" onclick="toggleExamResultsPrompt(${exam.id})" title="Results Hidden from Students (Click to Publish)"><i class="fa-solid fa-eye-slash"></i> Results: Hidden</button>`;
+
       grid.innerHTML += `
         <div class="exam-card">
           <div>
             <div class="exam-card-header">
               <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
-              ${statusBadges[exam.status] || ''}
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                ${statusBadges[exam.status] || ''}
+                ${exam.show_results === 1 ? '<span class="badge badge-success"><i class="fa-solid fa-eye"></i> Results On</span>' : '<span class="badge badge-secondary"><i class="fa-solid fa-eye-slash"></i> Results Off</span>'}
+              </div>
             </div>
             <p class="exam-card-desc">${escapeHtml(exam.description || 'No description provided.')}</p>
 
@@ -475,18 +482,19 @@ async function loadExams() {
             </div>
           </div>
 
-          <div class="exam-card-footer">
-            <div class="btn-group">
+          <div class="exam-card-footer" style="flex-direction:column; gap:8px;">
+            <div class="btn-group" style="width:100%; justify-content:space-between;">
+              ${resultsToggleBtn}
               <button class="btn btn-sm btn-outline" onclick="toggleExamStatusPrompt(${exam.id}, '${exam.status}')" title="Change Status">
                 <i class="fa-solid fa-arrows-rotate"></i> Status
               </button>
               <button class="btn btn-sm btn-outline" onclick="editExam(${exam.id})" title="Edit Exam">
                 <i class="fa-solid fa-pen"></i> Edit
               </button>
+              <button class="btn btn-sm btn-danger" onclick="deleteExam(${exam.id})" title="Delete Exam">
+                <i class="fa-solid fa-trash"></i>
+              </button>
             </div>
-            <button class="btn btn-sm btn-danger" onclick="deleteExam(${exam.id})" title="Delete Exam">
-              <i class="fa-solid fa-trash"></i>
-            </button>
           </div>
         </div>
       `;
@@ -552,6 +560,8 @@ function previewExamModalCSV(event) {
 function openExamModal() {
   document.getElementById('form-exam').reset();
   document.getElementById('exam-id').value = '';
+  const showResultsChk = document.getElementById('exam-show-results');
+  if (showResultsChk) showResultsChk.checked = false;
   document.getElementById('modal-exam-title').textContent = 'Create New Exam';
   clearExamModalCSV();
   openModal('modal-exam');
@@ -568,6 +578,10 @@ function editExam(id) {
   document.getElementById('exam-total-marks').value = exam.total_marks;
   document.getElementById('exam-pass-marks').value = exam.pass_marks;
   document.getElementById('exam-status').value = exam.status;
+
+  const showResultsChk = document.getElementById('exam-show-results');
+  if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);
+
   document.getElementById('modal-exam-title').textContent = 'Edit Exam Details';
   clearExamModalCSV();
   openModal('modal-exam');
@@ -582,6 +596,7 @@ async function saveExamForm(e) {
   const total_marks = parseInt(document.getElementById('exam-total-marks').value);
   const pass_marks = parseInt(document.getElementById('exam-pass-marks').value);
   const status = document.getElementById('exam-status').value;
+  const show_results = document.getElementById('exam-show-results').checked ? 1 : 0;
 
   const path = id ? `/api/admin/exams/${id}` : '/api/admin/exams';
   const method = id ? 'PUT' : 'POST';
@@ -597,6 +612,7 @@ async function saveExamForm(e) {
         total_marks,
         pass_marks,
         status,
+        show_results,
         questions: parsedExamModalCSVData
       })
     });
@@ -616,6 +632,20 @@ async function saveExamForm(e) {
     loadExams();
   } catch (err) {
     alert('Error saving exam');
+  }
+}
+
+async function toggleExamResultsPrompt(id) {
+  try {
+    const res = await fetch(apiUrl(`/api/admin/exams/${id}/toggle-results`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      loadExams();
+    }
+  } catch (err) {
+    alert('Failed to update results visibility');
   }
 }
 
@@ -1020,19 +1050,26 @@ async function loadStudentDashboard() {
     }
 
     data.recentResults.forEach(r => {
-      const statusBadge = r.passed === 1
-        ? '<span class="badge badge-success">PASS</span>'
-        : '<span class="badge badge-danger">FAIL</span>';
+      const isResultsVisible = r.show_results === 1;
+      const statusBadge = isResultsVisible
+        ? (r.passed === 1 ? '<span class="badge badge-success">PASS</span>' : '<span class="badge badge-danger">FAIL</span>')
+        : '<span class="badge" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</span>';
+
+      const marksDisplay = isResultsVisible ? `${r.obtained_marks} / ${r.total_marks}` : '---';
+      const pctDisplay = isResultsVisible ? `${r.percentage}%` : '---';
+      const actionBtn = isResultsVisible
+        ? `<button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">View Result</button>`
+        : `<button class="btn btn-sm btn-disabled" disabled style="opacity:0.65; cursor:not-allowed; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-solid fa-lock"></i> Result Coming Soon</button>`;
 
       tbody.innerHTML += `
         <tr>
           <td>${escapeHtml(r.exam_title)}</td>
-          <td>${r.obtained_marks} / ${r.total_marks}</td>
-          <td>${r.percentage}%</td>
+          <td>${marksDisplay}</td>
+          <td>${pctDisplay}</td>
           <td>${statusBadge}</td>
-          <td>${new Date(r.submit_time).toLocaleString()}</td>
+          <td>${r.submit_time ? new Date(r.submit_time).toLocaleString() : 'N/A'}</td>
           <td class="text-right">
-            <button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">View Result</button>
+            ${actionBtn}
           </td>
         </tr>
       `;
@@ -1064,13 +1101,23 @@ function renderStudentExamCards(exams, containerId) {
 
   exams.forEach(exam => {
     const isCompleted = exam.attempt_status && exam.attempt_status !== 'in_progress';
-    const actionButton = isCompleted
-      ? `<button class="btn btn-block btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`
-      : `<button class="btn btn-block btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam Now</button>`;
+    const isResultsVisible = exam.show_results === 1;
 
-    const statusTag = isCompleted
-      ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>`
-      : `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> READY</span>`;
+    let actionButton = '';
+    let statusTag = '';
+
+    if (isCompleted) {
+      if (isResultsVisible) {
+        actionButton = `<button class="btn btn-block btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`;
+        statusTag = `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>`;
+      } else {
+        actionButton = `<button class="btn btn-block btn-disabled" disabled style="opacity:0.7; cursor:not-allowed; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</button>`;
+        statusTag = `<span class="badge badge-warning" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</span>`;
+      }
+    } else {
+      actionButton = `<button class="btn btn-block btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam Now</button>`;
+      statusTag = `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> READY</span>`;
+    }
 
     grid.innerHTML += `
       <div class="exam-card lms-exam-card ${isCompleted ? 'completed' : ''}">
@@ -1092,7 +1139,7 @@ function renderStudentExamCards(exams, containerId) {
             <span class="meta-pill"><i class="fa-solid fa-flag"></i> Pass: ${exam.pass_marks}</span>
           </div>
 
-          ${isCompleted ? `
+          ${(isCompleted && isResultsVisible) ? `
             <div class="exam-progress-box">
               <div class="progress-bar-bg">
                 <div class="progress-bar-fill ${exam.passed === 1 ? 'fill-pass' : 'fill-fail'}" style="width: ${Math.min(100, Math.max(0, exam.percentage))}%;"></div>
@@ -1425,8 +1472,13 @@ async function confirmSubmitExam() {
     // Hide Fullscreen View
     document.getElementById('exam-taker-container').classList.add('hidden');
 
-    // Show Scorecard Modal
-    viewAttemptScorecard(examState.attemptId);
+    const resultData = data.result;
+    if (resultData && resultData.show_results === 1) {
+      // Show Scorecard Modal if enabled by admin
+      viewAttemptScorecard(examState.attemptId);
+    } else {
+      alert("Exam submitted successfully!\n\nRESULT COMING SOON. Your scorecard will be visible once enabled by the Administrator.");
+    }
 
     // Refresh Student views
     switchTab('student-dashboard');
@@ -1452,24 +1504,31 @@ async function loadStudentResults() {
     }
 
     results.forEach(r => {
-      const statusBadge = r.passed === 1
-        ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> PASS</span>'
-        : '<span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> FAIL</span>';
+      const isVisible = r.show_results === 1;
+      const statusBadge = isVisible
+        ? (r.passed === 1 ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> PASS</span>' : '<span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> FAIL</span>')
+        : '<span class="badge" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;"><i class="fa-solid fa-clock"></i> RESULT COMING SOON</span>';
+
+      const correctDisplay = isVisible ? `<span class="text-success">${r.correct_answers}</span>` : '---';
+      const wrongDisplay = isVisible ? `<span class="text-danger">${r.wrong_answers}</span>` : '---';
+      const unansDisplay = isVisible ? `<span class="text-muted">${r.unanswered}</span>` : '---';
+      const marksDisplay = isVisible ? `<strong>${r.obtained_marks} / ${r.total_marks}</strong>` : '---';
+      const pctDisplay = isVisible ? `<strong>${r.percentage}%</strong>` : '---';
+
+      const actionButton = isVisible
+        ? `<button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})"><i class="fa-solid fa-file-lines"></i> View Scorecard</button>`
+        : `<button class="btn btn-sm btn-disabled" disabled style="opacity:0.65; cursor:not-allowed; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-solid fa-lock"></i> Result Coming Soon</button>`;
 
       tbody.innerHTML += `
         <tr>
           <td><strong>${escapeHtml(r.exam_title)}</strong></td>
-          <td><span class="text-success">${r.correct_answers}</span></td>
-          <td><span class="text-danger">${r.wrong_answers}</span></td>
-          <td><span class="text-muted">${r.unanswered}</span></td>
-          <td><strong>${r.obtained_marks} / ${r.total_marks}</strong></td>
-          <td><strong>${r.percentage}%</strong></td>
+          <td>${correctDisplay}</td>
+          <td>${wrongDisplay}</td>
+          <td>${unansDisplay}</td>
+          <td>${marksDisplay}</td>
+          <td>${pctDisplay}</td>
           <td>${statusBadge}</td>
-          <td class="text-right">
-            <button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">
-              <i class="fa-solid fa-file-lines"></i> View Scorecard
-            </button>
-          </td>
+          <td class="text-right">${actionButton}</td>
         </tr>
       `;
     });
@@ -1488,6 +1547,12 @@ async function viewAttemptScorecard(attemptId) {
     }
 
     const { attempt, userAnswers, questions } = data;
+
+    if (currentUser && currentUser.role === 'student' && attempt.show_results === 0) {
+      alert('Results for this exam have not been enabled yet. RESULT COMING SOON!');
+      return;
+    }
+
     const content = document.getElementById('modal-result-content');
 
     const statusBadge = attempt.passed === 1

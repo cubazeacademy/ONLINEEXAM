@@ -67,9 +67,13 @@ async function initDb() {
         total_marks INTEGER NOT NULL DEFAULT 100,
         pass_marks INTEGER NOT NULL DEFAULT 40,
         status VARCHAR(50) CHECK(status IN ('draft', 'published', 'active', 'stopped')) NOT NULL DEFAULT 'draft',
+        show_results INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Ensure missing columns exist
+    await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS show_results INTEGER DEFAULT 0;`);
 
     // 3. Questions table
     await pool.query(`

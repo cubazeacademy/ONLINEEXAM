@@ -1719,8 +1719,9 @@ async function loadStudentResults() {
 }
 
 async function viewAttemptScorecard(attemptId) {
+  const isAdmin = currentUser && currentUser.role === 'admin';
   try {
-    const res = await fetch(apiUrl(`/api/student/attempts/${attemptId}/result`));
+    const res = await fetch(apiUrl(`/api/student/attempts/${attemptId}/result?is_admin=${isAdmin}`));
     const data = await res.json();
     if (!res.ok) {
       alert(data.error || 'Failed to load scorecard');
@@ -1729,7 +1730,7 @@ async function viewAttemptScorecard(attemptId) {
 
     const { attempt, userAnswers, questions } = data;
 
-    if (currentUser && currentUser.role === 'student' && attempt.show_results === 0) {
+    if (!isAdmin && attempt.show_results === 0) {
       alert('Results for this exam have not been enabled yet. RESULT COMING SOON!');
       return;
     }

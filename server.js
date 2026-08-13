@@ -966,6 +966,9 @@ app.post('/api/student/attempts/:id/submit', async (req, res) => {
 
 app.get('/api/student/attempts/:id/result', async (req, res) => {
   const { id } = req.params;
+  const { is_admin } = req.query;
+  const isAdmin = is_admin === 'true';
+
   try {
     const attempt = await db.get(`
       SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks, e.show_results
@@ -976,8 +979,8 @@ app.get('/api/student/attempts/:id/result', async (req, res) => {
 
     if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
 
-    // Check if results are published by Admin
-    if (attempt.show_results === 0) {
+    // Check if results are published by Admin (Admins can ALWAYS view scorecards & attempt details)
+    if (!isAdmin && attempt.show_results === 0) {
       return res.status(403).json({ error: 'Results for this exam have not been published yet. RESULT COMING SOON!' });
     }
 

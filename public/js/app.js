@@ -948,26 +948,36 @@ async function loadExamFilterDropdownOptions() {
     const res = await fetch(apiUrl('/api/admin/exams'));
     const exams = await res.json();
     const filterSelect = document.getElementById('filter-result-exam');
-    filterSelect.innerHTML = '<option value="">-- Filter All Exams --</option>';
+    filterSelect.innerHTML = '<option value="">-- Select Exam --</option>';
     exams.forEach(e => {
       filterSelect.innerHTML += `<option value="${e.id}">${escapeHtml(e.title)}</option>`;
     });
+
+    // Auto-select the first exam by default if available so results are strictly exam-based
+    if (exams && exams.length > 0 && !filterSelect.value) {
+      filterSelect.value = exams[0].id;
+    }
+    loadAdminResults();
   } catch (e) {}
 }
 
 async function loadAdminResults() {
   const search = document.getElementById('search-admin-results').value;
   const exam_id = document.getElementById('filter-result-exam').value;
+  const tbody = document.getElementById('table-admin-results');
+  tbody.innerHTML = '';
+
+  if (!exam_id) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-6"><i class="fa-solid fa-filter"></i> Please select an exam from the dropdown above to view its student results.</td></tr>';
+    return;
+  }
 
   try {
     const res = await fetch(apiUrl(`/api/admin/results?search=${encodeURIComponent(search)}&exam_id=${exam_id}`));
     const results = await res.json();
 
-    const tbody = document.getElementById('table-admin-results');
-    tbody.innerHTML = '';
-
     if (!results || results.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No student results found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-6">No student results found for this exam.</td></tr>';
       return;
     }
 
@@ -987,7 +997,7 @@ async function loadAdminResults() {
           <td>${r.obtained_marks} / ${r.total_marks}</td>
           <td>${r.percentage}%</td>
           <td>${statusBadge}</td>
-          <td style="font-size: 0.85rem;">${new Date(r.submit_time).toLocaleString()}</td>
+          <td style="font-size: 0.85rem;">${r.submit_time ? new Date(r.submit_time).toLocaleString() : 'N/A'}</td>
           <td class="text-right">
             <button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">
               <i class="fa-solid fa-eye"></i> Scorecard
@@ -1002,7 +1012,12 @@ async function loadAdminResults() {
 }
 
 function exportResultsCSV() {
-  window.location.href = apiUrl('/api/admin/results/export');
+  const exam_id = document.getElementById('filter-result-exam').value;
+  if (!exam_id) {
+    alert('Please select an exam from the dropdown first to export its results.');
+    return;
+  }
+  window.location.href = apiUrl(`/api/admin/results/export?exam_id=${exam_id}`);
 }
 
 function populateAdminSettings() {

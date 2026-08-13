@@ -677,8 +677,9 @@ app.get('/api/admin/exams/:id/attendance', async (req, res) => {
 });
 
 app.get('/api/admin/results/export', async (req, res) => {
+  const { exam_id } = req.query;
   try {
-    const sql = `
+    let sql = `
       SELECT a.id as attempt_id, 
              u.full_name as student_name, u.username as student_username, u.email as student_email,
              e.title as exam_title,
@@ -690,9 +691,16 @@ app.get('/api/admin/results/export', async (req, res) => {
       JOIN users u ON a.student_id = u.id
       JOIN exams e ON a.exam_id = e.id
       WHERE a.status != 'in_progress'
-      ORDER BY a.submit_time DESC
     `;
-    const rows = await db.all(sql);
+    const params = [];
+
+    if (exam_id) {
+      sql += ` AND a.exam_id = $${params.length + 1}`;
+      params.push(exam_id);
+    }
+
+    sql += ` ORDER BY a.submit_time DESC`;
+    const rows = await db.all(sql, params);
 
     const headers = ['Attempt ID', 'Student Name', 'Username', 'Email', 'Exam Title', 'Total Qs', 'Correct', 'Wrong', 'Unanswered', 'Obtained Marks', 'Total Marks', 'Percentage (%)', 'Status', 'Date Submitted'];
     let csv = headers.join(',') + '\n';

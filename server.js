@@ -283,7 +283,7 @@ app.get('/api/admin/exams', async (req, res) => {
 });
 
 app.post('/api/admin/exams', async (req, res) => {
-  const { title, description, duration_minutes, total_marks, pass_marks, status } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, questions } = req.body;
   if (!title) return res.status(400).json({ error: 'Exam title is required' });
 
   try {
@@ -299,7 +299,37 @@ app.post('/api/admin/exams', async (req, res) => {
       pass_marks || 40,
       status || 'draft'
     ]);
-    res.status(201).json(info.rows[0]);
+    const newExam = info.rows[0];
+
+    let uploadedCount = 0;
+    if (Array.isArray(questions) && questions.length > 0) {
+      for (const q of questions) {
+        const qText = (q.question_text || q.question || '').trim();
+        const optA = (q.option_a || q.a || '').trim();
+        const optB = (q.option_b || q.b || '').trim();
+        const optC = (q.option_c || q.c || '').trim();
+        const optD = (q.option_d || q.d || '').trim();
+        const correct = (q.correct_option || q.answer || 'A').toString().trim().toUpperCase();
+        const marks = parseInt(q.marks) || 5;
+
+        if (qText && optA && optB && optC && optD && ['A', 'B', 'C', 'D'].includes(correct)) {
+          const qRes = await db.run(`
+            INSERT INTO questions (exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+          `, [newExam.id, qText, optA, optB, optC, optD, correct, marks]);
+
+          const qId = qRes.lastInsertRowid;
+          await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [newExam.id, qId]);
+          uploadedCount++;
+        }
+      }
+    }
+
+    res.status(201).json({
+      ...newExam,
+      uploaded_questions_count: uploadedCount
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -307,7 +337,7 @@ app.post('/api/admin/exams', async (req, res) => {
 
 app.put('/api/admin/exams/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, description, duration_minutes, total_marks, pass_marks, status } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, questions } = req.body;
 
   try {
     await db.run(`
@@ -315,7 +345,33 @@ app.put('/api/admin/exams/:id', async (req, res) => {
       SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6
       WHERE id = $7
     `, [title, description || '', duration_minutes, total_marks, pass_marks, status, id]);
-    res.json({ message: 'Exam updated successfully' });
+
+    let uploadedCount = 0;
+    if (Array.isArray(questions) && questions.length > 0) {
+      for (const q of questions) {
+        const qText = (q.question_text || q.question || '').trim();
+        const optA = (q.option_a || q.a || '').trim();
+        const optB = (q.option_b || q.b || '').trim();
+        const optC = (q.option_c || q.c || '').trim();
+        const optD = (q.option_d || q.d || '').trim();
+        const correct = (q.correct_option || q.answer || 'A').toString().trim().toUpperCase();
+        const marks = parseInt(q.marks) || 5;
+
+        if (qText && optA && optB && optC && optD && ['A', 'B', 'C', 'D'].includes(correct)) {
+          const qRes = await db.run(`
+            INSERT INTO questions (exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+          `, [id, qText, optA, optB, optC, optD, correct, marks]);
+
+          const qId = qRes.lastInsertRowid;
+          await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, qId]);
+          uploadedCount++;
+        }
+      }
+    }
+
+    res.json({ message: 'Exam updated successfully', uploaded_questions_count: uploadedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -354,20 +410,39 @@ app.get('/api/admin/questions', async (req, res) => {
   const { exam_id } = req.query;
   try {
     let sql = `
-      SELECT q.*, e.title as exam_title
+      SELECT DISTINCT ON (q.id) q.*, COALESCE(e.title, e2.title) as exam_title
       FROM questions q
       LEFT JOIN exams e ON q.exam_id = e.id
+      LEFT JOIN exam_questions eq ON q.id = eq.question_id
+      LEFT JOIN exams e2 ON eq.exam_id = e2.id
     `;
     const params = [];
 
     if (exam_id) {
-      sql += ` WHERE q.exam_id = $1 OR q.id IN (SELECT question_id FROM exam_questions WHERE exam_id = $2)`;
+      sql += ` WHERE q.exam_id = $1 OR eq.exam_id = $2`;
       params.push(exam_id, exam_id);
     }
 
     sql += ` ORDER BY q.id DESC`;
     const questions = await db.all(sql, params);
     res.json(questions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/questions/assign-to-exam', async (req, res) => {
+  const { exam_id, question_ids } = req.body;
+  if (!exam_id || !Array.isArray(question_ids) || question_ids.length === 0) {
+    return res.status(400).json({ error: 'Exam ID and Question IDs are required' });
+  }
+
+  try {
+    for (const qId of question_ids) {
+      await db.run(`UPDATE questions SET exam_id = $1 WHERE id = $2`, [exam_id, qId]);
+      await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [exam_id, qId]);
+    }
+    res.json({ message: `Successfully assigned ${question_ids.length} question(s) to exam.` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

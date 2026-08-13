@@ -496,10 +496,64 @@ async function loadExams() {
   }
 }
 
+let parsedExamModalCSVData = [];
+
+function clearExamModalCSV() {
+  parsedExamModalCSVData = [];
+  const fileInput = document.getElementById('exam-questions-file-input');
+  if (fileInput) fileInput.value = '';
+  const previewBox = document.getElementById('exam-modal-csv-preview');
+  if (previewBox) previewBox.classList.add('hidden');
+}
+
+function previewExamModalCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const rows = parseCSV(text);
+
+      if (rows.length === 0) {
+        alert('The selected CSV file appears to be empty or invalid.');
+        clearExamModalCSV();
+        return;
+      }
+
+      parsedExamModalCSVData = rows;
+      document.getElementById('exam-modal-csv-count').textContent = rows.length;
+
+      const tbody = document.getElementById('table-exam-modal-csv-preview');
+      tbody.innerHTML = '';
+
+      rows.forEach(q => {
+        const correct = (q.correct_option || q.answer || 'A').toUpperCase();
+        tbody.innerHTML += `
+          <tr>
+            <td><strong>${escapeHtml(q.question_text || q.question || '-')}</strong></td>
+            <td style="font-size:0.75rem;">A: ${escapeHtml(q.option_a || '')} | B: ${escapeHtml(q.option_b || '')}</td>
+            <td><span class="badge badge-success">Option ${correct}</span></td>
+            <td><strong>${q.marks || 5} Marks</strong></td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('exam-modal-csv-preview').classList.remove('hidden');
+    } catch (err) {
+      alert('Error reading CSV file format.');
+      clearExamModalCSV();
+    }
+  };
+  reader.readAsText(file);
+}
+
 function openExamModal() {
   document.getElementById('form-exam').reset();
   document.getElementById('exam-id').value = '';
   document.getElementById('modal-exam-title').textContent = 'Create New Exam';
+  clearExamModalCSV();
   openModal('modal-exam');
 }
 
@@ -515,6 +569,7 @@ function editExam(id) {
   document.getElementById('exam-pass-marks').value = exam.pass_marks;
   document.getElementById('exam-status').value = exam.status;
   document.getElementById('modal-exam-title').textContent = 'Edit Exam Details';
+  clearExamModalCSV();
   openModal('modal-exam');
 }
 
@@ -535,7 +590,15 @@ async function saveExamForm(e) {
     const res = await fetch(apiUrl(path), {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, duration_minutes, total_marks, pass_marks, status })
+      body: JSON.stringify({
+        title,
+        description,
+        duration_minutes,
+        total_marks,
+        pass_marks,
+        status,
+        questions: parsedExamModalCSVData
+      })
     });
 
     const data = await res.json();
@@ -544,6 +607,11 @@ async function saveExamForm(e) {
       return;
     }
 
+    if (data.uploaded_questions_count > 0) {
+      alert(`Exam saved successfully with ${data.uploaded_questions_count} attached question(s) saved to Supabase!`);
+    }
+
+    clearExamModalCSV();
     closeModal('modal-exam');
     loadExams();
   } catch (err) {
@@ -672,10 +740,65 @@ function updateQuestionSelection() {
 
 function updateQuestionSelectionUI() {
   const count = selectedQuestionIds.size;
-  const btn = document.getElementById('btn-delete-selected-questions');
+  const btnDelete = document.getElementById('btn-delete-selected-questions');
+  const btnAssign = document.getElementById('btn-assign-selected-questions');
   const countEl = document.getElementById('count-selected-questions');
+  const countAssignEl = document.getElementById('count-selected-assign-questions');
+
   if (countEl) countEl.textContent = count;
-  if (btn) btn.classList.toggle('hidden', count === 0);
+  if (countAssignEl) countAssignEl.textContent = count;
+
+  if (btnDelete) btnDelete.classList.toggle('hidden', count === 0);
+  if (btnAssign) btnAssign.classList.toggle('hidden', count === 0);
+}
+
+async function openAssignQuestionsModal() {
+  if (selectedQuestionIds.size === 0) return;
+  try {
+    const res = await fetch(apiUrl('/api/admin/exams'));
+    const exams = await res.json();
+    const select = document.getElementById('assign-target-exam-id');
+    select.innerHTML = '<option value="">-- Select Exam --</option>';
+    exams.forEach(e => {
+      select.innerHTML += `<option value="${e.id}">${escapeHtml(e.title)}</option>`;
+    });
+    openModal('modal-assign-questions');
+  } catch (err) {
+    alert('Failed to load exams list');
+  }
+}
+
+async function submitAssignQuestionsToExam() {
+  const exam_id = document.getElementById('assign-target-exam-id').value;
+  if (!exam_id) {
+    alert('Please select a target exam.');
+    return;
+  }
+  if (selectedQuestionIds.size === 0) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/admin/questions/assign-to-exam'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        exam_id,
+        question_ids: Array.from(selectedQuestionIds)
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to assign questions to exam');
+      return;
+    }
+
+    alert(data.message);
+    selectedQuestionIds.clear();
+    closeModal('modal-assign-questions');
+    loadQuestions();
+  } catch (err) {
+    alert('Error assigning questions to exam');
+  }
 }
 
 async function deleteSelectedQuestions() {
@@ -885,6 +1008,9 @@ async function loadStudentDashboard() {
     document.getElementById('student-stat-passed').textContent = data.passedExams || 0;
     document.getElementById('student-stat-avg').textContent = `${data.avgPercentage || 0}%`;
 
+    // Load available exams grid on dashboard
+    loadStudentDashboardAvailableExams();
+
     const tbody = document.getElementById('table-student-recent-results');
     tbody.innerHTML = '';
 
@@ -916,70 +1042,84 @@ async function loadStudentDashboard() {
   }
 }
 
+async function loadStudentDashboardAvailableExams() {
+  if (!currentUser) return;
+  try {
+    const res = await fetch(apiUrl(`/api/student/available-exams?student_id=${currentUser.id}`));
+    const exams = await res.json();
+    renderStudentExamCards(exams, 'student-dashboard-exams-grid');
+  } catch (err) {}
+}
+
+// Helper to render exam cards in target grid container
+function renderStudentExamCards(exams, containerId) {
+  const grid = document.getElementById(containerId);
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  if (!exams || exams.length === 0) {
+    grid.innerHTML = '<div class="panel-card p-6 text-center text-muted" style="grid-column: 1/-1;">No examinations are currently published or active.</div>';
+    return;
+  }
+
+  exams.forEach(exam => {
+    const isCompleted = exam.attempt_status && exam.attempt_status !== 'in_progress';
+    const actionButton = isCompleted
+      ? `<button class="btn btn-block btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`
+      : `<button class="btn btn-block btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam Now</button>`;
+
+    const statusTag = isCompleted
+      ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>`
+      : `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> READY</span>`;
+
+    grid.innerHTML += `
+      <div class="exam-card lms-exam-card ${isCompleted ? 'completed' : ''}">
+        <div class="exam-card-top">
+          <div class="exam-card-header">
+            <div class="exam-icon-badge">
+              <i class="fa-solid fa-graduation-cap"></i>
+            </div>
+            ${statusTag}
+          </div>
+          <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
+          <div class="exam-tag-pill">TEST</div>
+          <p class="exam-card-desc">${escapeHtml(exam.description || 'Comprehensive assessment designed to evaluate core knowledge and problem-solving skills.')}</p>
+
+          <div class="exam-meta-pills">
+            <span class="meta-pill"><i class="fa-regular fa-clock"></i> ${exam.duration_minutes} Mins</span>
+            <span class="meta-pill"><i class="fa-solid fa-list-check"></i> ${exam.question_count} Qs</span>
+            <span class="meta-pill"><i class="fa-solid fa-trophy"></i> Total: ${exam.total_marks}</span>
+            <span class="meta-pill"><i class="fa-solid fa-flag"></i> Pass: ${exam.pass_marks}</span>
+          </div>
+
+          ${isCompleted ? `
+            <div class="exam-progress-box">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill ${exam.passed === 1 ? 'fill-pass' : 'fill-fail'}" style="width: ${Math.min(100, Math.max(0, exam.percentage))}%;"></div>
+              </div>
+              <div class="progress-info-row">
+                <span>Score: ${exam.obtained_marks} / ${exam.total_marks}</span>
+                <span class="score-pct-tag ${exam.passed === 1 ? 'text-success' : 'text-danger'}">${exam.percentage}%</span>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="exam-card-footer">
+          ${actionButton}
+        </div>
+      </div>
+    `;
+  });
+}
+
 // 2. STUDENT AVAILABLE EXAMS
 async function loadStudentAvailableExams() {
   if (!currentUser) return;
   try {
     const res = await fetch(apiUrl(`/api/student/available-exams?student_id=${currentUser.id}`));
     const exams = await res.json();
-
-    const grid = document.getElementById('student-exams-grid');
-    grid.innerHTML = '';
-
-    if (!exams || exams.length === 0) {
-      grid.innerHTML = '<div class="panel-card p-6 text-center text-muted" style="grid-column: 1/-1;">No examinations are currently published or active.</div>';
-      return;
-    }
-
-    exams.forEach(exam => {
-      const isCompleted = exam.attempt_status && exam.attempt_status !== 'in_progress';
-      const actionButton = isCompleted
-        ? `<button class="btn btn-block btn-outline" onclick="viewAttemptScorecard(${exam.attempt_id})"><i class="fa-solid fa-square-poll-vertical"></i> View Scorecard</button>`
-        : `<button class="btn btn-block btn-primary" onclick="startStudentExam(${exam.id})"><i class="fa-solid fa-play"></i> Start Exam Now</button>`;
-
-      const statusTag = isCompleted
-        ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>`
-        : `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> READY</span>`;
-
-      grid.innerHTML += `
-        <div class="exam-card lms-exam-card ${isCompleted ? 'completed' : ''}">
-          <div class="exam-card-top">
-            <div class="exam-card-header">
-              <div class="exam-icon-badge">
-                <i class="fa-solid fa-graduation-cap"></i>
-              </div>
-              ${statusTag}
-            </div>
-            <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
-            <div class="exam-tag-pill">TEST</div>
-            <p class="exam-card-desc">${escapeHtml(exam.description || 'Comprehensive assessment designed to evaluate core knowledge and problem-solving skills.')}</p>
-
-            <div class="exam-meta-pills">
-              <span class="meta-pill"><i class="fa-regular fa-clock"></i> ${exam.duration_minutes} Mins</span>
-              <span class="meta-pill"><i class="fa-solid fa-list-check"></i> ${exam.question_count} Qs</span>
-              <span class="meta-pill"><i class="fa-solid fa-trophy"></i> Total: ${exam.total_marks}</span>
-              <span class="meta-pill"><i class="fa-solid fa-flag"></i> Pass: ${exam.pass_marks}</span>
-            </div>
-
-            ${isCompleted ? `
-              <div class="exam-progress-box">
-                <div class="progress-bar-bg">
-                  <div class="progress-bar-fill ${exam.passed === 1 ? 'fill-pass' : 'fill-fail'}" style="width: ${Math.min(100, Math.max(0, exam.percentage))}%;"></div>
-                </div>
-                <div class="progress-info-row">
-                  <span>Score: ${exam.obtained_marks} / ${exam.total_marks}</span>
-                  <span class="score-pct-tag ${exam.passed === 1 ? 'text-success' : 'text-danger'}">${exam.percentage}%</span>
-                </div>
-              </div>
-            ` : ''}
-          </div>
-
-          <div class="exam-card-footer">
-            ${actionButton}
-          </div>
-        </div>
-      `;
-    });
+    renderStudentExamCards(exams, 'student-exams-grid');
   } catch (err) {
     console.error('Error loading available exams:', err);
   }

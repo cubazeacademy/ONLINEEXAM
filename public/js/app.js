@@ -1078,7 +1078,8 @@ async function loadAdminResults() {
       document.getElementById('summary-stat-wrong').textContent = summary.total_wrong || 0;
       document.getElementById('summary-stat-avg-marks').textContent = summary.avg_obtained_marks || 0;
       document.getElementById('summary-stat-pass-marks').textContent = summary.required_pass_marks || 0;
-      document.getElementById('summary-stat-pass-pct').textContent = `${summary.pass_percentage || 0}%`;
+      const passPctEl = document.getElementById('summary-stat-pass-pct');
+      if (passPctEl) passPctEl.textContent = `${summary.pass_percentage || 0}%`;
     }
 
     if (!results || results.length === 0) {

@@ -633,7 +633,7 @@ app.get('/api/admin/results', async (req, res) => {
     let sql = `
       SELECT a.*, 
              u.full_name as student_name, u.username as student_username, u.email as student_email,
-             e.title as exam_title
+             e.title as exam_title, e.pass_marks as required_pass_marks
       FROM attempts a
       JOIN users u ON a.student_id = u.id
       JOIN exams e ON a.exam_id = e.id
@@ -654,7 +654,52 @@ app.get('/api/admin/results', async (req, res) => {
     sql += ` ORDER BY a.submit_time DESC`;
 
     const results = await db.all(sql, params);
-    res.json(results);
+
+    // Compute executive summary
+    const totalStudentsRes = await db.get("SELECT COUNT(*)::int as count FROM users WHERE role = 'student'");
+    const totalStudents = totalStudentsRes ? parseInt(totalStudentsRes.count || 0) : 0;
+
+    let examDetails = null;
+    if (exam_id) {
+      examDetails = await db.get("SELECT * FROM exams WHERE id = $1", [exam_id]);
+    }
+
+    const attendedCount = new Set(results.map(r => r.student_id)).size;
+    const notAttendedCount = Math.max(0, totalStudents - attendedCount);
+
+    let totalRight = 0;
+    let totalWrong = 0;
+    let totalUnanswered = 0;
+    let totalObtained = 0;
+    let passedCount = 0;
+
+    results.forEach(r => {
+      totalRight += (r.correct_answers || 0);
+      totalWrong += (r.wrong_answers || 0);
+      totalUnanswered += (r.unanswered || 0);
+      totalObtained += (r.obtained_marks || 0);
+      if (r.passed === 1) passedCount++;
+    });
+
+    const avgObtained = results.length > 0 ? parseFloat((totalObtained / results.length).toFixed(1)) : 0;
+    const passPercentage = results.length > 0 ? parseFloat(((passedCount / results.length) * 100).toFixed(1)) : 0;
+    const requiredPassMarks = examDetails ? examDetails.pass_marks : (results[0] ? results[0].required_pass_marks : 0);
+
+    const summary = {
+      total_students: totalStudents,
+      attended_count: attendedCount,
+      not_attended_count: notAttendedCount,
+      total_right: totalRight,
+      total_wrong: totalWrong,
+      total_unanswered: totalUnanswered,
+      avg_obtained_marks: avgObtained,
+      required_pass_marks: requiredPassMarks,
+      pass_percentage: passPercentage,
+      passed_count: passedCount,
+      failed_count: results.length - passedCount
+    };
+
+    res.json({ results, summary });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

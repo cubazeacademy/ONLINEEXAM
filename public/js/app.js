@@ -1055,19 +1055,34 @@ async function loadAdminResults() {
   const search = document.getElementById('search-admin-results').value;
   const exam_id = document.getElementById('filter-result-exam').value;
   const tbody = document.getElementById('table-admin-results');
+  const summaryCards = document.getElementById('admin-results-summary-cards');
   tbody.innerHTML = '';
 
   if (!exam_id) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-6"><i class="fa-solid fa-filter"></i> Please select an exam from the dropdown above to view its student results.</td></tr>';
+    if (summaryCards) summaryCards.classList.add('hidden');
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-6"><i class="fa-solid fa-filter"></i> Please select an exam from the dropdown above to view its student results and analytics.</td></tr>';
     return;
   }
 
   try {
     const res = await fetch(apiUrl(`/api/admin/results?search=${encodeURIComponent(search)}&exam_id=${exam_id}`));
-    const results = await res.json();
+    const data = await res.json();
+    const results = Array.isArray(data) ? data : (data.results || []);
+    const summary = data.summary;
+
+    if (summary && summaryCards) {
+      summaryCards.classList.remove('hidden');
+      document.getElementById('summary-stat-attended').textContent = summary.attended_count || 0;
+      document.getElementById('summary-stat-not-attended').textContent = summary.not_attended_count || 0;
+      document.getElementById('summary-stat-right').textContent = summary.total_right || 0;
+      document.getElementById('summary-stat-wrong').textContent = summary.total_wrong || 0;
+      document.getElementById('summary-stat-avg-marks').textContent = summary.avg_obtained_marks || 0;
+      document.getElementById('summary-stat-pass-marks').textContent = summary.required_pass_marks || 0;
+      document.getElementById('summary-stat-pass-pct').textContent = `${summary.pass_percentage || 0}%`;
+    }
 
     if (!results || results.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-6">No student results found for this exam.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-6">No student results found for this exam.</td></tr>';
       return;
     }
 
@@ -1079,18 +1094,23 @@ async function loadAdminResults() {
       tbody.innerHTML += `
         <tr>
           <td>
-            ${escapeHtml(r.student_name)}<br>
+            <strong>${escapeHtml(r.student_name)}</strong><br>
             <span class="text-muted" style="font-size: 0.78rem;">@${escapeHtml(r.student_username)}</span>
           </td>
           <td>${escapeHtml(r.exam_title)}</td>
-          <td><span class="text-success">${r.correct_answers}</span> / <span class="text-danger">${r.wrong_answers}</span></td>
-          <td>${r.obtained_marks} / ${r.total_marks}</td>
-          <td>${r.percentage}%</td>
+          <td>
+            <span class="text-success" style="font-weight:600;"><i class="fa-solid fa-check"></i> ${r.correct_answers} Right</span>, 
+            <span class="text-danger" style="font-weight:600;"><i class="fa-solid fa-xmark"></i> ${r.wrong_answers} Wrong</span>
+            ${(r.unanswered && r.unanswered > 0) ? `<br><span class="text-muted" style="font-size:0.75rem;"><i class="fa-solid fa-minus"></i> ${r.unanswered} Unanswered</span>` : ''}
+          </td>
+          <td><strong>${r.obtained_marks} / ${r.total_marks}</strong></td>
+          <td><span class="badge badge-info">${r.required_pass_marks || r.pass_marks || 'N/A'} Marks</span></td>
+          <td><strong>${r.percentage}%</strong></td>
           <td>${statusBadge}</td>
           <td style="font-size: 0.85rem;">${r.submit_time ? new Date(r.submit_time).toLocaleString() : 'N/A'}</td>
           <td class="text-right">
             <button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">
-              <i class="fa-solid fa-eye"></i> Scorecard
+              <i class="fa-solid fa-file-lines"></i> Scorecard
             </button>
           </td>
         </tr>
@@ -1741,6 +1761,9 @@ async function viewAttemptScorecard(attemptId) {
       ? '<span class="badge badge-success" style="font-size: 1rem; padding: 6px 16px;"><i class="fa-solid fa-circle-check"></i> PASSED</span>'
       : '<span class="badge badge-danger" style="font-size: 1rem; padding: 6px 16px;"><i class="fa-solid fa-circle-xmark"></i> FAILED</span>';
 
+    const attendedQs = (attempt.total_questions || questions.length) - (attempt.unanswered || 0);
+    const notAttendedQs = attempt.unanswered || 0;
+
     let html = `
       <div class="result-score-banner">
         <h3>${escapeHtml(attempt.exam_title)}</h3>
@@ -1748,18 +1771,35 @@ async function viewAttemptScorecard(attemptId) {
         <div class="mt-2">${statusBadge}</div>
       </div>
 
-      <div class="result-grid-stats">
-        <div class="res-stat-box">
-          <span class="text-muted">Total Marks</span>
-          <strong>${attempt.obtained_marks} / ${attempt.total_marks}</strong>
+      <div class="result-grid-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; margin-top: 16px;">
+        <div class="res-stat-box" style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center; border:1px solid #cbd5e1;">
+          <span class="text-muted" style="font-size:0.78rem; display:block;">Obtained Marks</span>
+          <strong style="font-size:1.1rem; color:#1e293b;">${attempt.obtained_marks} / ${attempt.total_marks}</strong>
         </div>
-        <div class="res-stat-box">
-          <span class="text-muted">Correct / Wrong</span>
-          <strong class="text-success">${attempt.correct_answers} Correct, <span class="text-danger">${attempt.wrong_answers} Wrong</span></strong>
+
+        <div class="res-stat-box" style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center; border:1px solid #cbd5e1;">
+          <span class="text-muted" style="font-size:0.78rem; display:block;">Pass Criteria</span>
+          <strong style="font-size:1.1rem; color:#4f46e5;">${attempt.pass_marks} Marks Required</strong>
         </div>
-        <div class="res-stat-box">
-          <span class="text-muted">Pass Criteria</span>
-          <strong>${attempt.pass_marks} Marks Required</strong>
+
+        <div class="res-stat-box" style="background:#ecfdf5; padding:12px; border-radius:10px; text-align:center; border:1px solid #a7f3d0;">
+          <span style="font-size:0.78rem; display:block; color:#047857;">Right Answers</span>
+          <strong style="font-size:1.1rem; color:#059669;"><i class="fa-solid fa-check"></i> ${attempt.correct_answers} Correct</strong>
+        </div>
+
+        <div class="res-stat-box" style="background:#fef2f2; padding:12px; border-radius:10px; text-align:center; border:1px solid #fecaca;">
+          <span style="font-size:0.78rem; display:block; color:#b91c1c;">Wrong Answers</span>
+          <strong style="font-size:1.1rem; color:#dc2626;"><i class="fa-solid fa-xmark"></i> ${attempt.wrong_answers} Wrong</strong>
+        </div>
+
+        <div class="res-stat-box" style="background:#eff6ff; padding:12px; border-radius:10px; text-align:center; border:1px solid #bfdbfe;">
+          <span style="font-size:0.78rem; display:block; color:#1d4ed8;">Attended Qs</span>
+          <strong style="font-size:1.1rem; color:#2563eb;">${attendedQs} / ${attempt.total_questions || questions.length}</strong>
+        </div>
+
+        <div class="res-stat-box" style="background:#fffbebf0; padding:12px; border-radius:10px; text-align:center; border:1px solid #fde68a;">
+          <span style="font-size:0.78rem; display:block; color:#b45309;">Not Attended Qs</span>
+          <strong style="font-size:1.1rem; color:#d97706;">${notAttendedQs} Qs</strong>
         </div>
       </div>
 

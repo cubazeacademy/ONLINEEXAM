@@ -358,6 +358,49 @@
             </button>
           </div>
 
+          <!-- EXAM EXECUTIVE SUMMARY CARDS -->
+          <div id="admin-results-summary-cards" class="metrics-grid mt-4 hidden">
+            <div class="metric-card bg-emerald" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-users"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="summary-stat-attended">0</span>
+                <span class="metric-label" style="color: rgba(255,255,255,0.9);">Attended Students</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-rose" style="background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-user-xmark"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="summary-stat-not-attended">0</span>
+                <span class="metric-label" style="color: rgba(255,255,255,0.9);">Not Attended</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-sky" style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-square-check"></i></div>
+              <div class="metric-data">
+                <span class="metric-value"><span id="summary-stat-right">0</span> / <span id="summary-stat-wrong">0</span></span>
+                <span class="metric-label" style="color: rgba(255,255,255,0.9);">Right / Wrong Answers</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-indigo" style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-award"></i></div>
+              <div class="metric-data">
+                <span class="metric-value"><span id="summary-stat-avg-marks">0</span> / <span id="summary-stat-pass-marks">0</span></span>
+                <span class="metric-label" style="color: rgba(255,255,255,0.9);">Avg Obtained / Required Mark</span>
+              </div>
+            </div>
+
+            <div class="metric-card bg-amber" style="background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-chart-line"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="summary-stat-pass-pct">0%</span>
+                <span class="metric-label" style="color: rgba(255,255,255,0.9);">Pass Percentage</span>
+              </div>
+            </div>
+          </div>
+
           <div class="panel-card mt-4">
             <div class="panel-body table-responsive">
               <table class="data-table">
@@ -365,8 +408,9 @@
                   <tr>
                     <th>Student Name</th>
                     <th>Exam Title</th>
-                    <th>Correct / Wrong</th>
+                    <th>Right / Wrong / Unanswered</th>
                     <th>Obtained Marks</th>
+                    <th>Required Pass Marks</th>
                     <th>Percentage</th>
                     <th>Status</th>
                     <th>Date Submitted</th>
@@ -375,7 +419,7 @@
                 </thead>
                 <tbody id="table-admin-results">
                   <tr>
-                    <td colspan="8" class="text-center">Loading results...</td>
+                    <td colspan="9" class="text-center">Loading results...</td>
                   </tr>
                 </tbody>
               </table>

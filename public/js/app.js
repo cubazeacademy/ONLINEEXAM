@@ -1209,25 +1209,6 @@ async function startStudentExam(examId) {
 
     document.getElementById('exam-taker-container').classList.remove('hidden');
 
-    // Enable security locks for active exam session
-    window.onbeforeunload = function(e) {
-      if (examState && examState.attemptId) {
-        e.preventDefault();
-        e.returnValue = 'You have an active exam in progress. Leaving will forfeit your attempt.';
-        return e.returnValue;
-      }
-    };
-
-    window.onblur = function() {
-      if (examState && examState.attemptId) {
-        console.warn('Tab switch / window blur detected during exam session');
-      }
-    };
-
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-
     renderBatchQuestions();
     renderQuestionPalette();
     startExamTimer();
@@ -1461,15 +1442,7 @@ async function confirmSubmitExam() {
       return;
     }
 
-    // Release security locks
-    window.onbeforeunload = null;
-    window.onblur = null;
-
-    if (document.exitFullscreen && document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
-
-    // Hide Fullscreen View
+    // Hide Exam View
     document.getElementById('exam-taker-container').classList.add('hidden');
 
     const resultData = data.result;

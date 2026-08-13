@@ -668,26 +668,19 @@
         <div class="question-main-panel">
           <div class="batch-header-bar">
             <div class="batch-info-pill">
-              <i class="fa-solid fa-layer-group"></i> <span id="current-batch-badge">Questions 1 - 5 of 100</span>
-            </div>
-            <div class="batch-page-indicator">
-              Page <span id="current-page-num">1</span> of <span id="total-page-num">20</span>
+              <i class="fa-solid fa-layer-group"></i> <span id="current-batch-badge">All Questions</span>
             </div>
           </div>
 
-          <!-- CONTAINER FOR 5 QUESTIONS PER PAGE -->
+          <!-- CONTAINER FOR ALL QUESTIONS -->
           <div id="questions-container-batch" class="batch-questions-list">
-            <!-- 5 Question Cards rendered dynamically -->
+            <!-- All Question Cards rendered dynamically -->
           </div>
 
           <!-- EXAM CONTROLS -->
-          <div class="question-footer-controls">
-            <button type="button" class="btn btn-outline btn-lg" id="btn-prev-page" onclick="navigatePage(-1)">
-              <i class="fa-solid fa-arrow-left"></i> Previous Page
-            </button>
-
-            <button type="button" class="btn btn-primary btn-lg" id="btn-next-page" onclick="navigatePage(1)">
-              Next 5 Questions <i class="fa-solid fa-arrow-right"></i>
+          <div class="question-footer-controls mt-6">
+            <button type="button" class="btn btn-success btn-lg btn-block" onclick="promptSubmitExam()">
+              <i class="fa-solid fa-paper-plane"></i> Review & Finish Exam
             </button>
           </div>
         </div>
@@ -696,7 +689,6 @@
         <div class="question-palette-panel">
           <h4><i class="fa-solid fa-grip"></i> Question Palette</h4>
           <div class="palette-legend">
-            <span class="legend-item"><span class="badge-dot dot-current"></span> Current Batch</span>
             <span class="legend-item"><span class="badge-dot dot-answered"></span> Answered</span>
             <span class="legend-item"><span class="badge-dot dot-unanswered"></span> Unanswered</span>
           </div>

@@ -1420,36 +1420,15 @@ function renderBatchQuestions() {
     return;
   }
 
-  // Ensure currentPage is valid integer
-  if (typeof examState.currentPage !== 'number' || isNaN(examState.currentPage) || examState.currentPage < 0) {
-    examState.currentPage = 0;
-  }
-
-  const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE) || 1;
-  if (examState.currentPage >= totalPages) {
-    examState.currentPage = totalPages - 1;
-  }
-
-  const startIdx = examState.currentPage * QUESTIONS_PER_PAGE;
-  const endIdx = Math.min(startIdx + QUESTIONS_PER_PAGE, totalQuestions);
-  const currentBatch = examState.questions.slice(startIdx, endIdx);
-
-  // Update header badges
+  // Update header badges to show ALL questions
   const batchBadge = document.getElementById('current-batch-badge');
-  if (batchBadge) batchBadge.textContent = `Questions ${startIdx + 1} - ${endIdx} of ${totalQuestions}`;
-  
-  const pageNum = document.getElementById('current-page-num');
-  if (pageNum) pageNum.textContent = examState.currentPage + 1;
-  
-  const totalPageNum = document.getElementById('total-page-num');
-  if (totalPageNum) totalPageNum.textContent = totalPages;
+  if (batchBadge) batchBadge.textContent = `All Questions (1 - ${totalQuestions})`;
 
   if (!container) return;
   container.innerHTML = '';
 
-  currentBatch.forEach((q, offset) => {
+  examState.questions.forEach((q, globalIdx) => {
     if (!q) return;
-    const globalIdx = startIdx + offset;
     const selectedChoice = (examState.userAnswers && q.id) ? examState.userAnswers[q.id] : undefined;
 
     const options = [
@@ -1475,7 +1454,7 @@ function renderBatchQuestions() {
     container.innerHTML += `
       <div class="batch-question-card" id="q-card-${globalIdx}">
         <div class="batch-q-header">
-          <span class="q-number-badge"><i class="fa-solid fa-circle-question"></i> Question ${globalIdx + 1}</span>
+          <span class="q-number-badge"><i class="fa-solid fa-circle-question"></i> Question ${globalIdx + 1} of ${totalQuestions}</span>
           <span class="q-marks-pill"><i class="fa-solid fa-award"></i> ${q.marks || 5} Marks</span>
         </div>
         <div class="batch-question-text">
@@ -1495,24 +1474,6 @@ function renderBatchQuestions() {
     `;
   });
 
-  // Update Page Prev/Next buttons
-  const prevBtn = document.getElementById('btn-prev-page');
-  const nextBtn = document.getElementById('btn-next-page');
-
-  if (prevBtn) prevBtn.disabled = (examState.currentPage === 0);
-
-  if (nextBtn) {
-    if (examState.currentPage === totalPages - 1) {
-      nextBtn.className = 'btn btn-success btn-lg';
-      nextBtn.innerHTML = 'Review & Finish Exam <i class="fa-solid fa-check"></i>';
-      nextBtn.onclick = () => promptSubmitExam();
-    } else {
-      nextBtn.className = 'btn btn-primary btn-lg';
-      nextBtn.innerHTML = `Next ${Math.min(QUESTIONS_PER_PAGE, totalQuestions - endIdx)} Questions <i class="fa-solid fa-arrow-right"></i>`;
-      nextBtn.onclick = () => navigatePage(1);
-    }
-  }
-
   updatePaletteSummary();
 }
 
@@ -1531,33 +1492,14 @@ function clearBatchOption(questionId) {
   renderQuestionPalette();
 }
 
-function navigatePage(dir) {
-  if (!examState || !Array.isArray(examState.questions)) return;
-  const totalPages = Math.ceil(examState.questions.length / QUESTIONS_PER_PAGE) || 1;
-  const newPage = (examState.currentPage || 0) + dir;
-  if (newPage >= 0 && newPage < totalPages) {
-    examState.currentPage = newPage;
-    renderBatchQuestions();
-    renderQuestionPalette();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-}
-
 function jumpToQuestion(globalIdx) {
   const idx = parseInt(globalIdx);
   if (isNaN(idx) || !examState || !Array.isArray(examState.questions)) return;
 
-  const targetPage = Math.floor(idx / QUESTIONS_PER_PAGE);
-  examState.currentPage = targetPage;
-  renderBatchQuestions();
-  renderQuestionPalette();
-
-  setTimeout(() => {
-    const targetCard = document.getElementById(`q-card-${idx}`);
-    if (targetCard) {
-      targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, 100);
+  const targetCard = document.getElementById(`q-card-${idx}`);
+  if (targetCard) {
+    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 function renderQuestionPalette() {
@@ -1567,18 +1509,12 @@ function renderQuestionPalette() {
   if (!grid) return;
   grid.innerHTML = '';
 
-  const currentPage = (typeof examState.currentPage === 'number' && !isNaN(examState.currentPage)) ? examState.currentPage : 0;
-  const startIdx = currentPage * QUESTIONS_PER_PAGE;
-  const endIdx = startIdx + QUESTIONS_PER_PAGE;
-
   examState.questions.forEach((q, idx) => {
     if (!q) return;
     const isAnswered = examState.userAnswers && !!examState.userAnswers[q.id];
-    const isCurrentBatch = idx >= startIdx && idx < endIdx;
 
     let classes = 'pal-btn';
     if (isAnswered) classes += ' answered';
-    if (isCurrentBatch) classes += ' current-batch';
 
     grid.innerHTML += `
       <button type="button" class="${classes}" onclick="jumpToQuestion(${idx})" title="Question ${idx + 1}">

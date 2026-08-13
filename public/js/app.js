@@ -1192,24 +1192,32 @@ async function loadStudentAvailableExams() {
 }
 
 function requestExamFullscreen() {
-  const elem = document.documentElement;
-  if (elem.requestFullscreen) {
-    elem.requestFullscreen().catch(() => {});
-  } else if (elem.webkitRequestFullscreen) {
-    elem.webkitRequestFullscreen().catch(() => {});
-  } else if (elem.msRequestFullscreen) {
-    elem.msRequestFullscreen().catch(() => {});
+  try {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      const p = elem.requestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) {
+      elem.msRequestFullscreen();
+    }
+  } catch (e) {
+    console.log('Fullscreen request safely ignored:', e);
   }
 }
 
 function exitExamFullscreen() {
-  if (document.fullscreenElement || document.webkitFullscreenElement) {
-    if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen().catch(() => {});
+  try {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (document.exitFullscreen) {
+        const p = document.exitFullscreen();
+        if (p && p.catch) p.catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
     }
-  }
+  } catch (e) {}
 }
 
 async function startStudentExam(examId) {
@@ -1228,6 +1236,11 @@ async function startStudentExam(examId) {
       return;
     }
 
+    if (!data.questions || data.questions.length === 0) {
+      alert('This exam currently has no questions assigned to it.');
+      return;
+    }
+
     // Initialize Exam Taking State
     examState = {
       attemptId: data.attempt_id,
@@ -1239,21 +1252,32 @@ async function startStudentExam(examId) {
       secondsRemaining: (data.exam.duration_minutes || 15) * 60
     };
 
-    // Render Fullscreen Exam View
-    document.getElementById('exam-take-title').textContent = data.exam.title;
-    document.getElementById('exam-take-total-q').textContent = `${data.questions.length} Questions`;
-    document.getElementById('pal-total').textContent = data.questions.length;
+    // Render Exam View
+    const titleElem = document.getElementById('exam-take-title');
+    if (titleElem) titleElem.textContent = data.exam.title;
 
-    document.getElementById('exam-taker-container').classList.remove('hidden');
+    const totalQElem = document.getElementById('exam-take-total-q');
+    if (totalQElem) totalQElem.textContent = `${data.questions.length} Questions`;
 
-    // Trigger browser fullscreen to hide Chrome tab bar and URL bar
-    requestExamFullscreen();
+    const palTotalElem = document.getElementById('pal-total');
+    if (palTotalElem) palTotalElem.textContent = data.questions.length;
+
+    const takerContainer = document.getElementById('exam-taker-container');
+    if (takerContainer) takerContainer.classList.remove('hidden');
+
+    // Safe request for browser fullscreen (ignoring mobile gesture rejection)
+    try {
+      requestExamFullscreen();
+    } catch (fsErr) {
+      console.warn('Fullscreen request failed:', fsErr);
+    }
 
     renderBatchQuestions();
     renderQuestionPalette();
     startExamTimer();
 
   } catch (err) {
+    console.error('Error starting exam session:', err);
     alert('Failed to connect to exam engine server.');
   }
 }

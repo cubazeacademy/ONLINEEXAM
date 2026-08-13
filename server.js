@@ -320,8 +320,10 @@ app.post('/api/admin/exams', async (req, res) => {
             RETURNING id
           `, [newExam.id, qText, optA, optB, optC, optD, correct, marks]);
 
-          const qId = qRes.lastInsertRowid;
-          await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [newExam.id, qId]);
+          const qId = (qRes && qRes.rows && qRes.rows[0]) ? qRes.rows[0].id : (qRes.lastInsertRowid || qRes.id);
+          if (qId) {
+            await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [newExam.id, qId]);
+          }
           uploadedCount++;
         }
       }
@@ -365,8 +367,10 @@ app.put('/api/admin/exams/:id', async (req, res) => {
             RETURNING id
           `, [id, qText, optA, optB, optC, optD, correct, marks]);
 
-          const qId = qRes.lastInsertRowid;
-          await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, qId]);
+          const qId = (qRes && qRes.rows && qRes.rows[0]) ? qRes.rows[0].id : (qRes.lastInsertRowid || qRes.id);
+          if (qId) {
+            await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, qId]);
+          }
           uploadedCount++;
         }
       }
@@ -422,7 +426,8 @@ app.get('/api/admin/questions', async (req, res) => {
   const { exam_id } = req.query;
   try {
     let sql = `
-      SELECT DISTINCT ON (q.id) q.*, COALESCE(e.title, e2.title) as exam_title
+      SELECT q.id, q.exam_id, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, q.marks,
+             COALESCE(e.title, e2.title) as exam_title
       FROM questions q
       LEFT JOIN exams e ON q.exam_id = e.id
       LEFT JOIN exam_questions eq ON q.id = eq.question_id
@@ -435,6 +440,7 @@ app.get('/api/admin/questions', async (req, res) => {
       params.push(exam_id, exam_id);
     }
 
+    sql += ` GROUP BY q.id, q.exam_id, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, q.marks, e.title, e2.title`;
     sql += ` ORDER BY q.id DESC`;
     const questions = await db.all(sql, params);
     res.json(questions);
@@ -483,9 +489,9 @@ app.post('/api/admin/questions', async (req, res) => {
       marks || 5
     ]);
 
-    const qId = info.lastInsertRowid;
+    const qId = (info && info.rows && info.rows[0]) ? info.rows[0].id : (info.lastInsertRowid || info.id);
 
-    if (exam_id) {
+    if (exam_id && qId) {
       await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [exam_id, qId]);
     }
 
@@ -529,8 +535,10 @@ app.post('/api/admin/questions/import-csv', async (req, res) => {
         RETURNING id
       `, [targetExamId, qText, optA, optB, optC, optD, correct, marks]);
 
-      if (targetExamId) {
-        await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [targetExamId, info.lastInsertRowid]);
+      const qId = (info && info.rows && info.rows[0]) ? info.rows[0].id : (info.lastInsertRowid || info.id);
+
+      if (targetExamId && qId) {
+        await db.run(`INSERT INTO exam_questions (exam_id, question_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [targetExamId, qId]);
       }
 
       importedCount++;

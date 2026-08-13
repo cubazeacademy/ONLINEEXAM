@@ -487,6 +487,9 @@ async function loadExams() {
           </div>
 
           <div class="exam-card-footer" style="flex-direction:column; gap:8px;">
+            <button class="btn btn-block btn-primary" onclick="manageExamQuestions(${exam.id})">
+              <i class="fa-solid fa-list-check"></i> Manage Questions (${exam.question_count})
+            </button>
             <div class="btn-group" style="width:100%; justify-content:space-between;">
               ${resultsToggleBtn}
               <button class="btn btn-sm btn-outline" onclick="toggleExamStatusPrompt(${exam.id}, '${exam.status}')" title="Change Status">
@@ -506,6 +509,17 @@ async function loadExams() {
   } catch (err) {
     console.error('Error loading exams:', err);
   }
+}
+
+function manageExamQuestions(examId) {
+  switchTab('admin-questions');
+  setTimeout(() => {
+    const select = document.getElementById('filter-question-exam');
+    if (select) {
+      select.value = examId;
+      loadQuestions();
+    }
+  }, 100);
 }
 
 let parsedExamModalCSVData = [];
@@ -694,8 +708,8 @@ async function loadExamDropdownOptions() {
     const filterSelect = document.getElementById('filter-question-exam');
     const formSelect = document.getElementById('question-exam-id');
 
-    filterSelect.innerHTML = '<option value="">-- All Exams & Bank Questions --</option>';
-    formSelect.innerHTML = '<option value="">-- Store in Question Bank (No Exam Assigned) --</option>';
+    filterSelect.innerHTML = '<option value="">-- Select Exam to Manage Questions --</option>';
+    formSelect.innerHTML = '<option value="">-- Select Exam --</option>';
 
     exams.forEach(e => {
       filterSelect.innerHTML += `<option value="${e.id}">${escapeHtml(e.title)}</option>`;

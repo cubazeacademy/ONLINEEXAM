@@ -40,8 +40,8 @@
 
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
-          <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+          <label for="login-username" id="login-username-label"><i class="fa-solid fa-user"></i> Username / Admission No / Roll No</label>
+          <input type="text" id="login-username" placeholder="Enter Username, Admission No, or Roll No" required autocomplete="username">
         </div>
 
         <div class="form-group">
@@ -55,6 +55,16 @@
         <button type="submit" class="btn btn-primary btn-block btn-lg">
           <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
         </button>
+
+        <div class="demo-login-hints" style="margin-top: 15px; text-align: center; font-size: 0.85rem; color: var(--text-muted, #64748b);">
+          <p style="margin-bottom: 6px;">Need demo login credentials?</p>
+          <button type="button" class="btn-link" style="background: none; border: none; color: #3b82f6; cursor: pointer; text-decoration: underline; font-weight: 500; margin-right: 10px;" onclick="fillDemoCredentials('student')">
+            <i class="fa-solid fa-user-graduate"></i> Demo Student
+          </button>
+          <button type="button" class="btn-link" style="background: none; border: none; color: #3b82f6; cursor: pointer; text-decoration: underline; font-weight: 500;" onclick="fillDemoCredentials('admin')">
+            <i class="fa-solid fa-user-shield"></i> Demo Admin
+          </button>
+        </div>
       </form>
     </div>
   </div>
@@ -360,34 +370,44 @@
 
           <!-- EXAM EXECUTIVE SUMMARY CARDS -->
           <div id="admin-results-summary-cards" class="metrics-grid mt-4 hidden">
-            <div class="metric-card bg-emerald" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-users"></i></div>
+            <div class="metric-card bg-emerald"
+              style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-users"></i>
+              </div>
               <div class="metric-data">
                 <span class="metric-value" id="summary-stat-attended">0</span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Attended Students</span>
               </div>
             </div>
 
-            <div class="metric-card bg-rose" style="background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-user-xmark"></i></div>
+            <div class="metric-card bg-rose"
+              style="background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-user-xmark"></i>
+              </div>
               <div class="metric-data">
                 <span class="metric-value" id="summary-stat-not-attended">0</span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Not Attended</span>
               </div>
             </div>
 
-            <div class="metric-card bg-sky" style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-square-check"></i></div>
+            <div class="metric-card bg-sky"
+              style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i
+                  class="fa-solid fa-square-check"></i></div>
               <div class="metric-data">
-                <span class="metric-value"><span id="summary-stat-right">0</span> / <span id="summary-stat-wrong">0</span></span>
+                <span class="metric-value"><span id="summary-stat-right">0</span> / <span
+                    id="summary-stat-wrong">0</span></span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Right / Wrong Answers</span>
               </div>
             </div>
 
-            <div class="metric-card bg-indigo" style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-award"></i></div>
+            <div class="metric-card bg-indigo"
+              style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color:#ffffff;">
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-award"></i>
+              </div>
               <div class="metric-data">
-                <span class="metric-value"><span id="summary-stat-avg-marks">0</span> / <span id="summary-stat-pass-marks">0</span></span>
+                <span class="metric-value"><span id="summary-stat-avg-marks">0</span> / <span
+                    id="summary-stat-pass-marks">0</span></span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Avg Obtained / Required Mark</span>
               </div>
             </div>
@@ -647,13 +667,6 @@
           <i class="fa-solid fa-lock"></i> SECURE EXAM SESSION
         </div>
 
-        <!-- ALWAYS VISIBLE QUESTION PDF DOWNLOAD BUTTON FOR STUDENTS -->
-        <div id="exam-taker-pdf-btn-container" class="hidden">
-          <a id="exam-taker-pdf-link" href="#" target="_blank" download class="btn btn-sm btn-pdf-header" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #ffffff; font-weight: 600; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);">
-            <i class="fa-solid fa-file-pdf"></i> Download Question PDF
-          </a>
-        </div>
-
         <!-- TIMER COUNTDOWN -->
         <div class="exam-timer-box" id="exam-timer-widget">
           <i class="fa-regular fa-clock"></i>
@@ -718,21 +731,31 @@
 
     <!-- MODAL: CONFIRM EXAM SUBMISSION (INSIDE EXAM POPUP) -->
     <div id="modal-confirm-submit" class="modal-overlay hidden" style="z-index: 100005;">
-      <div class="modal-content text-center" style="max-width: 480px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.3);">
-        <div class="confirm-icon" style="width: 60px; height: 60px; background: #eff6ff; color: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px auto;">
+      <div class="modal-content text-center"
+        style="max-width: 480px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.3);">
+        <div class="confirm-icon"
+          style="width: 60px; height: 60px; background: #eff6ff; color: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px auto;">
           <i class="fa-solid fa-file-circle-check"></i>
         </div>
         <h3 style="font-size: 1.3rem; font-weight: 700; color: #0f172a;">Submit Your Exam?</h3>
-        <p class="mt-2 text-muted" style="font-size: 0.9rem;">Are you sure you want to finish and submit your answers now? Once submitted, your score will be calculated.</p>
+        <p class="mt-2 text-muted" style="font-size: 0.9rem;">Are you sure you want to finish and submit your answers
+          now? Once submitted, your score will be calculated.</p>
         <div class="confirm-stats mt-4" style="display: flex; justify-content: center; gap: 16px;">
-          <div class="stat-pill" style="background: #ecfdf5; color: #047857; font-weight: 600; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem;"><span id="confirm-ans-count">0</span> Answered</div>
-          <div class="stat-pill" style="background: #fffbeb; color: #b45309; font-weight: 600; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem;"><span id="confirm-unans-count">0</span> Unanswered</div>
+          <div class="stat-pill"
+            style="background: #ecfdf5; color: #047857; font-weight: 600; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem;">
+            <span id="confirm-ans-count">0</span> Answered</div>
+          <div class="stat-pill"
+            style="background: #fffbeb; color: #b45309; font-weight: 600; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem;">
+            <span id="confirm-unans-count">0</span> Unanswered</div>
         </div>
         <div class="modal-footer mt-6" style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
-          <button type="button" class="btn btn-outline" style="border-radius: 10px; padding: 10px 20px;" onclick="closeModal('modal-confirm-submit')">
+          <button type="button" class="btn btn-outline" style="border-radius: 10px; padding: 10px 20px;"
+            onclick="closeModal('modal-confirm-submit')">
             <i class="fa-solid fa-rotate-left"></i> Continue Exam
           </button>
-          <button type="button" class="btn btn-success" style="border-radius: 10px; padding: 10px 22px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff;" onclick="confirmSubmitExam()">
+          <button type="button" class="btn btn-success"
+            style="border-radius: 10px; padding: 10px 22px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff;"
+            onclick="confirmSubmitExam()">
             <i class="fa-solid fa-paper-plane"></i> Yes, Submit Exam
           </button>
         </div>
@@ -834,96 +857,45 @@
           </div>
         </div>
 
-        <div class="form-group mt-3" style="background: #f1f5f9; padding: 12px 16px; border-radius: 10px; border: 1px solid #cbd5e1;">
-          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: #1e293b; margin: 0;">
+        <div class="form-group mt-3"
+          style="background: #f1f5f9; padding: 12px 16px; border-radius: 10px; border: 1px solid #cbd5e1;">
+          <label
+            style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: #1e293b; margin: 0;">
             <input type="checkbox" id="exam-show-results" value="1" style="width: 18px; height: 18px; cursor: pointer;">
-            <span><i class="fa-solid fa-eye" style="color: var(--primary);"></i> Allow Students to View Results / Scorecard</span>
+            <span><i class="fa-solid fa-eye" style="color: var(--primary);"></i> Allow Students to View Results /
+              Scorecard</span>
           </label>
-          <small class="text-muted" style="display: block; margin-top: 4px; font-size: 0.8rem; padding-left: 28px;">If unchecked, students will see <strong>"RESULT COMING SOON"</strong> until published by Admin.</small>
-        </div>
-
-        <!-- ATTACH / UPLOAD QUESTION PDF SECTION (GOOGLE DRIVE LINK OR MANUAL UPLOAD) -->
-        <div class="form-group mt-4 p-4" style="background: #fff5f5; border: 1px solid #fecaca; border-radius: 12px;">
-          <label style="font-weight: 700; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-            <i class="fa-solid fa-file-pdf" style="color: #ef4444; font-size: 1.2rem;"></i> Attach Question Paper PDF
-          </label>
-          <p class="text-muted mb-3" style="font-size: 0.82rem;">
-            Upload a Question PDF or enter a Google Drive PDF link. Students will see a download button for this PDF always.
-          </p>
-
-          <!-- Hidden input storing final URL -->
-          <input type="hidden" id="exam-pdf-url" value="">
-
-          <!-- Option Selection Tabs -->
-          <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-            <button type="button" class="btn btn-sm btn-outline active" id="btn-pdf-opt-upload" onclick="switchPdfUploadOption('upload')" style="border-radius: 6px; font-weight: 600;">
-              <i class="fa-solid fa-cloud-arrow-up"></i> Manual PDF Upload
-            </button>
-            <button type="button" class="btn btn-sm btn-outline" id="btn-pdf-opt-drive" onclick="switchPdfUploadOption('drive')" style="border-radius: 6px; font-weight: 600;">
-              <i class="fa-brands fa-google-drive" style="color: #0F9D58;"></i> Google Drive Link
-            </button>
-          </div>
-
-          <!-- Option 1: Manual Upload Box -->
-          <div id="pdf-upload-manual-container" class="pdf-upload-box p-3" style="background: #ffffff; border: 1px dashed #fca5a5; border-radius: 8px;">
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-              <input type="file" id="exam-pdf-file-input" accept=".pdf" style="flex: 1; min-width: 200px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;" onchange="handleManualPdfSelect(event)">
-              <button type="button" class="btn btn-sm btn-primary" id="btn-upload-pdf-file" onclick="uploadManualPdfFile()" disabled style="background: #ef4444; border-color: #dc2626;">
-                <i class="fa-solid fa-upload"></i> Upload PDF
-              </button>
-            </div>
-            <small class="text-muted" style="display: block; margin-top: 6px; font-size: 0.78rem;">Select a PDF file from your computer to upload directly to server.</small>
-          </div>
-
-          <!-- Option 2: Google Drive Link Box -->
-          <div id="pdf-upload-drive-container" class="pdf-upload-box p-3 hidden" style="background: #ffffff; border: 1px dashed #fca5a5; border-radius: 8px;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <input type="url" id="exam-pdf-drive-input" placeholder="Paste Google Drive PDF URL (e.g. https://drive.google.com/file/d/.../view)" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem;" oninput="handleDriveLinkInput(event)">
-            </div>
-            <small class="text-muted" style="display: block; margin-top: 6px; font-size: 0.78rem;">Ensure link sharing is set to "Anyone with the link can view".</small>
-          </div>
-
-          <!-- Active PDF Attachment Status Bar -->
-          <div id="exam-pdf-status-bar" class="mt-3 p-3 hidden" style="background: #ffffff; border: 1px solid #bbf7d0; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-              <i class="fa-solid fa-file-pdf" style="font-size: 1.5rem; color: #dc2626; flex-shrink: 0;"></i>
-              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                <div style="font-weight: 700; font-size: 0.88rem; color: #166534;" id="exam-pdf-filename-display">Question_Paper.pdf</div>
-                <div style="font-size: 0.75rem; color: #15803d;" id="exam-pdf-source-type-display">Uploaded PDF</div>
-              </div>
-            </div>
-            <div style="display: flex; gap: 6px; flex-shrink: 0;">
-              <a id="exam-pdf-preview-link" href="#" target="_blank" class="btn btn-sm btn-outline" style="border-color: #86efac; color: #166534; font-size: 0.8rem;" title="Preview PDF">
-                <i class="fa-solid fa-arrow-up-right-from-square"></i> Preview
-              </a>
-              <button type="button" class="btn btn-sm btn-outline text-danger" onclick="removeAttachedPdf()" style="border-color: #fca5a5; font-size: 0.8rem;" title="Remove PDF">
-                <i class="fa-solid fa-trash"></i> Remove
-              </button>
-            </div>
-          </div>
+          <small class="text-muted" style="display: block; margin-top: 4px; font-size: 0.8rem; padding-left: 28px;">If
+            unchecked, students will see <strong>"RESULT COMING SOON"</strong> until published by Admin.</small>
         </div>
 
         <!-- ATTACH / UPLOAD QUESTIONS CSV OPTION -->
-        <div class="exam-questions-upload-section mt-4 p-4" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
+        <div class="exam-questions-upload-section mt-4 p-4"
+          style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <label style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-file-csv" style="color: #10b981; font-size: 1.1rem;"></i> Attach / Upload Questions CSV
+              <i class="fa-solid fa-file-csv" style="color: #10b981; font-size: 1.1rem;"></i> Attach / Upload Questions
+              CSV
             </label>
             <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleQuestionsCSV()">
               <i class="fa-solid fa-download"></i> Sample CSV
             </button>
           </div>
-          <p class="text-muted mb-2" style="font-size: 0.82rem;">Upload a CSV file containing questions for this exam. Questions will be automatically saved to Supabase and linked to this exam.</p>
+          <p class="text-muted mb-2" style="font-size: 0.82rem;">Upload a CSV file containing questions for this exam.
+            Questions will be automatically saved to Supabase and linked to this exam.</p>
           <input type="file" id="exam-questions-file-input" accept=".csv" onchange="previewExamModalCSV(event)">
-          
+
           <div id="exam-modal-csv-preview" class="hidden mt-3">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
               <span style="font-size: 0.85rem; font-weight: 600; color: #047857;">
-                <i class="fa-solid fa-circle-check"></i> <span id="exam-modal-csv-count">0</span> Questions Ready to Save with Exam
+                <i class="fa-solid fa-circle-check"></i> <span id="exam-modal-csv-count">0</span> Questions Ready to
+                Save with Exam
               </span>
-              <button type="button" class="btn btn-sm btn-outline text-danger" onclick="clearExamModalCSV()">Remove File</button>
+              <button type="button" class="btn btn-sm btn-outline text-danger" onclick="clearExamModalCSV()">Remove
+                File</button>
             </div>
-            <div class="table-responsive" style="max-height: 140px; border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff;">
+            <div class="table-responsive"
+              style="max-height: 140px; border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff;">
               <table class="data-table" style="font-size: 0.8rem;">
                 <thead>
                   <tr>
@@ -940,10 +912,14 @@
         </div>
 
         <!-- EXISTING ATTACHED QUESTIONS MANAGEMENT SECTION -->
-        <div id="exam-existing-questions-section" class="mt-4 p-4 hidden" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-            <h4 style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Attached Questions (<span id="exam-questions-count">0</span>)
+        <div id="exam-existing-questions-section" class="mt-4 p-4 hidden"
+          style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <h4
+              style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Attached Questions (<span
+                id="exam-questions-count">0</span>)
             </h4>
             <button type="button" class="btn btn-sm btn-primary" onclick="openAddQuestionForExam()">
               <i class="fa-solid fa-plus"></i> Add Question to Exam
@@ -963,7 +939,9 @@
                 </tr>
               </thead>
               <tbody id="table-exam-existing-questions">
-                <tr><td colspan="6" class="text-center text-muted">Loading questions...</td></tr>
+                <tr>
+                  <td colspan="6" class="text-center text-muted">Loading questions...</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -971,7 +949,8 @@
 
         <div class="modal-footer mt-4">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-exam')">Cancel</button>
-          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Exam Details</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Exam
+            Details</button>
         </div>
       </form>
     </div>
@@ -1191,10 +1170,12 @@
         <button class="btn-close" onclick="closeModal('modal-assign-questions')">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="text-muted mb-3" style="font-size:0.88rem;">Select an exam to link the checked question(s) to. They will be stored and updated in Supabase.</p>
+        <p class="text-muted mb-3" style="font-size:0.88rem;">Select an exam to link the checked question(s) to. They
+          will be stored and updated in Supabase.</p>
         <div class="form-group">
           <label>Target Examination <span class="text-danger">*</span></label>
-          <select id="assign-target-exam-id" class="form-control" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);" required>
+          <select id="assign-target-exam-id" class="form-control"
+            style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);" required>
             <option value="">-- Select Exam --</option>
           </select>
         </div>

@@ -2,11 +2,11 @@ require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'db.pqbdbjapmdskaziotrlk.supabase.co',
+  host: process.env.DB_HOST || 'aws-0-ap-south-1.pooler.supabase.com',
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'postgres',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'Sinan@123@',
+  user: process.env.DB_USER || 'postgres.pqbdbjapmdskaziotrlk',
+  password: process.env.DB_PASSWORD || 'Sinan@123@@',
   ssl: {
     rejectUnauthorized: false
   }
@@ -68,14 +68,12 @@ async function initDb() {
         pass_marks INTEGER NOT NULL DEFAULT 40,
         status VARCHAR(50) CHECK(status IN ('draft', 'published', 'active', 'stopped')) NOT NULL DEFAULT 'draft',
         show_results INTEGER NOT NULL DEFAULT 0,
-        question_pdf_url TEXT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
     // Ensure missing columns exist
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS show_results INTEGER DEFAULT 0;`);
-    await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS question_pdf_url TEXT;`);
 
     // 3. Questions table
     await pool.query(`

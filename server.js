@@ -1,52 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Ensure PDF upload directory exists
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// -------------------------------------------------------------
-// ADMIN - PDF UPLOAD ENDPOINT
-// -------------------------------------------------------------
-app.post('/api/admin/upload-pdf', (req, res) => {
-  try {
-    const { filename, fileData } = req.body;
-    if (!fileData) {
-      return res.status(400).json({ error: 'No PDF file data provided' });
-    }
-
-    const cleanFilename = (filename || 'question_paper.pdf').replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const uniqueFilename = `${Date.now()}_${cleanFilename}`;
-    const filePath = path.join(uploadsDir, uniqueFilename);
-
-    const base64Data = fileData.replace(/^data:application\/pdf;base64,/, '').replace(/^data:application\/octet-stream;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    fs.writeFileSync(filePath, buffer);
-    const pdfUrl = `/uploads/${uniqueFilename}`;
-
-    res.json({
-      message: 'PDF uploaded successfully',
-      url: pdfUrl,
-      filename: uniqueFilename
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to upload PDF file: ' + err.message });
-  }
-});
 
 // Initialize Supabase PostgreSQL Tables & Seed Data
 db.initDb();
@@ -61,11 +23,23 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Please provide both username and password' });
   }
 
+  const cleanUsername = username.toString().trim();
+  const cleanPassword = password.toString().trim();
+
   try {
-    const user = await db.get('SELECT id, username, full_name, email, role FROM users WHERE username = $1 AND password = $2', [username, password]);
+    const user = await db.get(`
+      SELECT id, username, full_name, email, role, roll_no, admission_no
+      FROM users
+      WHERE (
+        LOWER(username) = LOWER($1) OR
+        LOWER(COALESCE(admission_no, '')) = LOWER($1) OR
+        LOWER(COALESCE(roll_no, '')) = LOWER($1) OR
+        LOWER(COALESCE(email, '')) = LOWER($1)
+      ) AND TRIM(password) = $2
+    `, [cleanUsername, cleanPassword]);
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+      return res.status(401).json({ error: 'Invalid username/admission number or password' });
     }
 
     return res.json({
@@ -321,13 +295,13 @@ app.get('/api/admin/exams', async (req, res) => {
 });
 
 app.post('/api/admin/exams', async (req, res) => {
-  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, questions } = req.body;
   if (!title) return res.status(400).json({ error: 'Exam title is required' });
 
   try {
     const info = await db.run(`
-      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `, [
       title,
@@ -336,8 +310,7 @@ app.post('/api/admin/exams', async (req, res) => {
       total_marks || 100,
       pass_marks || 40,
       status || 'draft',
-      show_results ? 1 : 0,
-      question_pdf_url || null
+      show_results ? 1 : 0
     ]);
     const newExam = info.rows[0];
 
@@ -379,14 +352,14 @@ app.post('/api/admin/exams', async (req, res) => {
 
 app.put('/api/admin/exams/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, questions } = req.body;
 
   try {
     await db.run(`
       UPDATE exams
-      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7, question_pdf_url = $8
-      WHERE id = $9
-    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, question_pdf_url || null, id]);
+      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7
+      WHERE id = $8
+    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, id]);
 
     let uploadedCount = 0;
     if (Array.isArray(questions) && questions.length > 0) {
@@ -1055,7 +1028,7 @@ app.get('/api/student/attempts/:id/result', async (req, res) => {
 
   try {
     const attempt = await db.get(`
-      SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks, e.show_results, e.question_pdf_url
+      SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks, e.show_results
       FROM attempts a
       JOIN exams e ON a.exam_id = e.id
       WHERE a.id = $1

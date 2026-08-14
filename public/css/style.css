@@ -1806,8 +1806,8 @@ body {
     transition: opacity 0.3s ease;
   }
 
-  .sidebar.show ~ .sidebar-overlay,
-  .sidebar.show + .sidebar-overlay {
+  .sidebar.show~.sidebar-overlay,
+  .sidebar.show+.sidebar-overlay {
     opacity: 1;
     pointer-events: auto;
   }
@@ -1994,6 +1994,7 @@ body {
 }
 
 @media (max-width: 576px) {
+
   .metrics-grid,
   .stats-grid {
     grid-template-columns: 1fr !important;
@@ -2049,23 +2050,4 @@ body {
     font-size: 0.75rem;
     padding: 3px 8px;
   }
-}
-
-/* ==========================================================================
-   QUESTION PDF DOWNLOAD & UPLOAD STYLING
-   ========================================================================== */
-.btn-pdf-download:hover {
-  background: #fee2e2 !important;
-  border-color: #ef4444 !important;
-  color: #b91c1c !important;
-  transform: translateY(-1px);
-}
-
-.btn-pdf-header:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.45) !important;
-}
-
-.pdf-upload-box {
-  transition: all 0.2s ease-in-out;
 }

@@ -616,7 +616,8 @@ function editExam(id) {
   const pdfStatusBox = document.getElementById('exam-pdf-status');
   const pdfStatusText = document.getElementById('exam-pdf-status-text');
   if (exam.question_pdf_url && pdfStatusBox && pdfStatusText) {
-    pdfStatusText.textContent = `Attached PDF: ${exam.question_pdf_url.split('/').pop()}`;
+    const displayName = exam.question_pdf_url.startsWith('data:') ? 'PDF Attached (Ready)' : exam.question_pdf_url.split('/').pop();
+    pdfStatusText.textContent = `Attached: ${displayName}`;
     pdfStatusBox.classList.remove('hidden');
   } else {
     removeExamPdfFile();
@@ -633,15 +634,31 @@ async function handleExamPdfUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  if (file.type !== 'application/pdf') {
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
     alert('Please select a valid PDF file.');
     event.target.value = '';
     return;
   }
 
+  if (file.size > 25 * 1024 * 1024) {
+    alert('File is too large. Please select a PDF smaller than 25MB.');
+    event.target.value = '';
+    return;
+  }
+
+  const statusBox = document.getElementById('exam-pdf-status');
+  const statusText = document.getElementById('exam-pdf-status-text');
+  if (statusBox && statusText) {
+    statusText.textContent = `Processing ${file.name}...`;
+    statusBox.classList.remove('hidden');
+  }
+
   const reader = new FileReader();
   reader.onload = async function(e) {
     const fileData = e.target.result;
+    const pdfUrlInput = document.getElementById('exam-question-pdf-url');
+    if (pdfUrlInput) pdfUrlInput.value = fileData;
+
     try {
       const res = await fetch(apiUrl('/api/admin/upload-pdf'), {
         method: 'POST',
@@ -649,18 +666,16 @@ async function handleExamPdfUpload(event) {
         body: JSON.stringify({ filename: file.name, fileData })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to upload PDF');
-
-      const pdfUrlInput = document.getElementById('exam-question-pdf-url');
-      if (pdfUrlInput) pdfUrlInput.value = data.url;
-      const statusBox = document.getElementById('exam-pdf-status');
-      const statusText = document.getElementById('exam-pdf-status-text');
-      if (statusBox && statusText) {
-        statusText.textContent = `PDF Uploaded: ${file.name}`;
-        statusBox.classList.remove('hidden');
+      if (res.ok && data.url) {
+        if (pdfUrlInput) pdfUrlInput.value = data.url;
       }
     } catch (err) {
-      alert('PDF upload error: ' + err.message);
+      console.log('Using direct client data URI for PDF attachment');
+    }
+
+    if (statusBox && statusText) {
+      statusText.textContent = `PDF Ready: ${file.name}`;
+      statusBox.classList.remove('hidden');
     }
   };
   reader.readAsDataURL(file);

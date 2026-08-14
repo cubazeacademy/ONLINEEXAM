@@ -12,14 +12,18 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ensure PDF upload directory exists
+// Safely ensure PDF upload directory exists if filesystem is writable
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  // Read-only filesystem in serverless environments like Vercel
 }
 
 // -------------------------------------------------------------
-// ADMIN - PDF UPLOAD ENDPOINT
+// ADMIN - PDF UPLOAD ENDPOINT (Vercel serverless & local compatible)
 // -------------------------------------------------------------
 app.post('/api/admin/upload-pdf', (req, res) => {
   try {
@@ -28,23 +32,32 @@ app.post('/api/admin/upload-pdf', (req, res) => {
       return res.status(400).json({ error: 'No PDF file data provided' });
     }
 
-    const cleanFilename = (filename || 'question_paper.pdf').replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const uniqueFilename = `${Date.now()}_${cleanFilename}`;
-    const filePath = path.join(uploadsDir, uniqueFilename);
+    let pdfUrl = fileData; // Default to Data URI (100% works on Vercel and all serverless environments)
 
-    const base64Data = fileData.replace(/^data:application\/pdf;base64,/, '').replace(/^data:application\/octet-stream;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
+    try {
+      if (fs.existsSync(uploadsDir)) {
+        const cleanFilename = (filename || 'question_paper.pdf').replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const uniqueFilename = `${Date.now()}_${cleanFilename}`;
+        const filePath = path.join(uploadsDir, uniqueFilename);
 
-    fs.writeFileSync(filePath, buffer);
-    const pdfUrl = `/uploads/${uniqueFilename}`;
+        const base64Data = fileData.replace(/^data:application\/pdf;base64,/, '').replace(/^data:application\/octet-stream;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        fs.writeFileSync(filePath, buffer);
+        pdfUrl = `/uploads/${uniqueFilename}`;
+      }
+    } catch (fsErr) {
+      console.log('Serverless read-only filesystem detected, using data URI for PDF storage.');
+      // pdfUrl remains fileData
+    }
 
     res.json({
-      message: 'PDF uploaded successfully',
+      message: 'PDF processed successfully',
       url: pdfUrl,
-      filename: uniqueFilename
+      filename: filename || 'question_paper.pdf'
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to upload PDF file: ' + err.message });
+    res.status(500).json({ error: 'Failed to process PDF file: ' + err.message });
   }
 });
 

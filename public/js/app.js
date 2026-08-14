@@ -959,6 +959,54 @@ async function clearAllQuestions() {
   }
 }
 
+async function loadExamQuestionsInModal(examId) {
+  currentEditingExamId = examId;
+  const section = document.getElementById('exam-existing-questions-section');
+  if (section) section.classList.remove('hidden');
+
+  const tbody = document.getElementById('table-exam-existing-questions');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading attached questions...</td></tr>';
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/questions?exam_id=${examId}`));
+    const questions = await res.json();
+
+    const countEl = document.getElementById('exam-questions-count');
+    if (countEl) countEl.textContent = Array.isArray(questions) ? questions.length : 0;
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No questions attached to this exam yet. Attach a CSV file above or click "Add Question to Exam".</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    questions.forEach((q, idx) => {
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${idx + 1}</strong></td>
+          <td><strong>${escapeHtml(q.question_text)}</strong></td>
+          <td style="font-size:0.78rem;">
+            <div>A: ${escapeHtml(q.option_a)}</div>
+            <div>B: ${escapeHtml(q.option_b)}</div>
+            <div>C: ${escapeHtml(q.option_c)}</div>
+            <div>D: ${escapeHtml(q.option_d)}</div>
+          </td>
+          <td><span class="badge badge-success">Option ${q.correct_option}</span></td>
+          <td><strong>${q.marks || 5}</strong></td>
+          <td class="text-right">
+            <button type="button" class="btn btn-sm btn-outline" onclick="openEditQuestionModal(${q.id})" title="Edit Question"><i class="fa-solid fa-pen"></i></button>
+            <button type="button" class="btn btn-sm btn-danger" onclick="deleteQuestionInExamModal(${q.id}, ${examId})" title="Delete Question"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>
+      `;
+    });
+  } catch (err) {
+    console.error('Error loading exam questions:', err);
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading questions for this exam.</td></tr>';
+  }
+}
+
 function openAddQuestionForExam() {
   if (!currentEditingExamId) return;
   document.getElementById('form-question').reset();

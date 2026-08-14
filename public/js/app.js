@@ -467,6 +467,10 @@ async function loadExams() {
         ? `<button class="btn btn-sm btn-outline text-success" onclick="toggleExamResultsPrompt(${exam.id})" title="Results Visible to Students (Click to Hide)"><i class="fa-solid fa-eye"></i> Results: Visible</button>`
         : `<button class="btn btn-sm btn-outline text-amber" onclick="toggleExamResultsPrompt(${exam.id})" title="Results Hidden from Students (Click to Publish)"><i class="fa-solid fa-eye-slash"></i> Results: Hidden</button>`;
 
+      const pdfAdminBtn = exam.question_pdf_url
+        ? `<a href="${escapeHtml(exam.question_pdf_url)}" target="_blank" download class="badge badge-danger" style="text-decoration:none; display:inline-flex; align-items:center; gap:4px; padding:5px 10px;" title="Download Question PDF"><i class="fa-solid fa-file-pdf"></i> PDF Attached</a>`
+        : '';
+
       grid.innerHTML += `
         <div class="exam-card">
           <div>
@@ -475,6 +479,7 @@ async function loadExams() {
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${statusBadges[exam.status] || ''}
                 ${exam.show_results === 1 ? '<span class="badge badge-success"><i class="fa-solid fa-eye"></i> Results On</span>' : '<span class="badge badge-secondary"><i class="fa-solid fa-eye-slash"></i> Results Off</span>'}
+                ${pdfAdminBtn}
               </div>
             </div>
             <p class="exam-card-desc">${escapeHtml(exam.description || 'No description provided.')}</p>
@@ -507,6 +512,148 @@ async function loadExams() {
   } catch (err) {
     console.error('Error loading exams:', err);
   }
+}
+
+// -------------------------------------------------------------
+// QUESTION PAPER PDF UPLOAD HELPERS
+// -------------------------------------------------------------
+let selectedManualPdfBase64 = null;
+let selectedManualPdfFileName = '';
+
+function switchPdfUploadOption(opt) {
+  const btnUpload = document.getElementById('btn-pdf-opt-upload');
+  const btnDrive = document.getElementById('btn-pdf-opt-drive');
+  const boxUpload = document.getElementById('pdf-upload-manual-container');
+  const boxDrive = document.getElementById('pdf-upload-drive-container');
+
+  if (opt === 'upload') {
+    if (btnUpload) btnUpload.classList.add('active');
+    if (btnDrive) btnDrive.classList.remove('active');
+    if (boxUpload) boxUpload.classList.remove('hidden');
+    if (boxDrive) boxDrive.classList.add('hidden');
+  } else {
+    if (btnDrive) btnDrive.classList.add('active');
+    if (btnUpload) btnUpload.classList.remove('active');
+    if (boxDrive) boxDrive.classList.remove('hidden');
+    if (boxUpload) boxUpload.classList.add('hidden');
+  }
+}
+
+function handleManualPdfSelect(event) {
+  const file = event.target.files[0];
+  const uploadBtn = document.getElementById('btn-upload-pdf-file');
+  if (!file) {
+    selectedManualPdfBase64 = null;
+    selectedManualPdfFileName = '';
+    if (uploadBtn) uploadBtn.disabled = true;
+    return;
+  }
+
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Please select a valid PDF file (.pdf).');
+    event.target.value = '';
+    selectedManualPdfBase64 = null;
+    selectedManualPdfFileName = '';
+    if (uploadBtn) uploadBtn.disabled = true;
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    selectedManualPdfBase64 = e.target.result;
+    selectedManualPdfFileName = file.name;
+    if (uploadBtn) uploadBtn.disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadManualPdfFile() {
+  if (!selectedManualPdfBase64) {
+    alert('Please select a PDF file first.');
+    return;
+  }
+
+  const uploadBtn = document.getElementById('btn-upload-pdf-file');
+  if (uploadBtn) {
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Uploading...';
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/admin/upload-pdf'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: selectedManualPdfFileName,
+        fileData: selectedManualPdfBase64
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to upload PDF file.');
+      if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Upload PDF';
+      }
+      return;
+    }
+
+    setAttachedPdfStatus(data.url, selectedManualPdfFileName || 'Question_Paper.pdf', 'Manual Server Upload');
+    alert('PDF file uploaded successfully and attached to this exam!');
+  } catch (err) {
+    alert('Error uploading PDF file: ' + (err.message || 'Unknown error'));
+  } finally {
+    if (uploadBtn) {
+      uploadBtn.disabled = false;
+      uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Upload PDF';
+    }
+  }
+}
+
+function handleDriveLinkInput(event) {
+  const val = (event.target.value || '').trim();
+  if (val) {
+    setAttachedPdfStatus(val, 'Google Drive PDF Link', 'Google Drive');
+  } else {
+    removeAttachedPdf();
+  }
+}
+
+function setAttachedPdfStatus(url, filename, sourceType) {
+  const pdfUrlInput = document.getElementById('exam-pdf-url');
+  if (pdfUrlInput) pdfUrlInput.value = url;
+
+  const statusBar = document.getElementById('exam-pdf-status-bar');
+  const filenameEl = document.getElementById('exam-pdf-filename-display');
+  const sourceTypeEl = document.getElementById('exam-pdf-source-type-display');
+  const previewLink = document.getElementById('exam-pdf-preview-link');
+
+  if (filenameEl) filenameEl.textContent = filename || 'Question_Paper.pdf';
+  if (sourceTypeEl) sourceTypeEl.textContent = `Source: ${sourceType || 'PDF Attachment'}`;
+  if (previewLink) previewLink.href = url;
+
+  if (statusBar) statusBar.classList.remove('hidden');
+}
+
+function removeAttachedPdf() {
+  const pdfUrlInput = document.getElementById('exam-pdf-url');
+  if (pdfUrlInput) pdfUrlInput.value = '';
+
+  const fileInput = document.getElementById('exam-pdf-file-input');
+  if (fileInput) fileInput.value = '';
+
+  const driveInput = document.getElementById('exam-pdf-drive-input');
+  if (driveInput) driveInput.value = '';
+
+  selectedManualPdfBase64 = null;
+  selectedManualPdfFileName = '';
+
+  const uploadBtn = document.getElementById('btn-upload-pdf-file');
+  if (uploadBtn) uploadBtn.disabled = true;
+
+  const statusBar = document.getElementById('exam-pdf-status-bar');
+  if (statusBar) statusBar.classList.add('hidden');
 }
 
 let parsedExamModalCSVData = [];
@@ -575,6 +722,8 @@ function openExamModal() {
   const section = document.getElementById('exam-existing-questions-section');
   if (section) section.classList.add('hidden');
 
+  removeAttachedPdf();
+  switchPdfUploadOption('upload');
   clearExamModalCSV();
   openModal('modal-exam');
 }
@@ -596,6 +745,25 @@ function editExam(id) {
   if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);
 
   document.getElementById('modal-exam-title').textContent = `Edit Exam & Questions (${exam.title})`;
+
+  removeAttachedPdf();
+  if (exam.question_pdf_url) {
+    const isDrive = exam.question_pdf_url.includes('drive.google.com') || exam.question_pdf_url.includes('docs.google.com');
+    const sourceType = isDrive ? 'Google Drive Link' : 'Manual Server Upload';
+    const displayName = isDrive ? 'Google Drive PDF Link' : (exam.question_pdf_url.split('/').pop() || 'Question_Paper.pdf');
+
+    if (isDrive) {
+      switchPdfUploadOption('drive');
+      const driveInput = document.getElementById('exam-pdf-drive-input');
+      if (driveInput) driveInput.value = exam.question_pdf_url;
+    } else {
+      switchPdfUploadOption('upload');
+    }
+    setAttachedPdfStatus(exam.question_pdf_url, displayName, sourceType);
+  } else {
+    switchPdfUploadOption('upload');
+  }
+
   clearExamModalCSV();
 
   loadExamQuestionsInModal(id);
@@ -660,6 +828,7 @@ async function saveExamForm(e) {
   const pass_marks = parseInt(document.getElementById('exam-pass-marks').value);
   const status = document.getElementById('exam-status').value;
   const show_results = document.getElementById('exam-show-results').checked ? 1 : 0;
+  const question_pdf_url = document.getElementById('exam-pdf-url').value;
 
   const path = id ? `/api/admin/exams/${id}` : '/api/admin/exams';
   const method = id ? 'PUT' : 'POST';
@@ -676,6 +845,7 @@ async function saveExamForm(e) {
         pass_marks,
         status,
         show_results,
+        question_pdf_url,
         questions: parsedExamModalCSVData
       })
     });
@@ -1276,10 +1446,48 @@ function renderStudentExamCards(exams, containerId) {
               </div>
             </div>
           ` : ''}
+    const pdfDownloadBtn = exam.question_pdf_url ? `
+      <a href="${escapeHtml(exam.question_pdf_url)}" target="_blank" download class="btn btn-block btn-pdf-download" style="background:#fef2f2; color:#dc2626; border:1px solid #fca5a5; font-weight:600; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; padding:9px 14px; border-radius:8px; font-size:0.88rem; margin-top:8px; transition:all 0.2s;">
+        <i class="fa-solid fa-file-pdf" style="font-size:1.1rem; color:#dc2626;"></i> Download Question PDF
+      </a>
+    ` : '';
+
+    grid.innerHTML += `
+      <div class="exam-card lms-exam-card ${isCompleted ? 'completed' : ''}">
+        <div class="exam-card-top">
+          <div class="exam-card-header">
+            <div class="exam-icon-badge">
+              <i class="fa-solid fa-graduation-cap"></i>
+            </div>
+            ${statusTag}
+          </div>
+          <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
+          <div class="exam-tag-pill">TEST</div>
+          <p class="exam-card-desc">${escapeHtml(exam.description || 'Comprehensive assessment designed to evaluate core knowledge and problem-solving skills.')}</p>
+
+          <div class="exam-meta-pills">
+            <span class="meta-pill"><i class="fa-regular fa-clock"></i> ${exam.duration_minutes} Mins</span>
+            <span class="meta-pill"><i class="fa-solid fa-list-check"></i> ${exam.question_count} Qs</span>
+            <span class="meta-pill"><i class="fa-solid fa-trophy"></i> Total: ${exam.total_marks}</span>
+            <span class="meta-pill"><i class="fa-solid fa-flag"></i> Pass: ${exam.pass_marks}</span>
+          </div>
+
+          ${(isCompleted && isResultsVisible) ? `
+            <div class="exam-progress-box">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill ${exam.passed === 1 ? 'fill-pass' : 'fill-fail'}" style="width: ${Math.min(100, Math.max(0, exam.percentage))}%;"></div>
+              </div>
+              <div class="progress-info-row">
+                <span>Score: ${exam.obtained_marks} / ${exam.total_marks}</span>
+                <span class="score-pct-tag ${exam.passed === 1 ? 'text-success' : 'text-danger'}">${exam.percentage}%</span>
+              </div>
+            </div>
+          ` : ''}
         </div>
 
-        <div class="exam-card-footer">
+        <div class="exam-card-footer" style="flex-direction: column; gap: 6px;">
           ${actionButton}
+          ${pdfDownloadBtn}
         </div>
       </div>
     `;
@@ -1364,6 +1572,16 @@ async function startStudentExam(examId) {
       timerInterval: null,
       secondsRemaining: (data.exam.duration_minutes || 15) * 60
     };
+
+    // Set Question PDF download link for live exam session header
+    const pdfBtnContainer = document.getElementById('exam-taker-pdf-btn-container');
+    const pdfLink = document.getElementById('exam-taker-pdf-link');
+    if (data.exam && data.exam.question_pdf_url) {
+      if (pdfLink) pdfLink.href = data.exam.question_pdf_url;
+      if (pdfBtnContainer) pdfBtnContainer.classList.remove('hidden');
+    } else {
+      if (pdfBtnContainer) pdfBtnContainer.classList.add('hidden');
+    }
 
     // Render Exam View
     const titleElem = document.getElementById('exam-take-title');
@@ -1701,11 +1919,20 @@ async function viewAttemptScorecard(attemptId) {
     const attendedQs = (attempt.total_questions || questions.length) - (attempt.unanswered || 0);
     const notAttendedQs = attempt.unanswered || 0;
 
+    const pdfScorecardBtn = attempt.question_pdf_url ? `
+      <div style="margin-top: 12px; text-align: center;">
+        <a href="${escapeHtml(attempt.question_pdf_url)}" target="_blank" download class="btn btn-sm btn-outline-danger" style="background:#fef2f2; border:1px solid #fca5a5; color:#dc2626; font-weight:600; border-radius:8px; padding:6px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+          <i class="fa-solid fa-file-pdf"></i> Download Question Paper PDF
+        </a>
+      </div>
+    ` : '';
+
     let html = `
       <div class="result-score-banner">
         <h3>${escapeHtml(attempt.exam_title)}</h3>
         <div class="result-score-val mt-2">${attempt.percentage}%</div>
         <div class="mt-2">${statusBadge}</div>
+        ${pdfScorecardBtn}
       </div>
 
       <div class="result-grid-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; margin-top: 16px;">

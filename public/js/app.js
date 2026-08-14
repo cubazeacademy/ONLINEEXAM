@@ -984,19 +984,23 @@ async function loadExamQuestionsInModal(examId) {
     questions.forEach((q, idx) => {
       tbody.innerHTML += `
         <tr>
-          <td><strong>${idx + 1}</strong></td>
-          <td><strong>${escapeHtml(q.question_text)}</strong></td>
-          <td style="font-size:0.78rem;">
-            <div>A: ${escapeHtml(q.option_a)}</div>
-            <div>B: ${escapeHtml(q.option_b)}</div>
-            <div>C: ${escapeHtml(q.option_c)}</div>
-            <div>D: ${escapeHtml(q.option_d)}</div>
+          <td style="text-align:center; font-weight:700; color:#64748b;">${idx + 1}</td>
+          <td><strong style="color:#0f172a; line-height: 1.4;">${escapeHtml(q.question_text)}</strong></td>
+          <td style="font-size:0.8rem; color:#475569;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+              <div><span style="font-weight:700; color:#3b82f6;">A:</span> ${escapeHtml(q.option_a)}</div>
+              <div><span style="font-weight:700; color:#3b82f6;">B:</span> ${escapeHtml(q.option_b)}</div>
+              <div><span style="font-weight:700; color:#3b82f6;">C:</span> ${escapeHtml(q.option_c)}</div>
+              <div><span style="font-weight:700; color:#3b82f6;">D:</span> ${escapeHtml(q.option_d)}</div>
+            </div>
           </td>
-          <td><span class="badge badge-success">Option ${q.correct_option}</span></td>
-          <td><strong>${q.marks || 5}</strong></td>
+          <td style="text-align:center;"><span class="badge badge-success" style="font-weight:700; padding:4px 10px; border-radius:6px;">Option ${q.correct_option}</span></td>
+          <td style="text-align:center;"><span class="badge" style="background:#f1f5f9; color:#334155; font-weight:700; padding:4px 8px;">${q.marks || 5} M</span></td>
           <td class="text-right">
-            <button type="button" class="btn btn-sm btn-outline" onclick="openEditQuestionModal(${q.id})" title="Edit Question"><i class="fa-solid fa-pen"></i></button>
-            <button type="button" class="btn btn-sm btn-danger" onclick="deleteQuestionInExamModal(${q.id}, ${examId})" title="Delete Question"><i class="fa-solid fa-trash"></i></button>
+            <div style="display:inline-flex; gap:6px;">
+              <button type="button" class="btn btn-sm btn-outline" onclick="openEditQuestionModal(${q.id})" title="Edit Question" style="padding:4px 8px; border-radius:6px;"><i class="fa-solid fa-pen" style="color:#2563eb;"></i></button>
+              <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteQuestionInExamModal(${q.id}, ${examId})" title="Delete Question" style="padding:4px 8px; border-radius:6px; border-color:#fca5a5;"><i class="fa-solid fa-trash"></i></button>
+            </div>
           </td>
         </tr>
       `;

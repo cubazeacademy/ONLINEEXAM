@@ -804,158 +804,206 @@
     </div>
   </div>
 
-  <!-- MODAL: ADD / EDIT EXAM -->
+  <!-- MODAL: ADD / EDIT EXAM (MODERN REDESIGN) -->
   <div id="modal-exam" class="modal-overlay hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3 id="modal-exam-title">Create New Exam</h3>
-        <button class="btn-close" onclick="closeModal('modal-exam')">&times;</button>
+    <div class="modal-content modal-content-wide">
+      <!-- MODERN HEADER -->
+      <div class="modal-header-modern">
+        <div class="modal-header-left">
+          <div class="modal-icon-badge">
+            <i class="fa-solid fa-graduation-cap"></i>
+          </div>
+          <div class="modal-header-text">
+            <h3 id="modal-exam-title">Create New Examination</h3>
+            <p>Configure assessment parameters, scoring rules, and assigned questions.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-modern" onclick="closeModal('modal-exam')" title="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
-      <form id="form-exam" onsubmit="saveExamForm(event)">
-        <input type="hidden" id="exam-id">
-        <div class="form-group">
-          <label>Exam Title <span class="text-danger">*</span></label>
-          <input type="text" id="exam-title" placeholder="e.g. Web Development Quiz" required>
-        </div>
-        <div class="form-group">
-          <label>Description</label>
-          <textarea id="exam-desc" rows="2" placeholder="Brief overview of topics covered"></textarea>
-        </div>
-        <div class="form-row">
-          <div class="form-group col-6">
-            <label>Duration (Minutes) <span class="text-danger">*</span></label>
-            <input type="number" id="exam-duration" value="30" min="1" required>
-          </div>
-          <div class="form-group col-6">
-            <label>Total Marks <span class="text-danger">*</span></label>
-            <input type="number" id="exam-total-marks" value="100" min="1" required>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group col-6">
-            <label>Pass Marks <span class="text-danger">*</span></label>
-            <input type="number" id="exam-pass-marks" value="40" min="1" required>
-          </div>
-          <div class="form-group col-6">
-            <label>Exam Status <span class="text-danger">*</span></label>
-            <select id="exam-status" required>
-              <option value="draft">Draft (Hidden)</option>
-              <option value="published">Published (Available to Students)</option>
-              <option value="active">Active (Ongoing)</option>
-              <option value="stopped">Stopped (Closed)</option>
-            </select>
-          </div>
-        </div>
 
-        <div class="form-group mt-3"
-          style="background: #f1f5f9; padding: 12px 16px; border-radius: 10px; border: 1px solid #cbd5e1;">
-          <label
-            style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: #1e293b; margin: 0;">
-            <input type="checkbox" id="exam-show-results" value="1" style="width: 18px; height: 18px; cursor: pointer;">
-            <span><i class="fa-solid fa-eye" style="color: var(--primary);"></i> Allow Students to View Results /
-              Scorecard</span>
-          </label>
-          <small class="text-muted" style="display: block; margin-top: 4px; font-size: 0.8rem; padding-left: 28px;">If
-            unchecked, students will see <strong>"RESULT COMING SOON"</strong> until published by Admin.</small>
-        </div>
+      <!-- FORM & SCROLLABLE BODY -->
+      <form id="form-exam" onsubmit="saveExamForm(event)" style="display: flex; flex-direction: column; flex: 1; overflow: hidden; margin: 0;">
+        <div class="modal-body-scrollable">
+          <input type="hidden" id="exam-id">
 
-        <!-- UPLOAD QUESTION PAPER PDF OPTION -->
-        <div class="exam-pdf-upload-section mt-3 p-3"
-          style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
-          <label style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-            <i class="fa-solid fa-file-pdf" style="color: #ef4444; font-size: 1.1rem;"></i> Attach Question Paper PDF (Optional)
-          </label>
-          <p class="text-muted mb-2" style="font-size: 0.82rem;">Upload a PDF file so students can view or download the question paper on their portal.</p>
-          <input type="file" id="exam-pdf-file-input" accept=".pdf" onchange="handleExamPdfUpload(event)">
-          <input type="hidden" id="exam-question-pdf-url">
-          <div id="exam-pdf-status" class="hidden mt-2" style="font-size: 0.85rem; color: #047857; font-weight: 500;">
-            <i class="fa-solid fa-circle-check"></i> <span id="exam-pdf-status-text">PDF Uploaded Successfully</span>
-            <button type="button" class="btn btn-sm btn-link text-danger" onclick="removeExamPdfFile()" style="margin-left: 10px; padding:0; text-decoration:underline;">Remove PDF</button>
-          </div>
-        </div>
-
-        <!-- ATTACH / UPLOAD QUESTIONS CSV OPTION -->
-        <div class="exam-questions-upload-section mt-4 p-4"
-          style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <label style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-file-csv" style="color: #10b981; font-size: 1.1rem;"></i> Attach / Upload Questions
-              CSV
-            </label>
-            <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleQuestionsCSV()">
-              <i class="fa-solid fa-download"></i> Sample CSV
-            </button>
-          </div>
-          <p class="text-muted mb-2" style="font-size: 0.82rem;">Upload a CSV file containing questions for this exam.
-            Questions will be automatically saved to Supabase and linked to this exam.</p>
-          <input type="file" id="exam-questions-file-input" accept=".csv" onchange="previewExamModalCSV(event)">
-
-          <div id="exam-modal-csv-preview" class="hidden mt-3">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <span style="font-size: 0.85rem; font-weight: 600; color: #047857;">
-                <i class="fa-solid fa-circle-check"></i> <span id="exam-modal-csv-count">0</span> Questions Ready to
-                Save with Exam
-              </span>
-              <button type="button" class="btn btn-sm btn-outline text-danger" onclick="clearExamModalCSV()">Remove
-                File</button>
+          <!-- SECTION 1: BASIC DETAILS -->
+          <div class="modern-section-card">
+            <div class="modern-section-title">
+              <i class="fa-solid fa-file-signature"></i> Basic Exam Information
             </div>
-            <div class="table-responsive"
-              style="max-height: 140px; border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff;">
-              <table class="data-table" style="font-size: 0.8rem;">
-                <thead>
+            <div class="form-group mb-3">
+              <label for="exam-title" style="font-weight: 600; color: #1e293b; font-size: 0.88rem; margin-bottom: 6px; display: block;">
+                Examination Title <span class="text-danger">*</span>
+              </label>
+              <input type="text" id="exam-title" class="form-input-modern" placeholder="e.g. Web Development Fundamentals Quiz" required>
+            </div>
+            <div class="form-group mb-0">
+              <label for="exam-desc" style="font-weight: 600; color: #1e293b; font-size: 0.88rem; margin-bottom: 6px; display: block;">
+                Description / Syllabus Overview
+              </label>
+              <textarea id="exam-desc" class="form-input-modern" rows="2" placeholder="Brief outline of covered subjects, instructions, and test guidelines..."></textarea>
+            </div>
+          </div>
+
+          <!-- SECTION 2: TIMING & GRADING CRITERIA -->
+          <div class="modern-section-card">
+            <div class="modern-section-title">
+              <i class="fa-solid fa-sliders"></i> Timing, Scoring & Publishing Status
+            </div>
+            <div class="grid-4-cols">
+              <div class="form-group mb-0">
+                <label for="exam-duration" style="font-weight: 600; color: #1e293b; font-size: 0.85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-regular fa-clock" style="color: #3b82f6;"></i> Duration (Mins) <span class="text-danger">*</span>
+                </label>
+                <input type="number" id="exam-duration" class="form-input-modern" value="30" min="1" required>
+              </div>
+              <div class="form-group mb-0">
+                <label for="exam-total-marks" style="font-weight: 600; color: #1e293b; font-size: 0.85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-trophy" style="color: #f59e0b;"></i> Total Marks <span class="text-danger">*</span>
+                </label>
+                <input type="number" id="exam-total-marks" class="form-input-modern" value="100" min="1" required>
+              </div>
+              <div class="form-group mb-0">
+                <label for="exam-pass-marks" style="font-weight: 600; color: #1e293b; font-size: 0.85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-flag" style="color: #10b981;"></i> Pass Marks <span class="text-danger">*</span>
+                </label>
+                <input type="number" id="exam-pass-marks" class="form-input-modern" value="40" min="1" required>
+              </div>
+              <div class="form-group mb-0">
+                <label for="exam-status" style="font-weight: 600; color: #1e293b; font-size: 0.85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-signal" style="color: #6366f1;"></i> Exam Status <span class="text-danger">*</span>
+                </label>
+                <select id="exam-status" class="form-input-modern" required>
+                  <option value="draft">Draft (Hidden)</option>
+                  <option value="published">Published (Available to Students)</option>
+                  <option value="active">Active (Ongoing)</option>
+                  <option value="stopped">Stopped (Closed)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 3: RESULTS VISIBILITY SWITCH -->
+          <div class="modern-section-card" style="padding: 12px 16px;">
+            <label class="modern-toggle-card" for="exam-show-results" style="margin: 0;">
+              <div class="modern-toggle-info">
+                <div class="toggle-icon">
+                  <i class="fa-solid fa-eye"></i>
+                </div>
+                <div>
+                  <h5>Allow Students to View Scorecards & Results</h5>
+                  <p>When turned on, students instantly see marks, percentages, and answer breakdowns upon submission.</p>
+                </div>
+              </div>
+              <input type="checkbox" id="exam-show-results" value="1" style="width: 22px; height: 22px; cursor: pointer; accent-color: #2563eb;">
+            </label>
+          </div>
+
+          <!-- SECTION 4: ATTACHMENTS (2 COLUMNS: PDF & CSV) -->
+          <div class="modern-section-card">
+            <div class="modern-section-title">
+              <i class="fa-solid fa-paperclip"></i> Exam Resources & Attachments
+            </div>
+            <div class="grid-2-cols">
+              <!-- ATTACH PDF -->
+              <div class="modern-dropzone">
+                <div class="modern-dropzone-header">
+                  <span class="modern-dropzone-title">
+                    <i class="fa-solid fa-file-pdf" style="color: #ef4444; font-size: 1.1rem;"></i> Question Paper (PDF)
+                  </span>
+                  <span class="badge badge-info" style="font-size: 0.72rem; padding: 2px 8px;">Optional</span>
+                </div>
+                <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 10px;">Upload a PDF paper so students can view and download it.</p>
+                <input type="file" id="exam-pdf-file-input" accept=".pdf" onchange="handleExamPdfUpload(event)" style="font-size: 0.85rem; width: 100%;">
+                <input type="hidden" id="exam-question-pdf-url">
+                <div id="exam-pdf-status" class="hidden mt-2" style="font-size: 0.82rem; color: #047857; font-weight: 600; background: #ecfdf5; padding: 6px 10px; border-radius: 8px; border: 1px solid #a7f3d0; display: flex; align-items: center; justify-content: space-between;">
+                  <span><i class="fa-solid fa-circle-check"></i> <span id="exam-pdf-status-text">PDF Uploaded</span></span>
+                  <button type="button" class="btn btn-sm btn-link text-danger" onclick="removeExamPdfFile()" style="padding: 0; text-decoration: underline; font-weight: 600;">Remove</button>
+                </div>
+              </div>
+
+              <!-- UPLOAD CSV -->
+              <div class="modern-dropzone">
+                <div class="modern-dropzone-header">
+                  <span class="modern-dropzone-title">
+                    <i class="fa-solid fa-file-csv" style="color: #10b981; font-size: 1.1rem;"></i> Import Questions CSV
+                  </span>
+                  <button type="button" class="btn btn-sm btn-outline" style="font-size: 0.75rem; padding: 2px 8px;" onclick="downloadSampleQuestionsCSV()">
+                    <i class="fa-solid fa-download"></i> Sample CSV
+                  </button>
+                </div>
+                <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 10px;">Batch import questions directly into this examination.</p>
+                <input type="file" id="exam-questions-file-input" accept=".csv" onchange="previewExamModalCSV(event)" style="font-size: 0.85rem; width: 100%;">
+
+                <div id="exam-modal-csv-preview" class="hidden mt-2">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="font-size: 0.82rem; font-weight: 600; color: #047857;">
+                      <i class="fa-solid fa-circle-check"></i> <span id="exam-modal-csv-count">0</span> Questions Ready
+                    </span>
+                    <button type="button" class="btn btn-sm btn-outline text-danger" style="font-size: 0.75rem; padding: 1px 6px;" onclick="clearExamModalCSV()">Clear</button>
+                  </div>
+                  <div class="table-responsive" style="max-height: 120px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
+                    <table class="data-table" style="font-size: 0.78rem;">
+                      <thead>
+                        <tr>
+                          <th>Question</th>
+                          <th>Options</th>
+                          <th>Ans</th>
+                          <th>Marks</th>
+                        </tr>
+                      </thead>
+                      <tbody id="table-exam-modal-csv-preview"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 5: ATTACHED QUESTIONS MANAGEMENT TABLE (FOR EDITING) -->
+          <div id="exam-existing-questions-section" class="modern-section-card hidden" style="padding: 18px 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+              <div class="modern-section-title" style="margin: 0;">
+                <i class="fa-solid fa-layer-group"></i> Attached Questions
+                <span class="badge badge-primary" style="font-size: 0.8rem; padding: 3px 10px; margin-left: 6px;" id="exam-questions-count">0</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" onclick="openAddQuestionForExam()" style="border-radius: 8px; font-weight: 600;">
+                <i class="fa-solid fa-plus"></i> Add Question to Exam
+              </button>
+            </div>
+
+            <div class="table-responsive" style="max-height: 320px; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
+              <table class="data-table" style="font-size: 0.85rem; margin: 0;">
+                <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 2;">
                   <tr>
-                    <th>Question</th>
-                    <th>Options</th>
-                    <th>Correct</th>
-                    <th>Marks</th>
+                    <th style="width: 40px; text-align: center;">#</th>
+                    <th>Question Statement</th>
+                    <th style="min-width: 180px;">Options</th>
+                    <th style="width: 90px; text-align: center;">Correct</th>
+                    <th style="width: 70px; text-align: center;">Marks</th>
+                    <th class="text-right" style="width: 90px;">Actions</th>
                   </tr>
                 </thead>
-                <tbody id="table-exam-modal-csv-preview"></tbody>
+                <tbody id="table-exam-existing-questions">
+                  <tr>
+                    <td colspan="6" class="text-center text-muted p-4">Loading attached questions...</td>
+                  </tr>
+                </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        <!-- EXISTING ATTACHED QUESTIONS MANAGEMENT SECTION -->
-        <div id="exam-existing-questions-section" class="mt-4 p-4 hidden"
-          style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <div
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-            <h4
-              style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Attached Questions (<span
-                id="exam-questions-count">0</span>)
-            </h4>
-            <button type="button" class="btn btn-sm btn-primary" onclick="openAddQuestionForExam()">
-              <i class="fa-solid fa-plus"></i> Add Question to Exam
-            </button>
-          </div>
-
-          <div class="table-responsive" style="max-height: 280px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <table class="data-table" style="font-size: 0.85rem;">
-              <thead>
-                <tr>
-                  <th style="width: 35px;">#</th>
-                  <th>Question Statement</th>
-                  <th>Options</th>
-                  <th>Answer</th>
-                  <th>Marks</th>
-                  <th class="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="table-exam-existing-questions">
-                <tr>
-                  <td colspan="6" class="text-center text-muted">Loading questions...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="modal-footer mt-4">
-          <button type="button" class="btn btn-outline" onclick="closeModal('modal-exam')">Cancel</button>
-          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Exam
-            Details</button>
+        <!-- MODERN STICKY FOOTER -->
+        <div class="modal-footer-modern">
+          <button type="button" class="btn btn-outline" style="border-radius: 10px; padding: 9px 20px;" onclick="closeModal('modal-exam')">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary" style="border-radius: 10px; padding: 9px 24px; font-weight: 600; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);">
+            <i class="fa-solid fa-floppy-disk"></i> Save Exam Changes
+          </button>
         </div>
       </form>
     </div>

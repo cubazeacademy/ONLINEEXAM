@@ -74,6 +74,7 @@ async function initDb() {
 
     // Ensure missing columns exist
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS show_results INTEGER DEFAULT 0;`);
+    await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS question_pdf_url TEXT;`);
 
     // 3. Questions table
     await pool.query(`

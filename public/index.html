@@ -55,16 +55,6 @@
         <button type="submit" class="btn btn-primary btn-block btn-lg">
           <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
         </button>
-
-        <div class="demo-login-hints" style="margin-top: 15px; text-align: center; font-size: 0.85rem; color: var(--text-muted, #64748b);">
-          <p style="margin-bottom: 6px;">Need demo login credentials?</p>
-          <button type="button" class="btn-link" style="background: none; border: none; color: #3b82f6; cursor: pointer; text-decoration: underline; font-weight: 500; margin-right: 10px;" onclick="fillDemoCredentials('student')">
-            <i class="fa-solid fa-user-graduate"></i> Demo Student
-          </button>
-          <button type="button" class="btn-link" style="background: none; border: none; color: #3b82f6; cursor: pointer; text-decoration: underline; font-weight: 500;" onclick="fillDemoCredentials('admin')">
-            <i class="fa-solid fa-user-shield"></i> Demo Admin
-          </button>
-        </div>
       </form>
     </div>
   </div>
@@ -867,6 +857,21 @@
           </label>
           <small class="text-muted" style="display: block; margin-top: 4px; font-size: 0.8rem; padding-left: 28px;">If
             unchecked, students will see <strong>"RESULT COMING SOON"</strong> until published by Admin.</small>
+        </div>
+
+        <!-- UPLOAD QUESTION PAPER PDF OPTION -->
+        <div class="exam-pdf-upload-section mt-3 p-3"
+          style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
+          <label style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-file-pdf" style="color: #ef4444; font-size: 1.1rem;"></i> Attach Question Paper PDF (Optional)
+          </label>
+          <p class="text-muted mb-2" style="font-size: 0.82rem;">Upload a PDF file so students can view or download the question paper on their portal.</p>
+          <input type="file" id="exam-pdf-file-input" accept=".pdf" onchange="handleExamPdfUpload(event)">
+          <input type="hidden" id="exam-question-pdf-url">
+          <div id="exam-pdf-status" class="hidden mt-2" style="font-size: 0.85rem; color: #047857; font-weight: 500;">
+            <i class="fa-solid fa-circle-check"></i> <span id="exam-pdf-status-text">PDF Uploaded Successfully</span>
+            <button type="button" class="btn btn-sm btn-link text-danger" onclick="removeExamPdfFile()" style="margin-left: 10px; padding:0; text-decoration:underline;">Remove PDF</button>
+          </div>
         </div>
 
         <!-- ATTACH / UPLOAD QUESTIONS CSV OPTION -->

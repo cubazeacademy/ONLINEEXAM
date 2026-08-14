@@ -590,6 +590,7 @@ function openExamModal() {
   const section = document.getElementById('exam-existing-questions-section');
   if (section) section.classList.add('hidden');
 
+  removeExamPdfFile();
   clearExamModalCSV();
   openModal('modal-exam');
 }
@@ -610,6 +611,17 @@ function editExam(id) {
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);
 
+  const pdfUrlInput = document.getElementById('exam-question-pdf-url');
+  if (pdfUrlInput) pdfUrlInput.value = exam.question_pdf_url || '';
+  const pdfStatusBox = document.getElementById('exam-pdf-status');
+  const pdfStatusText = document.getElementById('exam-pdf-status-text');
+  if (exam.question_pdf_url && pdfStatusBox && pdfStatusText) {
+    pdfStatusText.textContent = `Attached PDF: ${exam.question_pdf_url.split('/').pop()}`;
+    pdfStatusBox.classList.remove('hidden');
+  } else {
+    removeExamPdfFile();
+  }
+
   document.getElementById('modal-exam-title').textContent = `Edit Exam & Questions (${exam.title})`;
   clearExamModalCSV();
 
@@ -617,52 +629,50 @@ function editExam(id) {
   openModal('modal-exam');
 }
 
-async function loadExamQuestionsInModal(examId) {
-  currentEditingExamId = examId;
-  const section = document.getElementById('exam-existing-questions-section');
-  if (section) section.classList.remove('hidden');
+async function handleExamPdfUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
 
-  const tbody = document.getElementById('table-exam-existing-questions');
-  if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading attached questions...</td></tr>';
-
-  try {
-    const res = await fetch(apiUrl(`/api/admin/questions?exam_id=${examId}`));
-    const questions = await res.json();
-
-    const countEl = document.getElementById('exam-questions-count');
-    if (countEl) countEl.textContent = questions.length;
-
-    if (!questions || questions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No questions attached to this exam yet. Attach a CSV file above or click "Add Question to Exam".</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = '';
-    questions.forEach((q, idx) => {
-      tbody.innerHTML += `
-        <tr>
-          <td><strong>${idx + 1}</strong></td>
-          <td><strong>${escapeHtml(q.question_text)}</strong></td>
-          <td style="font-size:0.78rem;">
-            <div>A: ${escapeHtml(q.option_a)}</div>
-            <div>B: ${escapeHtml(q.option_b)}</div>
-            <div>C: ${escapeHtml(q.option_c)}</div>
-            <div>D: ${escapeHtml(q.option_d)}</div>
-          </td>
-          <td><span class="badge badge-success">Option ${q.correct_option}</span></td>
-          <td><strong>${q.marks || 5}</strong></td>
-          <td class="text-right">
-            <button type="button" class="btn btn-sm btn-outline" onclick="openEditQuestionModal(${q.id})" title="Edit Question"><i class="fa-solid fa-pen"></i></button>
-            <button type="button" class="btn btn-sm btn-danger" onclick="deleteQuestionInExamModal(${q.id}, ${examId})" title="Delete Question"><i class="fa-solid fa-trash"></i></button>
-          </td>
-        </tr>
-      `;
-    });
-  } catch (err) {
-    console.error('Error loading exam questions:', err);
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading questions for this exam.</td></tr>';
+  if (file.type !== 'application/pdf') {
+    alert('Please select a valid PDF file.');
+    event.target.value = '';
+    return;
   }
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const fileData = e.target.result;
+    try {
+      const res = await fetch(apiUrl('/api/admin/upload-pdf'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, fileData })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to upload PDF');
+
+      const pdfUrlInput = document.getElementById('exam-question-pdf-url');
+      if (pdfUrlInput) pdfUrlInput.value = data.url;
+      const statusBox = document.getElementById('exam-pdf-status');
+      const statusText = document.getElementById('exam-pdf-status-text');
+      if (statusBox && statusText) {
+        statusText.textContent = `PDF Uploaded: ${file.name}`;
+        statusBox.classList.remove('hidden');
+      }
+    } catch (err) {
+      alert('PDF upload error: ' + err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeExamPdfFile() {
+  const pdfInput = document.getElementById('exam-question-pdf-url');
+  if (pdfInput) pdfInput.value = '';
+  const fileInput = document.getElementById('exam-pdf-file-input');
+  if (fileInput) fileInput.value = '';
+  const statusBox = document.getElementById('exam-pdf-status');
+  if (statusBox) statusBox.classList.add('hidden');
 }
 
 async function saveExamForm(e) {
@@ -675,6 +685,7 @@ async function saveExamForm(e) {
   const pass_marks = parseInt(document.getElementById('exam-pass-marks').value);
   const status = document.getElementById('exam-status').value;
   const show_results = document.getElementById('exam-show-results').checked ? 1 : 0;
+  const question_pdf_url = document.getElementById('exam-question-pdf-url') ? document.getElementById('exam-question-pdf-url').value : null;
 
   const path = id ? `/api/admin/exams/${id}` : '/api/admin/exams';
   const method = id ? 'PUT' : 'POST';
@@ -691,6 +702,7 @@ async function saveExamForm(e) {
         pass_marks,
         status,
         show_results,
+        question_pdf_url,
         questions: parsedExamModalCSVData
       })
     });
@@ -1260,6 +1272,17 @@ function renderStudentExamCards(exams, containerId) {
       statusTag = `<span class="badge badge-info"><i class="fa-solid fa-bolt"></i> READY</span>`;
     }
 
+    let pdfBtnHtml = '';
+    if (exam.question_pdf_url) {
+      pdfBtnHtml = `
+        <div style="margin-bottom: 8px;">
+          <a href="${exam.question_pdf_url}" target="_blank" download class="btn btn-block btn-outline" style="display:flex; align-items:center; justify-content:center; gap:8px; border-color:#3b82f6; color:#2563eb; font-weight:600; text-decoration:none;">
+            <i class="fa-solid fa-file-pdf" style="color:#ef4444; font-size:1.1rem;"></i> Download Question Paper PDF
+          </a>
+        </div>
+      `;
+    }
+
     grid.innerHTML += `
       <div class="exam-card lms-exam-card ${isCompleted ? 'completed' : ''}">
         <div class="exam-card-top">
@@ -1294,6 +1317,7 @@ function renderStudentExamCards(exams, containerId) {
         </div>
 
         <div class="exam-card-footer">
+          ${pdfBtnHtml}
           ${actionButton}
         </div>
       </div>
@@ -1780,6 +1804,19 @@ async function viewAttemptScorecard(attemptId) {
         </div>
       `;
     });
+
+    html += `
+      <div class="result-actions-bar mt-4 pt-3" style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid #e2e8f0;">
+        ${attempt.question_pdf_url ? `
+          <a href="${attempt.question_pdf_url}" target="_blank" download class="btn btn-outline" style="border-color:#3b82f6; color:#2563eb; font-weight:600; text-decoration:none;">
+            <i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Download Question Paper PDF
+          </a>
+        ` : ''}
+        <button type="button" class="btn btn-primary" onclick="window.print()">
+          <i class="fa-solid fa-print"></i> Print / Save Scorecard (PDF)
+        </button>
+      </div>
+    `;
 
     content.innerHTML = html;
     openModal('modal-view-result');

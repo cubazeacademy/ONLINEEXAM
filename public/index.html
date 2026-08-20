@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=2.2">
+  <link rel="stylesheet" href="css/style.css?v=2.5">
 </head>
 
 <body>
@@ -247,58 +247,56 @@
         </section>
 
         <!-- ========================================== -->
+        <!-- ========================================== -->
         <!-- ADMIN 2: STUDENTS MANAGEMENT VIEW           -->
         <!-- ========================================== -->
         <section id="view-admin-students" class="tab-view hidden">
-          <div class="hero-banner">
-            <h2>Student Accounts Management</h2>
-            <p>Manage student profiles, import CSV records, and track academic performance.</p>
-            <i class="fa-solid fa-users hero-watermark"></i>
-          </div>
+          <div class="lms-card">
+            <div class="lms-card-header">
+              <div class="lms-header-title">
+                <i class="fa-solid fa-users"></i>
+                <span>Students Directory</span>
+                <span class="lms-count-badge">(<span id="students-total-count">0</span>)</span>
+              </div>
 
-          <div class="action-bar">
-            <div class="search-box">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="text" id="search-students" placeholder="Search student name, username or email..."
-                oninput="loadStudents()">
-            </div>
-            <div class="btn-group" style="display:flex; gap:10px;">
-              <button class="btn btn-warning hidden" id="btn-delete-selected-students"
-                onclick="deleteSelectedStudents()">
-                <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-students">0</span>)
-              </button>
-              <button class="btn btn-danger" onclick="clearAllStudents()">
-                <i class="fa-solid fa-trash-can"></i> Clear All Students
-              </button>
-              <button class="btn btn-success" onclick="openImportStudentsModal()">
-                <i class="fa-solid fa-file-csv"></i> Import Students CSV
-              </button>
-              <button class="btn btn-primary" onclick="openStudentModal()">
-                <i class="fa-solid fa-user-plus"></i> Add New Student
-              </button>
-            </div>
-          </div>
+              <div class="lms-header-controls">
+                <div class="lms-search-pill">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="search-students" placeholder="Search by name, roll, adm..." oninput="loadStudents()">
+                </div>
 
-          <div class="panel-card mt-4">
-            <div class="panel-body table-responsive">
+                <button class="btn btn-sm btn-warning hidden" id="btn-delete-selected-students" onclick="deleteSelectedStudents()">
+                  <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-students">0</span>)
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="clearAllStudents()" title="Clear all students">
+                  <i class="fa-solid fa-trash-can"></i> Clear All
+                </button>
+                <button class="btn btn-sm btn-success" onclick="openImportStudentsModal()">
+                  <i class="fa-solid fa-file-csv"></i> Import CSV
+                </button>
+                <button class="btn btn-sm btn-primary" onclick="openStudentModal()">
+                  <i class="fa-solid fa-user-plus"></i> Add Student
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="width: 40px;"><input type="checkbox" id="select-all-students"
-                        onchange="toggleSelectAllStudents(this)"></th>
-                    <th>Roll No</th>
-                    <th>Admission No</th>
-                    <th>Student Name</th>
-                    <th>Username</th>
+                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="select-all-students" onchange="toggleSelectAllStudents(this)"></th>
+                    <th style="white-space: nowrap;">Roll No</th>
+                    <th style="white-space: nowrap;">Adm No</th>
+                    <th>Student Details</th>
                     <th>Email</th>
-                    <th>Exams Taken</th>
-                    <th>Avg Percentage</th>
-                    <th class="text-right">Actions</th>
+                    <th style="text-align: center; white-space: nowrap;">Exams Taken</th>
+                    <th style="text-align: center; white-space: nowrap;">Avg Score</th>
+                    <th class="text-right" style="text-align: right; min-width: 140px;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="table-admin-students">
                   <tr>
-                    <td colspan="9" class="text-center">Loading students list...</td>
+                    <td colspan="8" class="text-center p-6 text-muted">Loading students list...</td>
                   </tr>
                 </tbody>
               </table>
@@ -334,36 +332,11 @@
         <!-- ADMIN 4: RESULTS & ANALYTICS VIEW           -->
         <!-- ========================================== -->
         <section id="view-admin-results" class="tab-view hidden">
-          <div class="hero-banner">
-            <h2>Results & Performance Analytics</h2>
-            <p>View comprehensive audit logs, scorecards, and student performance metrics.</p>
-            <i class="fa-solid fa-trophy hero-watermark"></i>
-          </div>
-
-          <div class="action-bar flex-wrap">
-            <div class="search-box">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="text" id="search-admin-results" placeholder="Search student name, username, or exam..."
-                oninput="loadAdminResults()">
-            </div>
-
-            <div class="filter-group">
-              <select id="filter-result-exam" onchange="loadAdminResults()">
-                <option value="">-- Select Exam --</option>
-              </select>
-            </div>
-
-            <button class="btn btn-success" onclick="exportResultsCSV()">
-              <i class="fa-solid fa-file-csv"></i> Export Results CSV
-            </button>
-          </div>
-
           <!-- EXAM EXECUTIVE SUMMARY CARDS -->
-          <div id="admin-results-summary-cards" class="metrics-grid mt-4 hidden">
+          <div id="admin-results-summary-cards" class="metrics-grid mb-4 hidden">
             <div class="metric-card bg-emerald"
               style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-users"></i>
-              </div>
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-users"></i></div>
               <div class="metric-data">
                 <span class="metric-value" id="summary-stat-attended">0</span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Attended Students</span>
@@ -372,8 +345,7 @@
 
             <div class="metric-card bg-rose"
               style="background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-user-xmark"></i>
-              </div>
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-user-xmark"></i></div>
               <div class="metric-data">
                 <span class="metric-value" id="summary-stat-not-attended">0</span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Not Attended</span>
@@ -382,46 +354,70 @@
 
             <div class="metric-card bg-sky"
               style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i
-                  class="fa-solid fa-square-check"></i></div>
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-square-check"></i></div>
               <div class="metric-data">
-                <span class="metric-value"><span id="summary-stat-right">0</span> / <span
-                    id="summary-stat-wrong">0</span></span>
+                <span class="metric-value"><span id="summary-stat-right">0</span> / <span id="summary-stat-wrong">0</span></span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Right / Wrong Answers</span>
               </div>
             </div>
 
             <div class="metric-card bg-indigo"
               style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color:#ffffff;">
-              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-award"></i>
-              </div>
+              <div class="metric-icon" style="background: rgba(255,255,255,0.2);"><i class="fa-solid fa-award"></i></div>
               <div class="metric-data">
-                <span class="metric-value"><span id="summary-stat-avg-marks">0</span> / <span
-                    id="summary-stat-pass-marks">0</span></span>
+                <span class="metric-value"><span id="summary-stat-avg-marks">0</span> / <span id="summary-stat-pass-marks">0</span></span>
                 <span class="metric-label" style="color: rgba(255,255,255,0.9);">Avg Obtained / Required Mark</span>
               </div>
             </div>
           </div>
 
-          <div class="panel-card mt-4">
-            <div class="panel-body table-responsive">
+          <div class="lms-card">
+            <div class="lms-card-header">
+              <div class="lms-header-title">
+                <i class="fa-solid fa-book-open"></i>
+                <span>Results Log</span>
+                <span class="lms-count-badge">(<span id="results-total-count">0</span>)</span>
+              </div>
+
+              <div class="lms-header-controls">
+                <div class="lms-search-pill">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="search-admin-results" placeholder="Search student, username..." oninput="loadAdminResults()">
+                </div>
+
+                <div class="lms-filter-select-wrap">
+                  <select id="filter-result-exam" onchange="loadAdminResults()">
+                    <option value="">All Examinations</option>
+                  </select>
+                  <i class="fa-solid fa-chevron-down select-arrow"></i>
+                </div>
+
+                <button id="btn-allow-selected-reattend" class="btn btn-sm btn-warning hidden" onclick="bulkAllowReattend()" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; font-weight:600;">
+                  <i class="fa-solid fa-rotate-left"></i> Allow Re-attend (<span id="count-selected-results">0</span>)
+                </button>
+
+                <button class="btn btn-sm btn-success" onclick="exportResultsCSV()">
+                  <i class="fa-solid fa-file-csv"></i> Export CSV
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Student Name</th>
-                    <th>Exam Title</th>
-                    <th>Right / Wrong / Unanswered</th>
-                    <th>Obtained Marks</th>
-                    <th>Required Pass Marks</th>
-                    <th>Percentage</th>
-                    <th>Status</th>
-                    <th>Date Submitted</th>
-                    <th class="text-right">Action</th>
+                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="select-all-results" onchange="toggleSelectAllResults(this)"></th>
+                    <th style="white-space: nowrap;">Date Submitted</th>
+                    <th style="white-space: nowrap;">Student Details</th>
+                    <th style="white-space: nowrap;">Performance</th>
+                    <th style="text-align: center; white-space: nowrap;">Score</th>
+                    <th style="text-align: center; white-space: nowrap;">Status</th>
+                    <th class="text-right" style="text-align: right; min-width: 220px; white-space: nowrap;">Session Actions</th>
                   </tr>
                 </thead>
                 <tbody id="table-admin-results">
                   <tr>
-                    <td colspan="9" class="text-center">Loading results...</td>
+                    <td colspan="7" class="text-center p-6 text-muted">Loading results...</td>
                   </tr>
                 </tbody>
               </table>
@@ -1243,7 +1239,7 @@
   </div>
 
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=2.2"></script>
+  <script src="js/app.js?v=2.5"></script>
 </body>
 
 </html>

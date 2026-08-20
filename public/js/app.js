@@ -2,9 +2,10 @@
    EDUPULSE ONLINE EXAM SYSTEM - FULL CLIENT APPLICATION LOGIC
    ========================================================================== */
 
-// DYNAMIC API BASE URL (Handles both Express port 3000 and Live Server port 5500, and production hosts like Vercel)
-const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const API_BASE = (isLocalhost && window.location.port && window.location.port !== '3000') ? 'http://localhost:3000' : '';
+// DYNAMIC API BASE URL (Handles Express port 3000, Live Server port 5500, file:// protocol, and production hosts like Vercel)
+const isFileProto = typeof window !== 'undefined' && window.location.protocol === 'file:';
+const isLocalhost = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const API_BASE = (isFileProto || (isLocalhost && window.location.port && window.location.port !== '3000')) ? 'http://localhost:3000' : '';
 function apiUrl(path) {
   return API_BASE + path;
 }
@@ -18,6 +19,7 @@ let currentRole = 'student';
 let allExamsList = [];
 let selectedStudentIds = new Set();
 let selectedQuestionIds = new Set();
+let selectedResultIds = new Set();
 
 // EXAM TAKING STATE
 let examState = {
@@ -285,8 +287,11 @@ async function loadStudents() {
     const tbody = document.getElementById('table-admin-students');
     tbody.innerHTML = '';
 
+    const countEl = document.getElementById('students-total-count');
+    if (countEl) countEl.textContent = Array.isArray(students) ? students.length : 0;
+
     if (!students || students.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No students found. Click "Add New Student" or "Import Students CSV" to populate.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-6">No students found. Click "Add Student" or "Import CSV" to populate.</td></tr>';
       return;
     }
 
@@ -294,21 +299,25 @@ async function loadStudents() {
       const avgScore = s.avg_score !== null ? `${s.avg_score.toFixed(1)}%` : 'N/A';
       tbody.innerHTML += `
         <tr>
-          <td><input type="checkbox" class="student-select-chk" value="${s.id}" onchange="updateStudentSelection()"></td>
-          <td><span class="badge badge-secondary">${escapeHtml(s.roll_no || '-')}</span></td>
-          <td><code>${escapeHtml(s.admission_no || '-')}</code></td>
-          <td>${escapeHtml(s.full_name)}</td>
-          <td><code>${escapeHtml(s.username)}</code></td>
-          <td>${escapeHtml(s.email || '-')}</td>
-          <td><span class="badge badge-info">${s.exams_taken}</span></td>
-          <td>${avgScore}</td>
-          <td class="text-right">
-            <button class="btn btn-sm btn-outline" onclick="editStudent(${s.id}, '${escapeHtml(s.full_name)}', '${escapeHtml(s.username)}', '${escapeHtml(s.email)}', '${escapeHtml(s.roll_no || '')}', '${escapeHtml(s.admission_no || '')}')">
-              <i class="fa-solid fa-pen"></i> Edit
-            </button>
-            <button class="btn btn-sm btn-danger" onclick="deleteStudent(${s.id})">
-              <i class="fa-solid fa-trash"></i>
-            </button>
+          <td style="text-align: center; width: 40px;"><input type="checkbox" class="student-select-chk" value="${s.id}" onchange="updateStudentSelection()"></td>
+          <td><span class="lms-code-badge">${escapeHtml(s.roll_no || '-')}</span></td>
+          <td><span class="lms-code-badge" style="background:#eff6ff; color:#2563eb;">${escapeHtml(s.admission_no || '-')}</span></td>
+          <td>
+            <div class="lms-cell-title">${escapeHtml(s.full_name)}</div>
+            <div class="lms-cell-sub">@${escapeHtml(s.username)}</div>
+          </td>
+          <td style="color:#64748b; font-size:0.84rem;">${escapeHtml(s.email || '-')}</td>
+          <td style="text-align: center;"><span class="lms-badge-pill primary">${s.exams_taken} Taken</span></td>
+          <td style="text-align: center;"><span class="lms-badge-pill" style="font-weight:700; color:#0f172a;">${avgScore}</span></td>
+          <td class="text-right" style="white-space: nowrap;">
+            <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+              <button type="button" class="btn-action-scorecard" onclick="editStudent(${s.id}, '${escapeHtml(s.full_name)}', '${escapeHtml(s.username)}', '${escapeHtml(s.email)}', '${escapeHtml(s.roll_no || '')}', '${escapeHtml(s.admission_no || '')}')" title="Edit Student">
+                <i class="fa-solid fa-pen" style="color:#2563eb;"></i> Edit
+              </button>
+              <button type="button" class="btn-action-scorecard" style="border-color:#fecaca; color:#dc2626;" onclick="deleteStudent(${s.id})" title="Delete Student">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -1146,6 +1155,11 @@ async function loadExamFilterDropdownOptions() {
 }
 
 async function loadAdminResults() {
+  selectedResultIds.clear();
+  const selectAllChk = document.getElementById('select-all-results');
+  if (selectAllChk) selectAllChk.checked = false;
+  updateResultSelectionUI();
+
   const search = document.getElementById('search-admin-results').value;
   const exam_id = document.getElementById('filter-result-exam').value;
   const tbody = document.getElementById('table-admin-results');
@@ -1154,7 +1168,7 @@ async function loadAdminResults() {
 
   if (!exam_id) {
     if (summaryCards) summaryCards.classList.add('hidden');
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-6"><i class="fa-solid fa-filter"></i> Please select an exam from the dropdown above to view its student results and analytics.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted p-6"><i class="fa-solid fa-filter"></i> Please select an exam from the dropdown above to view its student results and analytics.</td></tr>';
     return;
   }
 
@@ -1176,37 +1190,55 @@ async function loadAdminResults() {
       if (passPctEl) passPctEl.textContent = `${summary.pass_percentage || 0}%`;
     }
 
+    const resultsTotalEl = document.getElementById('results-total-count');
+    if (resultsTotalEl) resultsTotalEl.textContent = Array.isArray(results) ? results.length : 0;
+
     if (!results || results.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-6">No student results found for this exam.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-6">No student results found for this exam.</td></tr>';
       return;
     }
 
     results.forEach(r => {
       const statusBadge = r.passed === 1
-        ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> PASS</span>'
-        : '<span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> FAIL</span>';
+        ? '<span class="lms-status-pill lms-status-pass"><i class="fa-regular fa-circle-check"></i> Passed</span>'
+        : '<span class="lms-status-pill lms-status-fail"><i class="fa-regular fa-circle-xmark"></i> Failed</span>';
+
+      const dateObj = r.submit_time ? new Date(r.submit_time) : null;
+      const dateFormatted = dateObj ? dateObj.toLocaleDateString('en-GB') : 'N/A';
+      const timeFormatted = dateObj ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
       tbody.innerHTML += `
         <tr>
-          <td>
-            <strong>${escapeHtml(r.student_name)}</strong><br>
-            <span class="text-muted" style="font-size: 0.78rem;">@${escapeHtml(r.student_username)}</span>
+          <td style="text-align: center; width: 40px;"><input type="checkbox" class="result-select-chk" value="${r.id}" onchange="updateResultSelection()"></td>
+          <td style="white-space: nowrap;">
+            <div class="lms-cell-date"><i class="fa-regular fa-calendar"></i> ${dateFormatted}</div>
+            ${timeFormatted ? `<div class="lms-cell-sub" style="margin-left: 20px;">${timeFormatted}</div>` : ''}
           </td>
-          <td>${escapeHtml(r.exam_title)}</td>
           <td>
+            <div class="lms-cell-title">${escapeHtml(r.student_name)}</div>
+            <div class="lms-cell-sub">@${escapeHtml(r.student_username)}</div>
+          </td>
+          <td style="white-space: nowrap;">
             <span class="text-success" style="font-weight:600;"><i class="fa-solid fa-check"></i> ${r.correct_answers} Right</span>, 
             <span class="text-danger" style="font-weight:600;"><i class="fa-solid fa-xmark"></i> ${r.wrong_answers} Wrong</span>
             ${(r.unanswered && r.unanswered > 0) ? `<br><span class="text-muted" style="font-size:0.75rem;"><i class="fa-solid fa-minus"></i> ${r.unanswered} Unanswered</span>` : ''}
           </td>
-          <td><strong>${r.obtained_marks} / ${r.total_marks}</strong></td>
-          <td><span class="badge badge-info">${r.required_pass_marks || r.pass_marks || 'N/A'} Marks</span></td>
-          <td><strong>${r.percentage}%</strong></td>
-          <td>${statusBadge}</td>
-          <td style="font-size: 0.85rem;">${r.submit_time ? new Date(r.submit_time).toLocaleString() : 'N/A'}</td>
-          <td class="text-right">
-            <button class="btn btn-sm btn-outline" onclick="viewAttemptScorecard(${r.id})">
-              <i class="fa-solid fa-file-lines"></i> Scorecard
-            </button>
+          <td style="text-align: center; white-space: nowrap;">
+            <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;">${r.obtained_marks} / ${r.total_marks}</div>
+            <div class="lms-cell-sub" style="font-weight: 600;">${r.percentage}%</div>
+          </td>
+          <td style="text-align: center; white-space: nowrap;">
+            ${statusBadge}
+          </td>
+          <td class="text-right" style="white-space: nowrap;">
+            <div class="table-actions-cell">
+              <button type="button" class="btn-action-scorecard" onclick="viewAttemptScorecard(${r.id})" title="View Scorecard">
+                <i class="fa-regular fa-file-lines"></i> Scorecard
+              </button>
+              <button type="button" class="btn-action-reattend" onclick="allowReattendAttempt(${r.id}, '${escapeHtml(r.student_name)}', '${escapeHtml(r.exam_title)}')" title="Allow student to re-attend this exam">
+                <i class="fa-solid fa-rotate-left"></i> Allow Re-attend
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -1214,6 +1246,98 @@ async function loadAdminResults() {
   } catch (err) {
     console.error('Error loading admin results:', err);
   }
+}
+
+function toggleSelectAllResults(master) {
+  const checkboxes = document.querySelectorAll('.result-select-chk');
+  selectedResultIds.clear();
+  checkboxes.forEach(chk => {
+    chk.checked = master.checked;
+    if (master.checked) selectedResultIds.add(parseInt(chk.value));
+  });
+  updateResultSelectionUI();
+}
+
+function updateResultSelection() {
+  selectedResultIds.clear();
+  const checkboxes = document.querySelectorAll('.result-select-chk');
+  checkboxes.forEach(chk => {
+    if (chk.checked) selectedResultIds.add(parseInt(chk.value));
+  });
+  const selectAllChk = document.getElementById('select-all-results');
+  if (selectAllChk) {
+    selectAllChk.checked = checkboxes.length > 0 && selectedResultIds.size === checkboxes.length;
+  }
+  updateResultSelectionUI();
+}
+
+function updateResultSelectionUI() {
+  const count = selectedResultIds.size;
+  const btn = document.getElementById('btn-allow-selected-reattend');
+  const countEl = document.getElementById('count-selected-results');
+  if (countEl) countEl.textContent = count;
+  if (btn) btn.classList.toggle('hidden', count === 0);
+}
+
+async function allowReattendAttempt(attemptId, studentName, examTitle) {
+  const nameStr = studentName ? `for "${studentName}"` : '';
+  const examStr = examTitle ? `in "${examTitle}"` : '';
+  if (!confirm(`Are you sure you want to give a chance to re-attend ${nameStr} ${examStr}?\n\nThis will reset their previous submission and allow them to take the exam again immediately.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/attempts/${attemptId}/allow-reattend`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to grant re-attend chance');
+      return;
+    }
+
+    alert(data.message || 'Re-attend chance granted successfully!');
+    selectedResultIds.delete(parseInt(attemptId));
+    loadAdminResults();
+    if (document.getElementById('modal-view-result') && !document.getElementById('modal-view-result').classList.contains('hidden')) {
+      closeModal('modal-view-result');
+    }
+  } catch (err) {
+    alert('Error granting re-attend chance. Please try again.');
+  }
+}
+
+async function bulkAllowReattend() {
+  if (selectedResultIds.size === 0) return;
+  if (!confirm(`Are you sure you want to allow ${selectedResultIds.size} selected student(s) to re-attend this exam?\n\nTheir previous submissions will be reset so they can re-take the exam.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/admin/attempts/bulk-allow-reattend'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: Array.from(selectedResultIds) })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to grant re-attend chances');
+      return;
+    }
+
+    alert(data.message || 'Re-attend chances granted successfully for selected students!');
+    selectedResultIds.clear();
+    loadAdminResults();
+  } catch (err) {
+    alert('Error executing bulk re-attend request.');
+  }
+}
+
+function allowReattendFromScorecard(attemptId, studentName, examTitle) {
+  allowReattendAttempt(attemptId, studentName, examTitle);
 }
 
 function exportResultsCSV() {
@@ -1810,6 +1934,7 @@ async function viewAttemptScorecard(attemptId) {
     let html = `
       <div class="result-score-banner">
         <h3>${escapeHtml(attempt.exam_title)}</h3>
+        ${attempt.student_name ? `<p style="font-size:0.95rem; margin-top:4px; opacity:0.9;">Student: <strong>${escapeHtml(attempt.student_name)}</strong> (@${escapeHtml(attempt.student_username || '')})</p>` : ''}
         <div class="result-score-val mt-2">${attempt.percentage}%</div>
         <div class="mt-2">${statusBadge}</div>
       </div>
@@ -1873,7 +1998,12 @@ async function viewAttemptScorecard(attemptId) {
     });
 
     html += `
-      <div class="result-actions-bar mt-4 pt-3" style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid #e2e8f0;">
+      <div class="result-actions-bar mt-4 pt-3" style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid #e2e8f0; flex-wrap:wrap;">
+        ${isAdmin ? `
+          <button type="button" class="btn btn-warning" onclick="allowReattendFromScorecard(${attempt.id}, '${escapeHtml(attempt.student_name || 'Student')}', '${escapeHtml(attempt.exam_title || 'Exam')}')" style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; font-weight:600;">
+            <i class="fa-solid fa-rotate-left"></i> Give Chance to Re-attend Exam
+          </button>
+        ` : ''}
         ${attempt.question_pdf_url ? `
           <a href="${attempt.question_pdf_url}" target="_blank" download class="btn btn-outline" style="border-color:#3b82f6; color:#2563eb; font-weight:600; text-decoration:none;">
             <i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Download Question Paper PDF

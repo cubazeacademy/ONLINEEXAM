@@ -245,6 +245,7 @@ body {
   cursor: pointer;
   transition: var(--transition);
   outline: none;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -287,12 +288,17 @@ body {
 }
 
 .btn-warning {
-  background: var(--warning);
-  color: #fff;
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+  font-weight: 600;
 }
 
 .btn-warning:hover {
-  background: #d97706;
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
 }
 
 .btn-light {
@@ -307,8 +313,66 @@ body {
 
 .btn-sm {
   padding: 6px 12px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.table-actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+  min-width: 220px;
+}
+
+.btn-action-scorecard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-action-scorecard:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.btn-action-reattend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-action-reattend:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
 }
 
 .btn-lg {
@@ -881,19 +945,22 @@ body {
 /* MODERN PANEL CARDS & DATA TABLES */
 .panel-card {
   background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+  border-radius: 18px;
+  border: 1px solid #eef2f6;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
   overflow: hidden;
   margin-top: 20px;
 }
 
 .panel-header {
   padding: 18px 24px;
+  background: #ffffff;
   border-bottom: 1px solid #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .panel-header h3 {
@@ -901,6 +968,9 @@ body {
   font-weight: 700;
   color: #0f172a;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .table-responsive {
@@ -917,22 +987,250 @@ body {
 }
 
 .data-table th {
-  background: #f8fafc;
-  padding: 14px 20px;
+  background: #ffffff;
+  padding: 16px 20px;
   font-weight: 700;
-  color: #475569;
-  font-size: 0.76rem;
+  color: #64748b;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid #eef2f6;
   white-space: nowrap;
 }
 
 .data-table td {
   padding: 16px 20px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f8fafc;
   vertical-align: middle;
   color: #334155;
+}
+
+.data-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+  background: #fbfcfe;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==========================================================================
+   LMS REFERENCE UI STYLES (MATCHING USER SCREENSHOT)
+   ========================================================================== */
+.lms-card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid #eef2f6;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  margin-top: 20px;
+}
+
+.lms-card-header {
+  padding: 18px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lms-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.2px;
+}
+
+.lms-header-title i {
+  color: #4f46e5;
+  font-size: 1.1rem;
+}
+
+.lms-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #64748b;
+  margin-left: 2px;
+}
+
+.lms-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lms-filter-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lms-filter-select-wrap select {
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 34px 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.lms-filter-select-wrap select:hover,
+.lms-filter-select-wrap select:focus {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.lms-filter-select-wrap .select-arrow {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.lms-search-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 220px;
+}
+
+.lms-search-pill i {
+  position: absolute;
+  left: 14px;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.lms-search-pill input {
+  width: 100%;
+  padding: 8px 14px 8px 36px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 0.85rem;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.lms-search-pill input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+/* LMS STATUS PILLS */
+.lms-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lms-status-pass, .lms-status-present {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.lms-status-fail, .lms-status-absent {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.lms-status-neutral {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.lms-status-info {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+/* LMS CELL FORMATTING */
+.lms-cell-title {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.lms-cell-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.lms-cell-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.lms-cell-date i {
+  color: #94a3b8;
+}
+
+.lms-code-badge {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.lms-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.lms-badge-pill.primary {
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .data-table tbody tr {

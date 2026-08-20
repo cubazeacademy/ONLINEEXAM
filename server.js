@@ -850,6 +850,91 @@ app.get('/api/admin/results/export', async (req, res) => {
 });
 
 // -------------------------------------------------------------
+// ADMIN - ALLOW RE-ATTEND (RESET STUDENT ATTEMPT)
+// -------------------------------------------------------------
+app.post('/api/admin/attempts/:id/allow-reattend', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const attempt = await db.get(`
+      SELECT a.id, a.student_id, a.exam_id, u.full_name as student_name, e.title as exam_title
+      FROM attempts a
+      JOIN users u ON a.student_id = u.id
+      JOIN exams e ON a.exam_id = e.id
+      WHERE a.id = $1
+    `, [id]);
+
+    if (!attempt) {
+      return res.status(404).json({ error: 'Attempt record not found' });
+    }
+
+    await db.run('DELETE FROM attempts WHERE id = $1', [id]);
+
+    res.json({
+      message: `Re-attend chance granted to ${attempt.student_name} for "${attempt.exam_title}". The student can now take the exam again.`,
+      student_id: attempt.student_id,
+      exam_id: attempt.exam_id,
+      student_name: attempt.student_name,
+      exam_title: attempt.exam_title
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/attempts/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const attempt = await db.get(`
+      SELECT a.id, a.student_id, a.exam_id, u.full_name as student_name, e.title as exam_title
+      FROM attempts a
+      JOIN users u ON a.student_id = u.id
+      JOIN exams e ON a.exam_id = e.id
+      WHERE a.id = $1
+    `, [id]);
+
+    if (!attempt) {
+      return res.status(404).json({ error: 'Attempt record not found' });
+    }
+
+    await db.run('DELETE FROM attempts WHERE id = $1', [id]);
+
+    res.json({
+      message: `Attempt reset successfully. ${attempt.student_name} can now re-attend "${attempt.exam_title}".`,
+      student_id: attempt.student_id,
+      exam_id: attempt.exam_id
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/attempts/bulk-allow-reattend', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No attempt IDs provided' });
+  }
+
+  try {
+    for (const id of ids) {
+      await db.run('DELETE FROM attempts WHERE id = $1', [id]);
+    }
+    res.json({ message: `Successfully granted re-attend chance for ${ids.length} student submission(s).` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/exams/:examId/students/:studentId/allow-reattend', async (req, res) => {
+  const { examId, studentId } = req.params;
+  try {
+    await db.run('DELETE FROM attempts WHERE exam_id = $1 AND student_id = $2', [examId, studentId]);
+    res.json({ message: 'Re-attend chance granted successfully. The student can now take the exam again.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
 // STUDENT PANEL ENDPOINTS
 // -------------------------------------------------------------
 app.get('/api/student/dashboard', async (req, res) => {
@@ -1080,9 +1165,11 @@ app.get('/api/student/attempts/:id/result', async (req, res) => {
 
   try {
     const attempt = await db.get(`
-      SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks, e.show_results, e.question_pdf_url
+      SELECT a.*, e.title as exam_title, e.description as exam_description, e.pass_marks, e.show_results, e.question_pdf_url,
+             u.full_name as student_name, u.username as student_username
       FROM attempts a
       JOIN exams e ON a.exam_id = e.id
+      JOIN users u ON a.student_id = u.id
       WHERE a.id = $1
     `, [id]);
 

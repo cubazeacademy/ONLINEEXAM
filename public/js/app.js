@@ -303,17 +303,6 @@ async function loadClasses() {
     filterSelect.value = curr || '';
   }
 
-  // Populate exam-target-class
-  const examTargetClass = document.getElementById('exam-target-class');
-  if (examTargetClass) {
-    const curr = examTargetClass.value;
-    examTargetClass.innerHTML = '<option value="All Classes">All Classes (Open to All Students)</option>';
-    allClassesList.filter(c => c !== 'All Classes').forEach(c => {
-      examTargetClass.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
-    });
-    if (curr) examTargetClass.value = curr;
-  }
-
   // Populate datalists
   const datalist = document.getElementById('classes-datalist');
   if (datalist) {
@@ -322,6 +311,148 @@ async function loadClasses() {
       datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
     });
   }
+}
+
+function renderExamClassesCheckboxes(selectedClasses = ['All Classes']) {
+  const container = document.getElementById('exam-classes-checkbox-group');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  let selectedList = [];
+  if (Array.isArray(selectedClasses)) {
+    selectedList = selectedClasses.map(s => s.trim());
+  } else if (typeof selectedClasses === 'string') {
+    selectedList = selectedClasses.split(',').map(s => s.trim());
+  }
+
+  const isAllClasses = selectedList.length === 0 || selectedList.some(s => s.toLowerCase() === 'all classes');
+
+  // 1. All Classes Option
+  const allChip = document.createElement('label');
+  allChip.className = `class-checkbox-chip ${isAllClasses ? 'selected' : ''}`;
+  allChip.style.gridColumn = '1 / -1';
+  allChip.innerHTML = `
+    <input type="checkbox" id="chk-exam-class-all" value="All Classes" ${isAllClasses ? 'checked' : ''} onchange="onExamClassCheckboxChange(this)">
+    <span style="font-weight: 700; color: #1e293b;">
+      <i class="fa-solid fa-globe" style="color: #2563eb; margin-right: 4px;"></i> All Classes (Open to All Students)
+    </span>
+  `;
+  container.appendChild(allChip);
+
+  // 2. Individual Class Options
+  allClassesList.filter(c => c.toLowerCase() !== 'all classes').forEach(className => {
+    const isChecked = !isAllClasses && selectedList.some(s => s.toLowerCase() === className.toLowerCase());
+    const chip = document.createElement('label');
+    chip.className = `class-checkbox-chip ${isChecked ? 'selected' : ''}`;
+    chip.innerHTML = `
+      <input type="checkbox" class="exam-class-chk" value="${escapeHtml(className)}" ${isChecked ? 'checked' : ''} onchange="onExamClassCheckboxChange(this)">
+      <span><i class="fa-solid fa-graduation-cap" style="color: #6366f1; margin-right: 4px;"></i> ${escapeHtml(className)}</span>
+    `;
+    container.appendChild(chip);
+  });
+
+  updateExamTargetClassHiddenValue();
+}
+
+function onExamClassCheckboxChange(changedInput) {
+  const allChk = document.getElementById('chk-exam-class-all');
+  const individualChks = document.querySelectorAll('.exam-class-chk');
+
+  if (changedInput.id === 'chk-exam-class-all') {
+    if (changedInput.checked) {
+      individualChks.forEach(chk => {
+        chk.checked = false;
+        chk.closest('.class-checkbox-chip').classList.remove('selected');
+      });
+    }
+  } else {
+    if (changedInput.checked) {
+      if (allChk) {
+        allChk.checked = false;
+        allChk.closest('.class-checkbox-chip').classList.remove('selected');
+      }
+    }
+  }
+
+  // Update classes
+  let anyIndividualChecked = false;
+  individualChks.forEach(chk => {
+    if (chk.checked) {
+      anyIndividualChecked = true;
+      chk.closest('.class-checkbox-chip').classList.add('selected');
+    } else {
+      chk.closest('.class-checkbox-chip').classList.remove('selected');
+    }
+  });
+
+  if (!anyIndividualChecked) {
+    if (allChk) {
+      allChk.checked = true;
+      allChk.closest('.class-checkbox-chip').classList.add('selected');
+    }
+  } else {
+    if (allChk && !allChk.checked) {
+      allChk.closest('.class-checkbox-chip').classList.remove('selected');
+    }
+  }
+
+  updateExamTargetClassHiddenValue();
+}
+
+function updateExamTargetClassHiddenValue() {
+  const allChk = document.getElementById('chk-exam-class-all');
+  const individualChks = document.querySelectorAll('.exam-class-chk');
+  const hiddenInput = document.getElementById('exam-target-class');
+  if (!hiddenInput) return;
+
+  if (allChk && allChk.checked) {
+    hiddenInput.value = 'All Classes';
+    return;
+  }
+
+  const selected = [];
+  individualChks.forEach(chk => {
+    if (chk.checked) selected.push(chk.value);
+  });
+
+  if (selected.length === 0) {
+    hiddenInput.value = 'All Classes';
+  } else {
+    hiddenInput.value = selected.join(', ');
+  }
+}
+
+function selectAllExamClasses(selectAll) {
+  const allChk = document.getElementById('chk-exam-class-all');
+  const individualChks = document.querySelectorAll('.exam-class-chk');
+
+  if (selectAll) {
+    if (allChk) {
+      allChk.checked = true;
+      allChk.closest('.class-checkbox-chip').classList.add('selected');
+    }
+    individualChks.forEach(chk => {
+      chk.checked = false;
+      chk.closest('.class-checkbox-chip').classList.remove('selected');
+    });
+  } else {
+    if (allChk) {
+      allChk.checked = false;
+      allChk.closest('.class-checkbox-chip').classList.remove('selected');
+    }
+    individualChks.forEach(chk => {
+      chk.checked = false;
+      chk.closest('.class-checkbox-chip').classList.remove('selected');
+    });
+    // Default to All Classes if all are cleared
+    if (allChk) {
+      allChk.checked = true;
+      allChk.closest('.class-checkbox-chip').classList.add('selected');
+    }
+  }
+
+  updateExamTargetClassHiddenValue();
 }
 
 async function loadClassesTable() {
@@ -810,9 +941,9 @@ function openExamModal() {
   document.getElementById('exam-id').value = '';
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = false;
-  const targetClassEl = document.getElementById('exam-target-class');
-  if (targetClassEl) targetClassEl.value = 'All Classes';
   document.getElementById('modal-exam-title').textContent = 'Create New Exam';
+
+  renderExamClassesCheckboxes(['All Classes']);
 
   const section = document.getElementById('exam-existing-questions-section');
   if (section) section.classList.add('hidden');
@@ -834,8 +965,8 @@ function editExam(id) {
   document.getElementById('exam-total-marks').value = exam.total_marks;
   document.getElementById('exam-pass-marks').value = exam.pass_marks;
   document.getElementById('exam-status').value = exam.status;
-  const targetClassEl = document.getElementById('exam-target-class');
-  if (targetClassEl) targetClassEl.value = exam.target_class || 'All Classes';
+
+  renderExamClassesCheckboxes(exam.target_class || 'All Classes');
 
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);

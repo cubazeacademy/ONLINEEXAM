@@ -179,11 +179,9 @@ app.get('/api/admin/classes-detailed', async (req, res) => {
         SELECT name FROM classes
         UNION
         SELECT DISTINCT class_name as name FROM users WHERE class_name IS NOT NULL AND class_name != ''
-        UNION
-        SELECT DISTINCT target_class as name FROM exams WHERE target_class IS NOT NULL AND target_class != '' AND target_class != 'All Classes'
       ) c
       LEFT JOIN users u ON LOWER(u.class_name) = LOWER(c.name) AND u.role = 'student'
-      LEFT JOIN exams e ON LOWER(e.target_class) = LOWER(c.name)
+      LEFT JOIN exams e ON (e.target_class ILIKE '%All Classes%' OR e.target_class ILIKE '%' || c.name || '%')
       WHERE c.name IS NOT NULL AND c.name != ''
       GROUP BY c.name
       ORDER BY c.name ASC
@@ -1073,7 +1071,7 @@ app.get('/api/student/dashboard', async (req, res) => {
       db.get(`
         SELECT count(*)::int as count FROM exams 
         WHERE status IN ('published', 'active')
-          AND (target_class IS NULL OR target_class = '' OR target_class = 'All Classes' OR LOWER(target_class) = LOWER($1))
+          AND (target_class IS NULL OR target_class = '' OR target_class ILIKE '%All Classes%' OR target_class ILIKE '%' || $1 || '%')
       `, [studentClass]),
       db.get(`
         SELECT count(*)::int as total_attempts,
@@ -1130,7 +1128,7 @@ app.get('/api/student/available-exams', async (req, res) => {
       LEFT JOIN exam_questions eq ON e.id = eq.exam_id
       LEFT JOIN attempts a ON e.id = a.exam_id AND a.student_id = $1 AND a.status != 'in_progress'
       WHERE e.status IN ('published', 'active')
-        AND (e.target_class IS NULL OR e.target_class = '' OR e.target_class = 'All Classes' OR LOWER(e.target_class) = LOWER($2))
+        AND (e.target_class IS NULL OR e.target_class = '' OR e.target_class ILIKE '%All Classes%' OR e.target_class ILIKE '%' || $2 || '%')
       GROUP BY e.id, a.id
       ORDER BY e.id DESC
     `, [student_id, studentClass]);
@@ -1154,8 +1152,11 @@ app.post('/api/student/exams/:id/start', async (req, res) => {
     const student = await db.get('SELECT id, COALESCE(class_name, \'General\') as class_name FROM users WHERE id = $1', [student_id]);
     const studentClass = (student && student.class_name) ? student.class_name : 'General';
 
-    if (exam.target_class && exam.target_class !== 'All Classes' && exam.target_class.toLowerCase() !== studentClass.toLowerCase()) {
-      return res.status(403).json({ error: `This exam is designated for "${exam.target_class}". Your assigned class is "${studentClass}".` });
+    if (exam.target_class && !exam.target_class.toLowerCase().includes('all classes')) {
+      const allowedClasses = exam.target_class.split(',').map(c => c.trim().toLowerCase());
+      if (!allowedClasses.includes(studentClass.toLowerCase())) {
+        return res.status(403).json({ error: `This exam is designated for "${exam.target_class}". Your assigned class is "${studentClass}".` });
+      }
     }
 
     const existingAttempt = await db.get('SELECT * FROM attempts WHERE student_id = $1 AND exam_id = $2 AND status != \'in_progress\'', [student_id, id]);

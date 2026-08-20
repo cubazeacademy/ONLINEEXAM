@@ -56,6 +56,7 @@ async function initDb() {
     // Ensure missing columns exist
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS roll_no VARCHAR(255);`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS admission_no VARCHAR(255);`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS class_name VARCHAR(255) DEFAULT 'General';`);
 
     // 2. Exams table
     await pool.query(`
@@ -68,6 +69,7 @@ async function initDb() {
         pass_marks INTEGER NOT NULL DEFAULT 40,
         status VARCHAR(50) CHECK(status IN ('draft', 'published', 'active', 'stopped')) NOT NULL DEFAULT 'draft',
         show_results INTEGER NOT NULL DEFAULT 0,
+        target_class VARCHAR(255) DEFAULT 'All Classes',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -75,8 +77,18 @@ async function initDb() {
     // Ensure missing columns exist
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS show_results INTEGER DEFAULT 0;`);
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS question_pdf_url TEXT;`);
+    await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS target_class VARCHAR(255) DEFAULT 'All Classes';`);
 
-    // 3. Questions table
+    // 3. Classes table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS classes (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 4. Questions table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS questions (
         id SERIAL PRIMARY KEY,
@@ -92,7 +104,7 @@ async function initDb() {
       );
     `);
 
-    // 4. Exam-Questions Junction table
+    // 5. Exam-Questions Junction table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS exam_questions (
         exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
@@ -101,7 +113,7 @@ async function initDb() {
       );
     `);
 
-    // 5. Exam Attempts & Results table
+    // 6. Exam Attempts & Results table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS attempts (
         id SERIAL PRIMARY KEY,
@@ -122,9 +134,10 @@ async function initDb() {
       );
     `);
 
-    // 6. Enable Row Level Security (RLS) on all tables
+    // 7. Enable Row Level Security (RLS) on all tables
     await pool.query(`ALTER TABLE users ENABLE ROW LEVEL SECURITY;`);
     await pool.query(`ALTER TABLE exams ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE classes ENABLE ROW LEVEL SECURITY;`);
     await pool.query(`ALTER TABLE questions ENABLE ROW LEVEL SECURITY;`);
     await pool.query(`ALTER TABLE exam_questions ENABLE ROW LEVEL SECURITY;`);
     await pool.query(`ALTER TABLE attempts ENABLE ROW LEVEL SECURITY;`);
@@ -149,7 +162,19 @@ async function seedDefaultData() {
       console.log('Seeded default Admin user (admin / admin123)');
     }
 
-    // Seed sample students list
+    // Seed default classes
+    const defaultClasses = [
+      'Secondary 1st Year',
+      'Secondary 2nd Year',
+      'Secondary 3rd Year',
+      'Plus One',
+      'Plus Two',
+      'Degree 1st Year',
+      'General'
+    ];
+    for (const c of defaultClasses) {
+      await pool.query(`INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`, [c]);
+    }
     const studentsList = [
       { roll: '1', adm: '4049', name: 'MOHAMMED SWALIH O' },
       { roll: '2', adm: '4075', name: 'MUHAMMAD AYMAN ABDUSSAMAD' },

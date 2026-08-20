@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=2.5">
+  <link rel="stylesheet" href="css/style.css?v=2.6">
 </head>
 
 <body>
@@ -265,6 +265,13 @@
                   <input type="text" id="search-students" placeholder="Search by name, roll, adm..." oninput="loadStudents()">
                 </div>
 
+                <div class="lms-filter-select-wrap">
+                  <select id="filter-student-class" onchange="loadStudents()">
+                    <option value="">All Classes</option>
+                  </select>
+                  <i class="fa-solid fa-chevron-down select-arrow"></i>
+                </div>
+
                 <button class="btn btn-sm btn-warning hidden" id="btn-delete-selected-students" onclick="deleteSelectedStudents()">
                   <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-students">0</span>)
                 </button>
@@ -288,6 +295,7 @@
                     <th style="white-space: nowrap;">Roll No</th>
                     <th style="white-space: nowrap;">Adm No</th>
                     <th>Student Details</th>
+                    <th style="white-space: nowrap;">Class</th>
                     <th>Email</th>
                     <th style="text-align: center; white-space: nowrap;">Exams Taken</th>
                     <th style="text-align: center; white-space: nowrap;">Avg Score</th>
@@ -296,7 +304,7 @@
                 </thead>
                 <tbody id="table-admin-students">
                   <tr>
-                    <td colspan="8" class="text-center p-6 text-muted">Loading students list...</td>
+                    <td colspan="9" class="text-center p-6 text-muted">Loading students list...</td>
                   </tr>
                 </tbody>
               </table>
@@ -778,6 +786,19 @@
           <label>Full Name <span class="text-danger">*</span></label>
           <input type="text" id="student-fullname" placeholder="e.g. MOHAMMED SWALIH O" required>
         </div>
+        <div class="form-group">
+          <label>Class / Batch <span class="text-danger">*</span></label>
+          <input type="text" id="student-class" list="classes-datalist" placeholder="e.g. Secondary 3rd Year, Class 10" class="form-control" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);" required>
+          <datalist id="classes-datalist">
+            <option value="Secondary 1st Year"></option>
+            <option value="Secondary 2nd Year"></option>
+            <option value="Secondary 3rd Year"></option>
+            <option value="Plus One"></option>
+            <option value="Plus Two"></option>
+            <option value="Degree 1st Year"></option>
+            <option value="General"></option>
+          </datalist>
+        </div>
         <div class="form-row">
           <div class="form-group col-6">
             <label>Username <span class="text-muted">(Defaults to Admission No)</span></label>
@@ -811,7 +832,7 @@
           </div>
           <div class="modal-header-text">
             <h3 id="modal-exam-title">Create New Examination</h3>
-            <p>Configure assessment parameters, scoring rules, and assigned questions.</p>
+            <p>Configure assessment parameters, target class, scoring rules, and assigned questions.</p>
           </div>
         </div>
         <button type="button" class="modal-close-modern" onclick="closeModal('modal-exam')" title="Close">
@@ -827,13 +848,21 @@
           <!-- SECTION 1: BASIC DETAILS -->
           <div class="modern-section-card">
             <div class="modern-section-title">
-              <i class="fa-solid fa-file-signature"></i> Basic Exam Information
+              <i class="fa-solid fa-file-signature"></i> Basic Exam Information & Target Class
             </div>
             <div class="form-group mb-3">
               <label for="exam-title" style="font-weight: 600; color: #1e293b; font-size: 0.88rem; margin-bottom: 6px; display: block;">
                 Examination Title <span class="text-danger">*</span>
               </label>
               <input type="text" id="exam-title" class="form-input-modern" placeholder="e.g. Web Development Fundamentals Quiz" required>
+            </div>
+            <div class="form-group mb-3">
+              <label for="exam-target-class" style="font-weight: 600; color: #1e293b; font-size: 0.88rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-users-rectangle" style="color: #2563eb;"></i> Target Class / Batch <span class="text-danger">*</span>
+              </label>
+              <select id="exam-target-class" class="form-input-modern" required>
+                <option value="All Classes">All Classes (Open to All Students)</option>
+              </select>
             </div>
             <div class="form-group mb-0">
               <label for="exam-desc" style="font-weight: 600; color: #1e293b; font-size: 0.88rem; margin-bottom: 6px; display: block;">
@@ -1110,6 +1139,11 @@
         </div>
 
         <div class="form-group">
+          <label>Assign to Class / Batch</label>
+          <input type="text" id="csv-students-default-class" list="classes-datalist" placeholder="e.g. Secondary 3rd Year (Defaults to CSV class if provided)" class="form-control" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+        </div>
+
+        <div class="form-group">
           <label>Select CSV File</label>
           <input type="file" id="csv-students-file-input" accept=".csv" onchange="previewStudentsCSV(event)">
         </div>
@@ -1239,7 +1273,7 @@
   </div>
 
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=2.5"></script>
+  <script src="js/app.js?v=2.6"></script>
 </body>
 
 </html>

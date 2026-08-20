@@ -148,11 +148,58 @@ app.get('/api/admin/dashboard', async (req, res) => {
 // -------------------------------------------------------------
 // ADMIN - STUDENTS MANAGEMENT
 // -------------------------------------------------------------
+// -------------------------------------------------------------
+// ADMIN - CLASSES MANAGEMENT
+// -------------------------------------------------------------
+app.get('/api/admin/classes', async (req, res) => {
+  try {
+    const classes = await db.all(`
+      SELECT DISTINCT name FROM (
+        SELECT name FROM classes
+        UNION
+        SELECT DISTINCT class_name as name FROM users WHERE class_name IS NOT NULL AND class_name != ''
+        UNION
+        SELECT DISTINCT target_class as name FROM exams WHERE target_class IS NOT NULL AND target_class != '' AND target_class != 'All Classes'
+      ) c
+      WHERE name IS NOT NULL AND name != ''
+      ORDER BY name ASC
+    `);
+    res.json(classes.map(c => c.name));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/classes', async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Class name is required' });
+  const cleanName = name.trim();
+  try {
+    await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanName]);
+    res.status(201).json({ message: 'Class created successfully', name: cleanName });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/classes/:name', async (req, res) => {
+  const { name } = req.params;
+  try {
+    await db.run('DELETE FROM classes WHERE name = $1', [decodeURIComponent(name)]);
+    res.json({ message: 'Class removed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// ADMIN - STUDENTS MANAGEMENT
+// -------------------------------------------------------------
 app.get('/api/admin/students', async (req, res) => {
-  const { search } = req.query;
+  const { search, class_name } = req.query;
   try {
     let sql = `
-      SELECT u.id, u.username, u.full_name, u.email, u.roll_no, u.admission_no, u.created_at,
+      SELECT u.id, u.username, u.full_name, u.email, u.roll_no, u.admission_no, COALESCE(u.class_name, 'General') as class_name, u.created_at,
              COUNT(a.id)::int as exams_taken,
              AVG(a.percentage) as avg_score
       FROM users u
@@ -161,9 +208,15 @@ app.get('/api/admin/students', async (req, res) => {
     `;
     const params = [];
 
+    if (class_name && class_name !== 'All Classes' && class_name.trim() !== '') {
+      sql += ` AND LOWER(COALESCE(u.class_name, 'General')) = LOWER($${params.length + 1})`;
+      params.push(class_name.trim());
+    }
+
     if (search) {
-      sql += ` AND (u.full_name ILIKE $1 OR u.username ILIKE $2 OR u.email ILIKE $3 OR u.roll_no ILIKE $4 OR u.admission_no ILIKE $5)`;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      const pIdx = params.length;
+      sql += ` AND (u.full_name ILIKE $${pIdx + 1} OR u.username ILIKE $${pIdx + 2} OR u.email ILIKE $${pIdx + 3} OR u.roll_no ILIKE $${pIdx + 4} OR u.admission_no ILIKE $${pIdx + 5} OR u.class_name ILIKE $${pIdx + 6})`;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     sql += ` GROUP BY u.id ORDER BY u.id DESC`;
@@ -176,13 +229,14 @@ app.get('/api/admin/students', async (req, res) => {
 });
 
 app.post('/api/admin/students', async (req, res) => {
-  let { username, password, full_name, email, roll_no, admission_no } = req.body;
+  let { username, password, full_name, email, roll_no, admission_no, class_name } = req.body;
   if (!full_name) {
     return res.status(400).json({ error: 'Student full name is required.' });
   }
 
   username = (username || admission_no || roll_no || full_name.toLowerCase().replace(/\s+/g, '_')).trim();
   password = (password || `${username}2026`).trim();
+  class_name = (class_name || 'General').trim();
 
   try {
     const existing = await db.get('SELECT id FROM users WHERE username = $1', [username]);
@@ -190,13 +244,17 @@ app.post('/api/admin/students', async (req, res) => {
       return res.status(400).json({ error: `Username "${username}" already exists.` });
     }
 
-    const info = await db.run(`
-      INSERT INTO users (username, password, full_name, email, roll_no, admission_no, role)
-      VALUES ($1, $2, $3, $4, $5, $6, 'student')
-      RETURNING id
-    `, [username, password, full_name, email || '', roll_no || '', admission_no || '']);
+    if (class_name && class_name !== 'General') {
+      await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [class_name]);
+    }
 
-    const newStudent = await db.get('SELECT id, username, full_name, email, roll_no, admission_no, created_at FROM users WHERE id = $1', [info.lastInsertRowid]);
+    const info = await db.run(`
+      INSERT INTO users (username, password, full_name, email, roll_no, admission_no, class_name, role)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'student')
+      RETURNING id
+    `, [username, password, full_name, email || '', roll_no || '', admission_no || '', class_name]);
+
+    const newStudent = await db.get('SELECT id, username, full_name, email, roll_no, admission_no, class_name, created_at FROM users WHERE id = $1', [info.lastInsertRowid]);
     res.status(201).json(newStudent);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -204,7 +262,7 @@ app.post('/api/admin/students', async (req, res) => {
 });
 
 app.post('/api/admin/students/import-csv', async (req, res) => {
-  const { students } = req.body;
+  const { students, default_class } = req.body;
   if (!Array.isArray(students) || students.length === 0) {
     return res.status(400).json({ error: 'No student data provided' });
   }
@@ -219,6 +277,7 @@ app.post('/api/admin/students/import-csv', async (req, res) => {
       const full_name = (item.full_name || item.name || item.studentname || item.student_name || '').trim();
       const roll_no = (item.roll_no || item.roll || item.rollnumber || item.roll_number || item.rollnum || '').toString().trim();
       const admission_no = (item.admission_no || item.admission || item.admissionno || item.admission_number || item.adm_no || item.admno || '').toString().trim();
+      const class_name = (item.class_name || item.class || item.grade || item.batch || default_class || 'General').toString().trim();
 
       let username = (item.username || admission_no || roll_no || '').toString().trim();
       let password = (item.password || `${username}2026`).toString().trim();
@@ -243,10 +302,14 @@ app.post('/api/admin/students/import-csv', async (req, res) => {
         continue;
       }
 
+      if (class_name && class_name !== 'General') {
+        await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [class_name]);
+      }
+
       await db.run(`
-        INSERT INTO users (username, password, full_name, email, roll_no, admission_no, role)
-        VALUES ($1, $2, $3, $4, $5, $6, 'student')
-      `, [username, password, full_name, email, roll_no, admission_no]);
+        INSERT INTO users (username, password, full_name, email, roll_no, admission_no, class_name, role)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'student')
+      `, [username, password, full_name, email, roll_no, admission_no, class_name]);
 
       importedCount++;
     }
@@ -264,14 +327,19 @@ app.post('/api/admin/students/import-csv', async (req, res) => {
 
 app.put('/api/admin/students/:id', async (req, res) => {
   const { id } = req.params;
-  const { username, password, full_name, email, roll_no, admission_no } = req.body;
+  const { username, password, full_name, email, roll_no, admission_no, class_name } = req.body;
 
   try {
     const student = await db.get('SELECT id FROM users WHERE id = $1 AND role = \'student\'', [id]);
     if (!student) return res.status(404).json({ error: 'Student not found' });
 
-    let sql = 'UPDATE users SET full_name = $1, email = $2, username = $3, roll_no = $4, admission_no = $5';
-    const params = [full_name, email || '', username, roll_no || '', admission_no || ''];
+    const cleanClass = (class_name || 'General').trim();
+    if (cleanClass && cleanClass !== 'General') {
+      await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanClass]);
+    }
+
+    let sql = 'UPDATE users SET full_name = $1, email = $2, username = $3, roll_no = $4, admission_no = $5, class_name = $6';
+    const params = [full_name, email || '', username, roll_no || '', admission_no || '', cleanClass];
 
     if (password && password.trim() !== '') {
       sql += `, password = $${params.length + 1}`;
@@ -346,13 +414,18 @@ app.get('/api/admin/exams', async (req, res) => {
 });
 
 app.post('/api/admin/exams', async (req, res) => {
-  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, target_class, questions } = req.body;
   if (!title) return res.status(400).json({ error: 'Exam title is required' });
+
+  const cleanTargetClass = (target_class || 'All Classes').trim();
+  if (cleanTargetClass && cleanTargetClass !== 'All Classes') {
+    await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanTargetClass]);
+  }
 
   try {
     const info = await db.run(`
-      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, target_class)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [
       title,
@@ -362,7 +435,8 @@ app.post('/api/admin/exams', async (req, res) => {
       pass_marks || 40,
       status || 'draft',
       show_results ? 1 : 0,
-      question_pdf_url || null
+      question_pdf_url || null,
+      cleanTargetClass
     ]);
     const newExam = info.rows[0];
 
@@ -404,14 +478,19 @@ app.post('/api/admin/exams', async (req, res) => {
 
 app.put('/api/admin/exams/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, target_class, questions } = req.body;
+
+  const cleanTargetClass = (target_class || 'All Classes').trim();
+  if (cleanTargetClass && cleanTargetClass !== 'All Classes') {
+    await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanTargetClass]);
+  }
 
   try {
     await db.run(`
       UPDATE exams
-      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7, question_pdf_url = $8
-      WHERE id = $9
-    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, question_pdf_url || null, id]);
+      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7, question_pdf_url = $8, target_class = $9
+      WHERE id = $10
+    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, question_pdf_url || null, cleanTargetClass, id]);
 
     let uploadedCount = 0;
     if (Array.isArray(questions) && questions.length > 0) {
@@ -942,11 +1021,17 @@ app.get('/api/student/dashboard', async (req, res) => {
   if (!student_id) return res.status(400).json({ error: 'Student ID required' });
 
   try {
-    const student = await db.get('SELECT id, full_name, username, email FROM users WHERE id = $1 AND role = \'student\'', [student_id]);
+    const student = await db.get('SELECT id, full_name, username, email, roll_no, admission_no, COALESCE(class_name, \'General\') as class_name FROM users WHERE id = $1 AND role = \'student\'', [student_id]);
     if (!student) return res.status(404).json({ error: 'Student not found' });
 
+    const studentClass = student.class_name || 'General';
+
     const [availableExamsRes, attempts, recentResults] = await Promise.all([
-      db.get(`SELECT count(*)::int as count FROM exams WHERE status IN ('published', 'active')`),
+      db.get(`
+        SELECT count(*)::int as count FROM exams 
+        WHERE status IN ('published', 'active')
+          AND (target_class IS NULL OR target_class = '' OR target_class = 'All Classes' OR LOWER(target_class) = LOWER($1))
+      `, [studentClass]),
       db.get(`
         SELECT count(*)::int as total_attempts,
                SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END)::int as passed_count,
@@ -987,6 +1072,9 @@ app.get('/api/student/available-exams', async (req, res) => {
   if (!student_id) return res.status(400).json({ error: 'Student ID required' });
 
   try {
+    const student = await db.get('SELECT id, COALESCE(class_name, \'General\') as class_name FROM users WHERE id = $1', [student_id]);
+    const studentClass = (student && student.class_name) ? student.class_name : 'General';
+
     const exams = await db.all(`
       SELECT e.*, 
              COUNT(DISTINCT eq.question_id)::int as question_count,
@@ -999,9 +1087,10 @@ app.get('/api/student/available-exams', async (req, res) => {
       LEFT JOIN exam_questions eq ON e.id = eq.exam_id
       LEFT JOIN attempts a ON e.id = a.exam_id AND a.student_id = $1 AND a.status != 'in_progress'
       WHERE e.status IN ('published', 'active')
+        AND (e.target_class IS NULL OR e.target_class = '' OR e.target_class = 'All Classes' OR LOWER(e.target_class) = LOWER($2))
       GROUP BY e.id, a.id
       ORDER BY e.id DESC
-    `, [student_id]);
+    `, [student_id, studentClass]);
 
     res.json(exams);
   } catch (err) {
@@ -1018,6 +1107,13 @@ app.post('/api/student/exams/:id/start', async (req, res) => {
   try {
     const exam = await db.get('SELECT * FROM exams WHERE id = $1 AND status IN (\'published\', \'active\')', [id]);
     if (!exam) return res.status(404).json({ error: 'Exam is not currently published or available.' });
+
+    const student = await db.get('SELECT id, COALESCE(class_name, \'General\') as class_name FROM users WHERE id = $1', [student_id]);
+    const studentClass = (student && student.class_name) ? student.class_name : 'General';
+
+    if (exam.target_class && exam.target_class !== 'All Classes' && exam.target_class.toLowerCase() !== studentClass.toLowerCase()) {
+      return res.status(403).json({ error: `This exam is designated for "${exam.target_class}". Your assigned class is "${studentClass}".` });
+    }
 
     const existingAttempt = await db.get('SELECT * FROM attempts WHERE student_id = $1 AND exam_id = $2 AND status != \'in_progress\'', [student_id, id]);
     if (existingAttempt) {

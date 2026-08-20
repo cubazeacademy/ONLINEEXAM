@@ -215,8 +215,8 @@ function switchTab(tabId) {
 
   // Load View Specific Data
   if (tabId === 'admin-dashboard') loadAdminDashboard();
-  if (tabId === 'admin-students') loadStudents();
-  if (tabId === 'admin-exams') loadExams();
+  if (tabId === 'admin-students') { loadClasses(); loadStudents(); }
+  if (tabId === 'admin-exams') { loadClasses(); loadExams(); }
   if (tabId === 'admin-results') { loadExamFilterDropdownOptions(); loadAdminResults(); }
   if (tabId === 'admin-settings') populateAdminSettings();
   if (tabId === 'student-dashboard') loadStudentDashboard();
@@ -272,6 +272,56 @@ async function loadAdminDashboard() {
   }
 }
 
+// -------------------------------------------------------------
+// CLASSES & BATCHES MANAGEMENT
+// -------------------------------------------------------------
+let allClassesList = ['Secondary 1st Year', 'Secondary 2nd Year', 'Secondary 3rd Year', 'Plus One', 'Plus Two', 'Degree 1st Year', 'General'];
+
+async function loadClasses() {
+  try {
+    const res = await fetch(apiUrl('/api/admin/classes'));
+    if (res.ok) {
+      const classes = await res.json();
+      if (Array.isArray(classes) && classes.length > 0) {
+        allClassesList = classes;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching classes:', err);
+  }
+
+  // Populate filter-student-class
+  const filterSelect = document.getElementById('filter-student-class');
+  if (filterSelect) {
+    const curr = filterSelect.value;
+    filterSelect.innerHTML = '<option value="">All Classes</option>';
+    allClassesList.forEach(c => {
+      filterSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+    });
+    filterSelect.value = curr || '';
+  }
+
+  // Populate exam-target-class
+  const examTargetClass = document.getElementById('exam-target-class');
+  if (examTargetClass) {
+    const curr = examTargetClass.value;
+    examTargetClass.innerHTML = '<option value="All Classes">All Classes (Open to All Students)</option>';
+    allClassesList.filter(c => c !== 'All Classes').forEach(c => {
+      examTargetClass.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+    });
+    if (curr) examTargetClass.value = curr;
+  }
+
+  // Populate datalists
+  const datalist = document.getElementById('classes-datalist');
+  if (datalist) {
+    datalist.innerHTML = '';
+    allClassesList.forEach(c => {
+      datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
+    });
+  }
+}
+
 // 2. ADMIN STUDENTS MANAGEMENT
 async function loadStudents() {
   selectedStudentIds.clear();
@@ -279,9 +329,11 @@ async function loadStudents() {
   if (selectAllChk) selectAllChk.checked = false;
   updateStudentSelectionUI();
 
-  const searchQuery = document.getElementById('search-students').value;
+  const searchQuery = document.getElementById('search-students') ? document.getElementById('search-students').value : '';
+  const filterClass = document.getElementById('filter-student-class') ? document.getElementById('filter-student-class').value : '';
+
   try {
-    const res = await fetch(apiUrl(`/api/admin/students?search=${encodeURIComponent(searchQuery)}`));
+    const res = await fetch(apiUrl(`/api/admin/students?search=${encodeURIComponent(searchQuery)}&class_name=${encodeURIComponent(filterClass)}`));
     const students = await res.json();
 
     const tbody = document.getElementById('table-admin-students');
@@ -291,12 +343,13 @@ async function loadStudents() {
     if (countEl) countEl.textContent = Array.isArray(students) ? students.length : 0;
 
     if (!students || students.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-6">No students found. Click "Add Student" or "Import CSV" to populate.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-6">No students found. Click "Add Student" or "Import CSV" to populate.</td></tr>';
       return;
     }
 
     students.forEach(s => {
       const avgScore = s.avg_score !== null ? `${s.avg_score.toFixed(1)}%` : 'N/A';
+      const className = s.class_name || 'General';
       tbody.innerHTML += `
         <tr>
           <td style="text-align: center; width: 40px;"><input type="checkbox" class="student-select-chk" value="${s.id}" onchange="updateStudentSelection()"></td>
@@ -306,12 +359,17 @@ async function loadStudents() {
             <div class="lms-cell-title">${escapeHtml(s.full_name)}</div>
             <div class="lms-cell-sub">@${escapeHtml(s.username)}</div>
           </td>
+          <td>
+            <span class="lms-badge-pill" style="background:#f8fafc; color:#3b82f6; border: 1px solid #e0e7ff; font-weight:600;">
+              <i class="fa-solid fa-graduation-cap" style="color:#6366f1;"></i> ${escapeHtml(className)}
+            </span>
+          </td>
           <td style="color:#64748b; font-size:0.84rem;">${escapeHtml(s.email || '-')}</td>
           <td style="text-align: center;"><span class="lms-badge-pill primary">${s.exams_taken} Taken</span></td>
           <td style="text-align: center;"><span class="lms-badge-pill" style="font-weight:700; color:#0f172a;">${avgScore}</span></td>
           <td class="text-right" style="white-space: nowrap;">
             <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
-              <button type="button" class="btn-action-scorecard" onclick="editStudent(${s.id}, '${escapeHtml(s.full_name)}', '${escapeHtml(s.username)}', '${escapeHtml(s.email)}', '${escapeHtml(s.roll_no || '')}', '${escapeHtml(s.admission_no || '')}')" title="Edit Student">
+              <button type="button" class="btn-action-scorecard" onclick="editStudent(${s.id}, '${escapeHtml(s.full_name)}', '${escapeHtml(s.username)}', '${escapeHtml(s.email)}', '${escapeHtml(s.roll_no || '')}', '${escapeHtml(s.admission_no || '')}', '${escapeHtml(className)}')" title="Edit Student">
                 <i class="fa-solid fa-pen" style="color:#2563eb;"></i> Edit
               </button>
               <button type="button" class="btn-action-scorecard" style="border-color:#fecaca; color:#dc2626;" onclick="deleteStudent(${s.id})" title="Delete Student">
@@ -384,17 +442,21 @@ function openStudentModal() {
   document.getElementById('student-id').value = '';
   document.getElementById('student-rollno').value = '';
   document.getElementById('student-admissionno').value = '';
+  const classInput = document.getElementById('student-class');
+  if (classInput) classInput.value = '';
   document.getElementById('modal-student-title').textContent = 'Add New Student';
   openModal('modal-student');
 }
 
-function editStudent(id, fullname, username, email, rollno = '', admissionno = '') {
+function editStudent(id, fullname, username, email, rollno = '', admissionno = '', classname = 'General') {
   document.getElementById('student-id').value = id;
   document.getElementById('student-fullname').value = fullname;
   document.getElementById('student-username').value = username;
   document.getElementById('student-email').value = email;
   document.getElementById('student-rollno').value = rollno;
   document.getElementById('student-admissionno').value = admissionno;
+  const classInput = document.getElementById('student-class');
+  if (classInput) classInput.value = classname || 'General';
   document.getElementById('student-password').value = '';
   document.getElementById('modal-student-title').textContent = 'Edit Student Details';
   openModal('modal-student');
@@ -409,6 +471,7 @@ async function saveStudentForm(e) {
   const email = document.getElementById('student-email').value;
   const roll_no = document.getElementById('student-rollno').value;
   const admission_no = document.getElementById('student-admissionno').value;
+  const class_name = document.getElementById('student-class') ? document.getElementById('student-class').value : 'General';
 
   const path = id ? `/api/admin/students/${id}` : '/api/admin/students';
   const method = id ? 'PUT' : 'POST';
@@ -417,7 +480,7 @@ async function saveStudentForm(e) {
     const res = await fetch(apiUrl(path), {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ full_name, username, password, email, roll_no, admission_no })
+      body: JSON.stringify({ full_name, username, password, email, roll_no, admission_no, class_name })
     });
 
     const data = await res.json();
@@ -427,6 +490,7 @@ async function saveStudentForm(e) {
     }
 
     closeModal('modal-student');
+    await loadClasses();
     loadStudents();
   } catch (err) {
     alert('Error saving student details.');
@@ -504,6 +568,7 @@ async function loadExams() {
             <p class="exam-card-desc">${escapeHtml(exam.description || 'No description provided.')}</p>
 
             <div class="exam-meta-pills">
+              <span class="meta-pill" style="background:#eff6ff; color:#2563eb; font-weight:600;"><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(exam.target_class || 'All Classes')}</span>
               <span class="meta-pill"><i class="fa-regular fa-clock"></i> ${exam.duration_minutes} Mins</span>
               <span class="meta-pill"><i class="fa-solid fa-list-check"></i> ${exam.question_count} Qs</span>
               <span class="meta-pill"><i class="fa-solid fa-trophy"></i> Total: ${exam.total_marks}</span>
@@ -594,6 +659,8 @@ function openExamModal() {
   document.getElementById('exam-id').value = '';
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = false;
+  const targetClassEl = document.getElementById('exam-target-class');
+  if (targetClassEl) targetClassEl.value = 'All Classes';
   document.getElementById('modal-exam-title').textContent = 'Create New Exam';
 
   const section = document.getElementById('exam-existing-questions-section');
@@ -616,6 +683,8 @@ function editExam(id) {
   document.getElementById('exam-total-marks').value = exam.total_marks;
   document.getElementById('exam-pass-marks').value = exam.pass_marks;
   document.getElementById('exam-status').value = exam.status;
+  const targetClassEl = document.getElementById('exam-target-class');
+  if (targetClassEl) targetClassEl.value = exam.target_class || 'All Classes';
 
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);
@@ -709,6 +778,7 @@ async function saveExamForm(e) {
   const pass_marks = parseInt(document.getElementById('exam-pass-marks').value);
   const status = document.getElementById('exam-status').value;
   const show_results = document.getElementById('exam-show-results').checked ? 1 : 0;
+  const target_class = document.getElementById('exam-target-class') ? document.getElementById('exam-target-class').value : 'All Classes';
   const question_pdf_url = document.getElementById('exam-question-pdf-url') ? document.getElementById('exam-question-pdf-url').value : null;
 
   const path = id ? `/api/admin/exams/${id}` : '/api/admin/exams';
@@ -726,6 +796,7 @@ async function saveExamForm(e) {
         pass_marks,
         status,
         show_results,
+        target_class,
         question_pdf_url,
         questions: parsedExamModalCSVData
       })
@@ -743,6 +814,7 @@ async function saveExamForm(e) {
 
     clearExamModalCSV();
     closeModal('modal-exam');
+    await loadClasses();
     loadExams();
   } catch (err) {
     alert('Error saving exam');
@@ -2203,14 +2275,26 @@ function previewStudentsCSV(event) {
   reader.readAsText(file);
 }
 
+function openImportStudentsModal() {
+  parsedStudentsCSVData = [];
+  document.getElementById('csv-students-file-input').value = '';
+  const defClassInput = document.getElementById('csv-students-default-class');
+  if (defClassInput) defClassInput.value = '';
+  document.getElementById('students-csv-preview-container').classList.add('hidden');
+  document.getElementById('csv-students-error-box').classList.add('hidden');
+  document.getElementById('btn-submit-import-students').disabled = true;
+  openModal('modal-import-students-csv');
+}
+
 async function submitImportStudentsCSV() {
   if (parsedStudentsCSVData.length === 0) return;
+  const default_class = document.getElementById('csv-students-default-class') ? document.getElementById('csv-students-default-class').value : '';
 
   try {
     const res = await fetch(apiUrl('/api/admin/students/import-csv'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ students: parsedStudentsCSVData })
+      body: JSON.stringify({ students: parsedStudentsCSVData, default_class })
     });
 
     const data = await res.json();
@@ -2221,6 +2305,7 @@ async function submitImportStudentsCSV() {
 
     alert(`${data.message}\n${data.errors ? data.errors.join('\n') : ''}`);
     closeModal('modal-import-students-csv');
+    await loadClasses();
     loadStudents();
   } catch (err) {
     showCSVError('csv-students-error-box', 'Connection error while importing CSV data.');

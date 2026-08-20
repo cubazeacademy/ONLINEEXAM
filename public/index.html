@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=2.6">
+  <link rel="stylesheet" href="css/style.css?v=2.7">
 </head>
 
 <body>
@@ -85,9 +85,12 @@
           <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
         </a>
 
-        <div class="nav-category">PEOPLE <i class="fa-solid fa-chevron-down"></i></div>
+        <div class="nav-category">PEOPLE & CLASSES <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-students" class="nav-item" onclick="switchTab('admin-students')">
           <i class="fa-solid fa-users"></i> <span>Students</span>
+        </a>
+        <a href="#admin-classes" class="nav-item" onclick="switchTab('admin-classes')">
+          <i class="fa-solid fa-graduation-cap"></i> <span>Classes & Batches</span>
         </a>
 
         <div class="nav-category">ASSESSMENT <i class="fa-solid fa-chevron-down"></i></div>
@@ -305,6 +308,51 @@
                 <tbody id="table-admin-students">
                   <tr>
                     <td colspan="9" class="text-center p-6 text-muted">Loading students list...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ADMIN 2.5: CLASSES & BATCHES VIEW          -->
+        <!-- ========================================== -->
+        <section id="view-admin-classes" class="tab-view hidden">
+          <div class="lms-card">
+            <div class="lms-card-header">
+              <div class="lms-header-title">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <span>Classes & Batches Directory</span>
+                <span class="lms-count-badge">(<span id="classes-total-count">0</span>)</span>
+              </div>
+
+              <div class="lms-header-controls">
+                <div class="lms-search-pill">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="search-classes" placeholder="Search class name..." oninput="loadClassesTable()">
+                </div>
+
+                <button class="btn btn-sm btn-primary" onclick="openClassModal()">
+                  <i class="fa-solid fa-plus"></i> Create New Class
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 60px; text-align: center;">#</th>
+                    <th>Class / Batch Title</th>
+                    <th style="text-align: center; white-space: nowrap;">Enrolled Students</th>
+                    <th style="text-align: center; white-space: nowrap;">Assigned Exams</th>
+                    <th class="text-right" style="text-align: right; min-width: 140px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admin-classes">
+                  <tr>
+                    <td colspan="5" class="text-center p-6 text-muted">Loading classes list...</td>
                   </tr>
                 </tbody>
               </table>
@@ -762,6 +810,32 @@
   <!-- ========================================== -->
   <!-- MODAL DIALOGS                              -->
   <!-- ========================================== -->
+
+  <!-- MODAL: ADD / EDIT CLASS -->
+  <div id="modal-class" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 id="modal-class-title"><i class="fa-solid fa-graduation-cap" style="color: var(--primary);"></i> Create New Class</h3>
+        <button class="btn-close" onclick="closeModal('modal-class')">&times;</button>
+      </div>
+      <form id="form-class" onsubmit="saveClassForm(event)">
+        <input type="hidden" id="class-old-name">
+        <div class="modal-body" style="padding: 16px 20px;">
+          <div class="form-group mb-0">
+            <label for="class-name-input" style="font-weight:600; font-size:0.88rem; margin-bottom:6px; display:block;">
+              Class / Batch Title <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="class-name-input" class="form-control" placeholder="e.g. Secondary 3rd Year, Class 10" style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);" required>
+            <p class="text-muted mt-2" style="font-size: 0.78rem;">This class will automatically appear in student registration and exam target dropdowns.</p>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-class')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-class"><i class="fa-solid fa-check"></i> Save Class</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- MODAL: ADD / EDIT STUDENT -->
   <div id="modal-student" class="modal-overlay hidden">
@@ -1273,7 +1347,7 @@
   </div>
 
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=2.6"></script>
+  <script src="js/app.js?v=2.7"></script>
 </body>
 
 </html>

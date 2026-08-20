@@ -202,6 +202,7 @@ function switchTab(tabId) {
   const titleMap = {
     'admin-dashboard': 'Admin Dashboard Overview',
     'admin-students': 'Student Accounts Management',
+    'admin-classes': 'Classes & Batches Management',
     'admin-exams': 'Examinations Management',
     'admin-results': 'Student Results & Performance Analytics',
     'admin-settings': 'System Settings',
@@ -216,6 +217,7 @@ function switchTab(tabId) {
   // Load View Specific Data
   if (tabId === 'admin-dashboard') loadAdminDashboard();
   if (tabId === 'admin-students') { loadClasses(); loadStudents(); }
+  if (tabId === 'admin-classes') { loadClassesTable(); }
   if (tabId === 'admin-exams') { loadClasses(); loadExams(); }
   if (tabId === 'admin-results') { loadExamFilterDropdownOptions(); loadAdminResults(); }
   if (tabId === 'admin-settings') populateAdminSettings();
@@ -319,6 +321,155 @@ async function loadClasses() {
     allClassesList.forEach(c => {
       datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
     });
+  }
+}
+
+async function loadClassesTable() {
+  await loadClasses();
+
+  const searchQuery = document.getElementById('search-classes') ? document.getElementById('search-classes').value.toLowerCase().trim() : '';
+  const tbody = document.getElementById('table-admin-classes');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
+  try {
+    const res = await fetch(apiUrl('/api/admin/classes-detailed'));
+    let data = [];
+    if (res.ok) {
+      data = await res.json();
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      data = allClassesList.map(name => ({ name, student_count: 0, exam_count: 0 }));
+    }
+
+    if (searchQuery) {
+      data = data.filter(c => c.name.toLowerCase().includes(searchQuery));
+    }
+
+    const countEl = document.getElementById('classes-total-count');
+    if (countEl) countEl.textContent = data.length;
+
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center p-6 text-muted">No classes found. Click "Create New Class" to add one.</td></tr>';
+      return;
+    }
+
+    data.forEach((c, idx) => {
+      tbody.innerHTML += `
+        <tr>
+          <td style="text-align: center; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+          <td>
+            <div class="lms-cell-title" style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge" style="background:#e0e7ff; color:#4338ca; border-radius: 8px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;">
+                <i class="fa-solid fa-graduation-cap"></i>
+              </span>
+              <span style="font-weight: 700; color: #0f172a; font-size: 0.95rem;">${escapeHtml(c.name)}</span>
+            </div>
+          </td>
+          <td style="text-align: center;">
+            <button type="button" class="lms-badge-pill primary" style="border:none; cursor:pointer;" onclick="filterStudentsByClass('${escapeHtml(c.name)}')" title="View students in this class">
+              <i class="fa-solid fa-users"></i> ${c.student_count || 0} Students
+            </button>
+          </td>
+          <td style="text-align: center;">
+            <span class="lms-badge-pill" style="font-weight:600; color:#334155;">
+              <i class="fa-solid fa-file-signature" style="color:#2563eb;"></i> ${c.exam_count || 0} Exams
+            </span>
+          </td>
+          <td class="text-right" style="white-space: nowrap;">
+            <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+              <button type="button" class="btn-action-scorecard" onclick="editClass('${escapeHtml(c.name)}')" title="Rename Class">
+                <i class="fa-solid fa-pen" style="color:#2563eb;"></i> Rename
+              </button>
+              <button type="button" class="btn-action-scorecard" style="border-color:#fecaca; color:#dc2626;" onclick="deleteClass('${escapeHtml(c.name)}')" title="Delete Class">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+  } catch (err) {
+    console.error('Error loading classes table:', err);
+  }
+}
+
+function openClassModal() {
+  document.getElementById('form-class').reset();
+  document.getElementById('class-old-name').value = '';
+  document.getElementById('modal-class-title').innerHTML = '<i class="fa-solid fa-graduation-cap" style="color: var(--primary);"></i> Create New Class';
+  document.getElementById('btn-save-class').innerHTML = '<i class="fa-solid fa-check"></i> Create Class';
+  openModal('modal-class');
+}
+
+function editClass(name) {
+  document.getElementById('form-class').reset();
+  document.getElementById('class-old-name').value = name;
+  document.getElementById('class-name-input').value = name;
+  document.getElementById('modal-class-title').innerHTML = '<i class="fa-solid fa-pen-to-square" style="color: var(--primary);"></i> Rename Class';
+  document.getElementById('btn-save-class').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Update Name';
+  openModal('modal-class');
+}
+
+async function saveClassForm(e) {
+  e.preventDefault();
+  const oldName = document.getElementById('class-old-name').value.trim();
+  const newName = document.getElementById('class-name-input').value.trim();
+
+  if (!newName) {
+    alert('Please enter a class name.');
+    return;
+  }
+
+  const isEdit = oldName !== '';
+  const url = isEdit ? `/api/admin/classes/${encodeURIComponent(oldName)}` : '/api/admin/classes';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(apiUrl(url), {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to save class');
+      return;
+    }
+
+    closeModal('modal-class');
+    await loadClasses();
+    loadClassesTable();
+  } catch (err) {
+    alert('Error saving class');
+  }
+}
+
+async function deleteClass(name) {
+  if (confirm(`Are you sure you want to delete class "${name}"?`)) {
+    try {
+      const res = await fetch(apiUrl(`/api/admin/classes/${encodeURIComponent(name)}`), { method: 'DELETE' });
+      if (res.ok) {
+        await loadClasses();
+        loadClassesTable();
+      } else {
+        alert('Failed to delete class.');
+      }
+    } catch (err) {
+      alert('Error deleting class.');
+    }
+  }
+}
+
+function filterStudentsByClass(className) {
+  switchTab('admin-students');
+  const filterSelect = document.getElementById('filter-student-class');
+  if (filterSelect) {
+    filterSelect.value = className;
+    loadStudents();
   }
 }
 

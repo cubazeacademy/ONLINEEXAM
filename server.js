@@ -148,7 +148,6 @@ app.get('/api/admin/dashboard', async (req, res) => {
 // -------------------------------------------------------------
 // ADMIN - STUDENTS MANAGEMENT
 // -------------------------------------------------------------
-// -------------------------------------------------------------
 // ADMIN - CLASSES MANAGEMENT
 // -------------------------------------------------------------
 app.get('/api/admin/classes', async (req, res) => {
@@ -170,6 +169,31 @@ app.get('/api/admin/classes', async (req, res) => {
   }
 });
 
+app.get('/api/admin/classes-detailed', async (req, res) => {
+  try {
+    const classes = await db.all(`
+      SELECT c.name,
+             COUNT(DISTINCT u.id)::int as student_count,
+             COUNT(DISTINCT e.id)::int as exam_count
+      FROM (
+        SELECT name FROM classes
+        UNION
+        SELECT DISTINCT class_name as name FROM users WHERE class_name IS NOT NULL AND class_name != ''
+        UNION
+        SELECT DISTINCT target_class as name FROM exams WHERE target_class IS NOT NULL AND target_class != '' AND target_class != 'All Classes'
+      ) c
+      LEFT JOIN users u ON LOWER(u.class_name) = LOWER(c.name) AND u.role = 'student'
+      LEFT JOIN exams e ON LOWER(e.target_class) = LOWER(c.name)
+      WHERE c.name IS NOT NULL AND c.name != ''
+      GROUP BY c.name
+      ORDER BY c.name ASC
+    `);
+    res.json(classes);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/classes', async (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Class name is required' });
@@ -182,10 +206,29 @@ app.post('/api/admin/classes', async (req, res) => {
   }
 });
 
+app.put('/api/admin/classes/:oldName', async (req, res) => {
+  const oldName = decodeURIComponent(req.params.oldName).trim();
+  const { name: newName } = req.body;
+  if (!newName || !newName.trim()) return res.status(400).json({ error: 'New class name is required' });
+  const cleanNewName = newName.trim();
+
+  try {
+    await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanNewName]);
+    await db.run('UPDATE users SET class_name = $1 WHERE LOWER(class_name) = LOWER($2)', [cleanNewName, oldName]);
+    await db.run('UPDATE exams SET target_class = $1 WHERE LOWER(target_class) = LOWER($2)', [cleanNewName, oldName]);
+    if (oldName.toLowerCase() !== cleanNewName.toLowerCase()) {
+      await db.run('DELETE FROM classes WHERE LOWER(name) = LOWER($1)', [oldName]);
+    }
+    res.json({ message: 'Class renamed successfully', name: cleanNewName });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/admin/classes/:name', async (req, res) => {
   const { name } = req.params;
   try {
-    await db.run('DELETE FROM classes WHERE name = $1', [decodeURIComponent(name)]);
+    await db.run('DELETE FROM classes WHERE LOWER(name) = LOWER($1)', [decodeURIComponent(name).trim()]);
     res.json({ message: 'Class removed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

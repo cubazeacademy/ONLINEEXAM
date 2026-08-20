@@ -150,17 +150,34 @@ app.get('/api/admin/dashboard', async (req, res) => {
 // -------------------------------------------------------------
 // ADMIN - CLASSES MANAGEMENT
 // -------------------------------------------------------------
+async function removeClassByName(className) {
+  const cleanName = (className || '').toString().trim();
+  if (!cleanName) return;
+
+  // 1. Remove from classes table
+  await db.run('DELETE FROM classes WHERE LOWER(name) = LOWER($1)', [cleanName]);
+
+  // 2. Unset / reassign users who were in this class
+  const fallbackClass = cleanName.toLowerCase() === 'general' ? '' : 'General';
+  await db.run('UPDATE users SET class_name = $1 WHERE LOWER(class_name) = LOWER($2)', [fallbackClass, cleanName]);
+
+  // 3. Update exams targeting this class
+  await db.run("UPDATE exams SET target_class = 'All Classes' WHERE LOWER(TRIM(target_class)) = LOWER($1)", [cleanName]);
+
+  const examsWithTarget = await db.all("SELECT id, target_class FROM exams WHERE target_class ILIKE '%' || $1 || '%'", [cleanName]);
+  for (const ex of examsWithTarget) {
+    if (ex.target_class && ex.target_class !== 'All Classes') {
+      const parts = ex.target_class.split(',').map(s => s.trim()).filter(s => s && s.toLowerCase() !== cleanName.toLowerCase());
+      const newTarget = parts.length > 0 ? parts.join(', ') : 'All Classes';
+      await db.run('UPDATE exams SET target_class = $1 WHERE id = $2', [newTarget, ex.id]);
+    }
+  }
+}
+
 app.get('/api/admin/classes', async (req, res) => {
   try {
     const classes = await db.all(`
-      SELECT DISTINCT name FROM (
-        SELECT name FROM classes
-        UNION
-        SELECT DISTINCT class_name as name FROM users WHERE class_name IS NOT NULL AND class_name != ''
-        UNION
-        SELECT DISTINCT target_class as name FROM exams WHERE target_class IS NOT NULL AND target_class != '' AND target_class != 'All Classes'
-      ) c
-      WHERE name IS NOT NULL AND name != ''
+      SELECT name FROM classes
       ORDER BY name ASC
     `);
     res.json(classes.map(c => c.name));
@@ -175,14 +192,9 @@ app.get('/api/admin/classes-detailed', async (req, res) => {
       SELECT c.name,
              COUNT(DISTINCT u.id)::int as student_count,
              COUNT(DISTINCT e.id)::int as exam_count
-      FROM (
-        SELECT name FROM classes
-        UNION
-        SELECT DISTINCT class_name as name FROM users WHERE class_name IS NOT NULL AND class_name != ''
-      ) c
+      FROM classes c
       LEFT JOIN users u ON LOWER(u.class_name) = LOWER(c.name) AND u.role = 'student'
       LEFT JOIN exams e ON (e.target_class ILIKE '%All Classes%' OR e.target_class ILIKE '%' || c.name || '%')
-      WHERE c.name IS NOT NULL AND c.name != ''
       GROUP BY c.name
       ORDER BY c.name ASC
     `);
@@ -223,10 +235,25 @@ app.put('/api/admin/classes/:oldName', async (req, res) => {
   }
 });
 
+app.post('/api/admin/classes/bulk-delete', async (req, res) => {
+  const { names } = req.body;
+  if (!Array.isArray(names) || names.length === 0) {
+    return res.status(400).json({ error: 'No class names provided' });
+  }
+  try {
+    for (const name of names) {
+      await removeClassByName(name);
+    }
+    res.json({ message: `Successfully deleted ${names.length} class(es)` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/admin/classes/:name', async (req, res) => {
   const { name } = req.params;
   try {
-    await db.run('DELETE FROM classes WHERE LOWER(name) = LOWER($1)', [decodeURIComponent(name).trim()]);
+    await removeClassByName(decodeURIComponent(name));
     res.json({ message: 'Class removed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

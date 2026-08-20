@@ -277,14 +277,15 @@ async function loadAdminDashboard() {
 // -------------------------------------------------------------
 // CLASSES & BATCHES MANAGEMENT
 // -------------------------------------------------------------
-let allClassesList = ['Secondary 1st Year', 'Secondary 2nd Year', 'Secondary 3rd Year', 'Plus One', 'Plus Two', 'Degree 1st Year', 'General'];
+let allClassesList = [];
+let selectedClassNames = new Set();
 
 async function loadClasses() {
   try {
     const res = await fetch(apiUrl('/api/admin/classes'));
     if (res.ok) {
       const classes = await res.json();
-      if (Array.isArray(classes) && classes.length > 0) {
+      if (Array.isArray(classes)) {
         allClassesList = classes;
       }
     }
@@ -456,6 +457,11 @@ function selectAllExamClasses(selectAll) {
 }
 
 async function loadClassesTable() {
+  selectedClassNames.clear();
+  const selectAllChk = document.getElementById('select-all-classes');
+  if (selectAllChk) selectAllChk.checked = false;
+  updateClassSelectionUI();
+
   await loadClasses();
 
   const searchQuery = document.getElementById('search-classes') ? document.getElementById('search-classes').value.toLowerCase().trim() : '';
@@ -471,25 +477,24 @@ async function loadClassesTable() {
       data = await res.json();
     }
 
-    if (!Array.isArray(data) || data.length === 0) {
-      data = allClassesList.map(name => ({ name, student_count: 0, exam_count: 0 }));
-    }
-
     if (searchQuery) {
-      data = data.filter(c => c.name.toLowerCase().includes(searchQuery));
+      data = (data || []).filter(c => c.name && c.name.toLowerCase().includes(searchQuery));
     }
 
     const countEl = document.getElementById('classes-total-count');
-    if (countEl) countEl.textContent = data.length;
+    if (countEl) countEl.textContent = Array.isArray(data) ? data.length : 0;
 
-    if (data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center p-6 text-muted">No classes found. Click "Create New Class" to add one.</td></tr>';
+    if (!Array.isArray(data) || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center p-6 text-muted">No classes found. Click "Create New Class" to add one.</td></tr>';
       return;
     }
 
     data.forEach((c, idx) => {
       tbody.innerHTML += `
         <tr>
+          <td style="text-align: center; width: 40px;">
+            <input type="checkbox" class="class-select-chk" value="${escapeHtml(c.name)}" onchange="updateClassSelection()" ${selectedClassNames.has(c.name) ? 'checked' : ''}>
+          </td>
           <td style="text-align: center; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
           <td>
             <div class="lms-cell-title" style="display: flex; align-items: center; gap: 8px;">
@@ -524,6 +529,61 @@ async function loadClassesTable() {
     });
   } catch (err) {
     console.error('Error loading classes table:', err);
+  }
+}
+
+function toggleSelectAllClasses(master) {
+  const checkboxes = document.querySelectorAll('.class-select-chk');
+  selectedClassNames.clear();
+  checkboxes.forEach(chk => {
+    chk.checked = master.checked;
+    if (master.checked) selectedClassNames.add(chk.value);
+  });
+  updateClassSelectionUI();
+}
+
+function updateClassSelection() {
+  selectedClassNames.clear();
+  const checkboxes = document.querySelectorAll('.class-select-chk');
+  checkboxes.forEach(chk => {
+    if (chk.checked) selectedClassNames.add(chk.value);
+  });
+  const selectAllChk = document.getElementById('select-all-classes');
+  if (selectAllChk) {
+    selectAllChk.checked = checkboxes.length > 0 && selectedClassNames.size === checkboxes.length;
+  }
+  updateClassSelectionUI();
+}
+
+function updateClassSelectionUI() {
+  const count = selectedClassNames.size;
+  const btnDelete = document.getElementById('btn-delete-selected-classes');
+  const countEl = document.getElementById('count-selected-classes');
+  if (countEl) countEl.textContent = count;
+  if (btnDelete) btnDelete.classList.toggle('hidden', count === 0);
+}
+
+async function deleteSelectedClasses() {
+  if (selectedClassNames.size === 0) return;
+  if (confirm(`Are you sure you want to delete ${selectedClassNames.size} selected class(es)?`)) {
+    try {
+      const res = await fetch(apiUrl('/api/admin/classes/bulk-delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: Array.from(selectedClassNames) })
+      });
+      if (res.ok) {
+        selectedClassNames.clear();
+        updateClassSelectionUI();
+        await loadClasses();
+        loadClassesTable();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete selected classes.');
+      }
+    } catch (err) {
+      alert('Error deleting selected classes.');
+    }
   }
 }
 
@@ -584,10 +644,13 @@ async function deleteClass(name) {
     try {
       const res = await fetch(apiUrl(`/api/admin/classes/${encodeURIComponent(name)}`), { method: 'DELETE' });
       if (res.ok) {
+        selectedClassNames.delete(name);
+        updateClassSelectionUI();
         await loadClasses();
         loadClassesTable();
       } else {
-        alert('Failed to delete class.');
+        const data = await res.json();
+        alert(data.error || 'Failed to delete class.');
       }
     } catch (err) {
       alert('Error deleting class.');

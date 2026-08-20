@@ -336,6 +336,10 @@
                   <input type="text" id="search-classes" placeholder="Search class name..." oninput="loadClassesTable()">
                 </div>
 
+                <button class="btn btn-sm btn-warning hidden" id="btn-delete-selected-classes" onclick="deleteSelectedClasses()">
+                  <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-classes">0</span>)
+                </button>
+
                 <button class="btn btn-sm btn-primary" onclick="openClassModal()">
                   <i class="fa-solid fa-plus"></i> Create New Class
                 </button>
@@ -346,6 +350,7 @@
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="select-all-classes" onchange="toggleSelectAllClasses(this)"></th>
                     <th style="width: 60px; text-align: center;">#</th>
                     <th>Class / Batch Title</th>
                     <th style="text-align: center; white-space: nowrap;">Enrolled Students</th>
@@ -355,7 +360,7 @@
                 </thead>
                 <tbody id="table-admin-classes">
                   <tr>
-                    <td colspan="5" class="text-center p-6 text-muted">Loading classes list...</td>
+                    <td colspan="6" class="text-center p-6 text-muted">Loading classes list...</td>
                   </tr>
                 </tbody>
               </table>

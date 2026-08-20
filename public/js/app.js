@@ -943,6 +943,7 @@ async function loadExams() {
               <h4 class="exam-card-title">${escapeHtml(exam.title)}</h4>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${statusBadges[exam.status] || ''}
+                ${exam.shuffle_questions === 1 ? '<span class="badge" style="background:#eef2ff; color:#4f46e5; border:1px solid #c7d2fe;" title="Questions shuffled for each student"><i class="fa-solid fa-shuffle"></i> Shuffled</span>' : ''}
                 ${exam.show_results === 1 ? '<span class="badge badge-success"><i class="fa-solid fa-eye"></i> Results On</span>' : '<span class="badge badge-secondary"><i class="fa-solid fa-eye-slash"></i> Results Off</span>'}
               </div>
             </div>
@@ -1040,6 +1041,8 @@ function openExamModal() {
   document.getElementById('exam-id').value = '';
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = false;
+  const shuffleChk = document.getElementById('exam-shuffle-questions');
+  if (shuffleChk) shuffleChk.checked = false;
   document.getElementById('modal-exam-title').textContent = 'Create New Exam';
 
   renderExamClassesCheckboxes(['All Classes']);
@@ -1069,6 +1072,9 @@ function editExam(id) {
 
   const showResultsChk = document.getElementById('exam-show-results');
   if (showResultsChk) showResultsChk.checked = (exam.show_results === 1);
+
+  const shuffleChk = document.getElementById('exam-shuffle-questions');
+  if (shuffleChk) shuffleChk.checked = (exam.shuffle_questions === 1);
 
   const pdfUrlInput = document.getElementById('exam-question-pdf-url');
   if (pdfUrlInput) pdfUrlInput.value = exam.question_pdf_url || '';
@@ -1159,6 +1165,7 @@ async function saveExamForm(e) {
   const pass_marks = parseInt(document.getElementById('exam-pass-marks').value);
   const status = document.getElementById('exam-status').value;
   const show_results = document.getElementById('exam-show-results').checked ? 1 : 0;
+  const shuffle_questions = document.getElementById('exam-shuffle-questions') && document.getElementById('exam-shuffle-questions').checked ? 1 : 0;
   const target_class = document.getElementById('exam-target-class') ? document.getElementById('exam-target-class').value : 'All Classes';
   const question_pdf_url = document.getElementById('exam-question-pdf-url') ? document.getElementById('exam-question-pdf-url').value : null;
 
@@ -1177,6 +1184,7 @@ async function saveExamForm(e) {
         pass_marks,
         status,
         show_results,
+        shuffle_questions,
         target_class,
         question_pdf_url,
         questions: parsedExamModalCSVData

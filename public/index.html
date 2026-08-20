@@ -1004,16 +1004,31 @@
             </div>
           </div>
 
-          <!-- SECTION 3: RESULTS VISIBILITY SWITCH -->
-          <div class="modern-section-card" style="padding: 12px 16px;">
+          <!-- SECTION 3: EXAM SETTINGS (SHUFFLE & RESULTS VISIBILITY) -->
+          <div class="grid-2-cols" style="margin-bottom: 16px;">
+            <!-- TOGGLE: SHUFFLE QUESTIONS -->
+            <label class="modern-toggle-card" for="exam-shuffle-questions" style="margin: 0;">
+              <div class="modern-toggle-info">
+                <div class="toggle-icon" style="background:#eef2ff; color:#4f46e5;">
+                  <i class="fa-solid fa-shuffle"></i>
+                </div>
+                <div>
+                  <h5>Shuffle Questions for Students</h5>
+                  <p>Automatically randomize question sequence for each student.</p>
+                </div>
+              </div>
+              <input type="checkbox" id="exam-shuffle-questions" value="1" style="width: 22px; height: 22px; cursor: pointer; accent-color: var(--primary);">
+            </label>
+
+            <!-- TOGGLE: RESULTS VISIBILITY -->
             <label class="modern-toggle-card" for="exam-show-results" style="margin: 0;">
               <div class="modern-toggle-info">
                 <div class="toggle-icon">
                   <i class="fa-solid fa-eye"></i>
                 </div>
                 <div>
-                  <h5>Allow Students to View Scorecards & Results</h5>
-                  <p>When turned on, students instantly see marks, percentages, and answer breakdowns upon submission.</p>
+                  <h5>Allow Students to View Results</h5>
+                  <p>Students instantly see marks & breakdowns upon submission.</p>
                 </div>
               </div>
               <input type="checkbox" id="exam-show-results" value="1" style="width: 22px; height: 22px; cursor: pointer; accent-color: #2563eb;">

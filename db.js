@@ -69,6 +69,7 @@ async function initDb() {
         pass_marks INTEGER NOT NULL DEFAULT 40,
         status VARCHAR(50) CHECK(status IN ('draft', 'published', 'active', 'stopped')) NOT NULL DEFAULT 'draft',
         show_results INTEGER NOT NULL DEFAULT 0,
+        shuffle_questions INTEGER NOT NULL DEFAULT 0,
         target_class VARCHAR(255) DEFAULT 'All Classes',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
@@ -76,6 +77,7 @@ async function initDb() {
 
     // Ensure missing columns exist
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS show_results INTEGER DEFAULT 0;`);
+    await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS shuffle_questions INTEGER DEFAULT 0;`);
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS question_pdf_url TEXT;`);
     await pool.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS target_class VARCHAR(255) DEFAULT 'All Classes';`);
 

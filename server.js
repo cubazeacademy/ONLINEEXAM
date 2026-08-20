@@ -504,7 +504,7 @@ app.get('/api/admin/exams', async (req, res) => {
 });
 
 app.post('/api/admin/exams', async (req, res) => {
-  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, target_class, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, shuffle_questions, question_pdf_url, target_class, questions } = req.body;
   if (!title) return res.status(400).json({ error: 'Exam title is required' });
 
   const cleanTargetClass = (target_class || 'All Classes').trim();
@@ -514,8 +514,8 @@ app.post('/api/admin/exams', async (req, res) => {
 
   try {
     const info = await db.run(`
-      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, target_class)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO exams (title, description, duration_minutes, total_marks, pass_marks, status, show_results, shuffle_questions, question_pdf_url, target_class)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       title,
@@ -525,6 +525,7 @@ app.post('/api/admin/exams', async (req, res) => {
       pass_marks || 40,
       status || 'draft',
       show_results ? 1 : 0,
+      shuffle_questions ? 1 : 0,
       question_pdf_url || null,
       cleanTargetClass
     ]);
@@ -568,7 +569,7 @@ app.post('/api/admin/exams', async (req, res) => {
 
 app.put('/api/admin/exams/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, question_pdf_url, target_class, questions } = req.body;
+  const { title, description, duration_minutes, total_marks, pass_marks, status, show_results, shuffle_questions, question_pdf_url, target_class, questions } = req.body;
 
   const cleanTargetClass = (target_class || 'All Classes').trim();
   if (cleanTargetClass && cleanTargetClass !== 'All Classes') {
@@ -578,9 +579,9 @@ app.put('/api/admin/exams/:id', async (req, res) => {
   try {
     await db.run(`
       UPDATE exams
-      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7, question_pdf_url = $8, target_class = $9
-      WHERE id = $10
-    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, question_pdf_url || null, cleanTargetClass, id]);
+      SET title = $1, description = $2, duration_minutes = $3, total_marks = $4, pass_marks = $5, status = $6, show_results = $7, shuffle_questions = $8, question_pdf_url = $9, target_class = $10
+      WHERE id = $11
+    `, [title, description || '', duration_minutes, total_marks, pass_marks, status, show_results ? 1 : 0, shuffle_questions ? 1 : 0, question_pdf_url || null, cleanTargetClass, id]);
 
     let uploadedCount = 0;
     if (Array.isArray(questions) && questions.length > 0) {
@@ -1232,6 +1233,20 @@ app.post('/api/student/exams/:id/start', async (req, res) => {
       return res.status(400).json({ error: 'This exam currently has no questions assigned to it.' });
     }
 
+function shuffleArrayWithSeed(array, seed) {
+  let s = Math.abs(Number(seed)) || 1;
+  const rnd = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
     let attempt = await db.get('SELECT * FROM attempts WHERE student_id = $1 AND exam_id = $2 AND status = \'in_progress\'', [student_id, id]);
     if (!attempt) {
       const info = await db.run(`
@@ -1240,6 +1255,11 @@ app.post('/api/student/exams/:id/start', async (req, res) => {
         RETURNING *
       `, [student_id, id]);
       attempt = (info && info.rows && info.rows[0]) ? info.rows[0] : (await db.get('SELECT * FROM attempts WHERE student_id = $1 AND exam_id = $2 AND status = \'in_progress\'', [student_id, id]));
+    }
+
+    if (exam && (exam.shuffle_questions === 1 || exam.shuffle_questions === true)) {
+      const seed = (attempt && attempt.id ? Number(attempt.id) : 1) * 37 + Number(student_id);
+      questions = shuffleArrayWithSeed(questions, seed);
     }
 
     res.json({

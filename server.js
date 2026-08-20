@@ -432,6 +432,28 @@ app.post('/api/admin/students/bulk-delete', async (req, res) => {
   }
 });
 
+app.post('/api/admin/students/bulk-set-class', async (req, res) => {
+  const { ids, class_name } = req.body;
+  if (!class_name || !class_name.trim()) {
+    return res.status(400).json({ error: 'Class name is required' });
+  }
+  const cleanClass = class_name.trim();
+  try {
+    await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanClass]);
+    if (Array.isArray(ids) && ids.length > 0) {
+      for (const id of ids) {
+        await db.run('UPDATE users SET class_name = $1 WHERE id = $2 AND role = \'student\'', [cleanClass, id]);
+      }
+      res.json({ message: `Updated ${ids.length} student(s) to "${cleanClass}".` });
+    } else {
+      await db.run('UPDATE users SET class_name = $1 WHERE role = \'student\'', [cleanClass]);
+      res.json({ message: `Updated all students to "${cleanClass}".` });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // ADMIN - EXAMS MANAGEMENT
 // -------------------------------------------------------------

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=2.8">
+  <link rel="stylesheet" href="css/style.css?v=2.9">
 </head>
 
 <body>
@@ -275,6 +275,9 @@
                   <i class="fa-solid fa-chevron-down select-arrow"></i>
                 </div>
 
+                <button class="btn btn-sm btn-outline hidden" id="btn-change-class-selected-students" onclick="promptBulkChangeClass()" style="color:#2563eb; border-color:#93c5fd; background:#eff6ff;">
+                  <i class="fa-solid fa-graduation-cap"></i> Change Class (<span id="count-class-selected-students">0</span>)
+                </button>
                 <button class="btn btn-sm btn-warning hidden" id="btn-delete-selected-students" onclick="deleteSelectedStudents()">
                   <i class="fa-solid fa-trash"></i> Delete Selected (<span id="count-selected-students">0</span>)
                 </button>
@@ -1359,7 +1362,7 @@
   </div>
 
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=2.8"></script>
+  <script src="js/app.js?v=2.9"></script>
 </body>
 
 </html>

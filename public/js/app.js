@@ -692,10 +692,46 @@ function updateStudentSelection() {
 
 function updateStudentSelectionUI() {
   const count = selectedStudentIds.size;
-  const btn = document.getElementById('btn-delete-selected-students');
+  const btnDelete = document.getElementById('btn-delete-selected-students');
   const countEl = document.getElementById('count-selected-students');
   if (countEl) countEl.textContent = count;
-  if (btn) btn.classList.toggle('hidden', count === 0);
+  if (btnDelete) btnDelete.classList.toggle('hidden', count === 0);
+
+  const btnClass = document.getElementById('btn-change-class-selected-students');
+  const countClassEl = document.getElementById('count-class-selected-students');
+  if (countClassEl) countClassEl.textContent = count;
+  if (btnClass) btnClass.classList.toggle('hidden', count === 0);
+}
+
+async function promptBulkChangeClass() {
+  if (selectedStudentIds.size === 0) return;
+
+  const targetClass = prompt(`Enter new class name to assign to the ${selectedStudentIds.size} selected student(s):\n(Available: ${allClassesList.join(', ')})`, 'CLASS 3 DH');
+  if (!targetClass || !targetClass.trim()) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/admin/students/bulk-set-class'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ids: Array.from(selectedStudentIds),
+        class_name: targetClass.trim()
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to update student classes');
+      return;
+    }
+
+    alert(data.message || 'Student classes updated successfully.');
+    selectedStudentIds.clear();
+    await loadClasses();
+    loadStudents();
+  } catch (err) {
+    alert('Error updating student classes.');
+  }
 }
 
 async function deleteSelectedStudents() {

@@ -21,6 +21,19 @@ let selectedStudentIds = new Set();
 let selectedQuestionIds = new Set();
 let selectedResultIds = new Set();
 
+// TEACHER SELECTION STATE
+let teacherSelectionState = {
+  slots: [],
+  periodSettings: [],
+  settings: {},
+  mySelections: [],
+  currentStep: 1,
+  allTeachers: [],
+  gridData: null,
+  currentGridDay: 'Sunday',
+  parsedImportData: []
+};
+
 // EXAM TAKING STATE
 let examState = {
   attemptId: null,
@@ -3918,13 +3931,33 @@ async function loadAdminTeachingReports() {
 }
 
 function switchReportTab(tab) {
-  document.getElementById('btn-rep-teacher-tab').classList.toggle('active', tab === 'teacher-wise');
-  document.getElementById('btn-rep-class-tab').classList.toggle('active', tab === 'class-wise');
-  document.getElementById('btn-rep-grid-tab').classList.toggle('active', tab === 'grid-matrix');
+  const btnTeacher = document.getElementById('btn-rep-teacher-tab');
+  const btnClass = document.getElementById('btn-rep-class-tab');
+  const btnGrid = document.getElementById('btn-rep-grid-tab');
 
-  document.getElementById('report-view-teacher-wise').classList.toggle('hidden', tab !== 'teacher-wise');
-  document.getElementById('report-view-class-wise').classList.toggle('hidden', tab !== 'class-wise');
-  document.getElementById('report-view-grid-matrix').classList.toggle('hidden', tab !== 'grid-matrix');
+  if (btnTeacher) btnTeacher.classList.toggle('active', tab === 'teacher-wise');
+  if (btnClass) btnClass.classList.toggle('active', tab === 'class-wise');
+  if (btnGrid) btnGrid.classList.toggle('active', tab === 'grid-matrix');
+
+  const viewTeacher = document.getElementById('report-view-teacher-wise');
+  const viewClass = document.getElementById('report-view-class-wise');
+  const viewGrid = document.getElementById('report-view-grid-matrix');
+
+  if (viewTeacher) viewTeacher.classList.toggle('hidden', tab !== 'teacher-wise');
+  if (viewClass) viewClass.classList.toggle('hidden', tab !== 'class-wise');
+  if (viewGrid) viewGrid.classList.toggle('hidden', tab !== 'grid-matrix');
+
+  if (tab === 'grid-matrix') {
+    if (!teacherSelectionState.gridData) {
+      loadGridMatrixReport();
+    } else {
+      renderGridMatrix(teacherSelectionState.currentGridDay || 'Sunday');
+    }
+  } else if (tab === 'class-wise') {
+    loadClassWiseReport();
+  } else if (tab === 'teacher-wise') {
+    loadTeacherWiseReport();
+  }
 }
 
 async function loadTeacherWiseReport() {
@@ -3934,7 +3967,7 @@ async function loadTeacherWiseReport() {
     const tbody = document.getElementById('table-report-teacher-wise');
     if (!tbody) return;
 
-    if (teachers.length === 0) {
+    if (!teachers || teachers.length === 0) {
       tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted" style="padding:20px;">No allocations found.</td></tr>`;
       return;
     }
@@ -3977,10 +4010,15 @@ async function loadClassWiseReport() {
     if (!container) return;
 
     let html = '';
-    const classes = Object.keys(classData).sort();
+    const classes = Object.keys(classData || {}).sort();
+
+    if (classes.length === 0) {
+      container.innerHTML = '<div class="text-center text-muted p-6">No class timetable entries found.</div>';
+      return;
+    }
 
     classes.forEach(cName => {
-      const slots = classData[cName];
+      const slots = classData[cName] || [];
       html += `
         <div class="panel-card mb-4">
           <div class="panel-header" style="background:#f8fafc;">
@@ -4028,6 +4066,11 @@ async function loadClassWiseReport() {
 }
 
 async function loadGridMatrixReport() {
+  const container = document.getElementById('container-timetable-grid-matrix');
+  if (container && !teacherSelectionState.gridData) {
+    container.innerHTML = '<div class="text-center p-6 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading timetable matrix...</div>';
+  }
+
   try {
     const res = await fetch(apiUrl('/api/teaching/admin/reports/timetable-grid'));
     const data = await res.json();
@@ -4035,6 +4078,9 @@ async function loadGridMatrixReport() {
     renderGridMatrix(teacherSelectionState.currentGridDay || 'Sunday');
   } catch (err) {
     console.error('Error loading grid matrix report:', err);
+    if (container) {
+      container.innerHTML = '<div class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> Error loading grid matrix.</div>';
+    }
   }
 }
 
@@ -4051,16 +4097,26 @@ function setGridDay(day) {
 
 function renderGridMatrix(day) {
   const container = document.getElementById('container-timetable-grid-matrix');
-  if (!container || !teacherSelectionState.gridData) return;
+  if (!container) return;
 
-  const { slots, classes, period_settings } = teacherSelectionState.gridData;
+  if (!teacherSelectionState.gridData) {
+    loadGridMatrixReport();
+    return;
+  }
+
+  const { slots = [], classes = [], period_settings = [] } = teacherSelectionState.gridData;
   const daySlots = slots.filter(s => s.day === day);
+
+  if (classes.length === 0) {
+    container.innerHTML = '<div class="text-center text-muted p-6">No timetable data available for grid.</div>';
+    return;
+  }
 
   let tableHtml = `
     <table class="matrix-table">
       <thead>
         <tr>
-          <th style="width:90px;">Period</th>
+          <th style="width:95px;">Period</th>
           ${classes.map(c => `<th>${escapeHtml(c)}</th>`).join('')}
         </tr>
       </thead>
@@ -4108,6 +4164,36 @@ function renderGridMatrix(day) {
 
   tableHtml += `</tbody></table>`;
   container.innerHTML = tableHtml;
+}
+
+function filterTeachingReportsView() {
+  const query = (document.getElementById('search-teaching-reports')?.value || '').toLowerCase();
+  
+  // 1. Teacher-wise table filter
+  const teacherRows = document.querySelectorAll('#table-report-teacher-wise tr');
+  teacherRows.forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(query) ? '' : 'none';
+  });
+
+  // 2. Class-wise panels filter
+  const classCards = document.querySelectorAll('#container-report-class-wise .panel-card');
+  classCards.forEach(card => {
+    const text = card.innerText.toLowerCase();
+    card.style.display = text.includes(query) ? '' : 'none';
+  });
+
+  // 3. Matrix grid cells filter
+  const matrixCells = document.querySelectorAll('#container-timetable-grid-matrix td');
+  matrixCells.forEach(cell => {
+    if (!cell.classList.contains('matrix-cell-period')) {
+      if (query && cell.innerText.toLowerCase().includes(query)) {
+        cell.style.outline = '2px solid #4f46e5';
+      } else {
+        cell.style.outline = 'none';
+      }
+    }
+  });
 }
 
 function exportTeachingReportCSV(type) {

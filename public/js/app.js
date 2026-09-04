@@ -176,9 +176,9 @@ function showPortalLayout() {
     rolePill.textContent = `@${currentUser.username || 'user'} - ${roleLabel}`;
   }
 
-  avatarInit.textContent = currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U';
-  userName.textContent = currentUser.full_name;
-  userSub.textContent = currentUser.email || currentUser.username;
+  if (avatarInit) avatarInit.textContent = currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U';
+  if (userName) userName.textContent = currentUser.full_name || currentUser.username;
+  if (userSub) userSub.textContent = currentUser.email || currentUser.username;
 
   // Navigation switching
   const navAdmin = document.getElementById('nav-admin');

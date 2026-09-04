@@ -144,8 +144,127 @@ async function initDb() {
     await pool.query(`ALTER TABLE exam_questions ENABLE ROW LEVEL SECURITY;`);
     await pool.query(`ALTER TABLE attempts ENABLE ROW LEVEL SECURITY;`);
 
+    // =========================================================================
+    // TEACHER SUBJECT SELECTION MODULE TABLES
+    // =========================================================================
+
+    // Update users table constraint to allow 'teacher' role
+    try {
+      await pool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;`);
+      await pool.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('admin', 'student', 'teacher'));`);
+    } catch (e) {
+      console.log('Note on users_role_check:', e.message);
+    }
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);`);
+
+    // 8. Teacher Selection Classes
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_classes (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 9. Teacher Selection Subjects
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_subjects (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(150) UNIQUE NOT NULL,
+        code VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 10. Teacher Selection Master Timetable
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_timetable (
+        id SERIAL PRIMARY KEY,
+        day VARCHAR(20) NOT NULL,
+        period INTEGER NOT NULL,
+        time_slot VARCHAR(50),
+        class_name VARCHAR(100) NOT NULL,
+        subject VARCHAR(150) NOT NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_ts_timetable_slot UNIQUE (day, period, class_name)
+      );
+    `);
+
+    // 11. Teacher Selection Period Settings (Enable/Disable individual periods for Sunday/Monday)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_period_settings (
+        id SERIAL PRIMARY KEY,
+        day VARCHAR(20) NOT NULL,
+        period INTEGER NOT NULL,
+        time_slot VARCHAR(50),
+        is_enabled BOOLEAN DEFAULT true,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_ts_period_setting UNIQUE (day, period)
+      );
+    `);
+
+    // 12. Teacher Selection Global Settings (Start/End time, Open/Close status, Min/Max limits)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_settings (
+        id SERIAL PRIMARY KEY,
+        start_datetime TIMESTAMPTZ,
+        end_datetime TIMESTAMPTZ,
+        is_open BOOLEAN DEFAULT true,
+        is_timetable_published BOOLEAN DEFAULT true,
+        allow_edit BOOLEAN DEFAULT true,
+        min_periods INTEGER DEFAULT 2,
+        max_periods INTEGER DEFAULT 3,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 13. Teacher Selections (Allocation records with critical UNIQUE constraints for Clash Prevention)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selections (
+        id SERIAL PRIMARY KEY,
+        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        timetable_id INTEGER NOT NULL REFERENCES teacher_selection_timetable(id) ON DELETE CASCADE,
+        day VARCHAR(20) NOT NULL,
+        period INTEGER NOT NULL,
+        class_name VARCHAR(100) NOT NULL,
+        subject VARCHAR(150) NOT NULL,
+        status VARCHAR(50) DEFAULT 'confirmed',
+        selected_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        submitted_at TIMESTAMPTZ,
+        CONSTRAINT uq_ts_teacher_day_period UNIQUE (teacher_id, day, period),
+        CONSTRAINT uq_ts_class_day_period UNIQUE (day, period, class_name)
+      );
+    `);
+
+    // 14. Audit Log Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_audit_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        user_name VARCHAR(255),
+        action VARCHAR(255) NOT NULL,
+        details JSONB,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Enable RLS
+    await pool.query(`ALTER TABLE teacher_selection_classes ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE teacher_selection_subjects ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE teacher_selection_timetable ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE teacher_selection_period_settings ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE teacher_selection_settings ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE teacher_selections ENABLE ROW LEVEL SECURITY;`);
+    await pool.query(`ALTER TABLE teacher_selection_audit_logs ENABLE ROW LEVEL SECURITY;`);
+
     console.log('✅ Supabase PostgreSQL tables verified/created & RLS enabled successfully.');
     await seedDefaultData();
+    await seedTeacherSelectionData();
   } catch (err) {
     console.error('❌ Error initializing database tables in Supabase:', err.message);
   }
@@ -286,6 +405,282 @@ async function seedDefaultData() {
   }
 }
 
+// =========================================================================
+// SEED TEACHER SELECTION DATA (29 Teachers, Master Timetable, Period Settings, Global Settings)
+// =========================================================================
+async function seedTeacherSelectionData() {
+  try {
+    // 1. Seed Global Settings
+    const settingsCheck = await get(`SELECT count(*)::int as count FROM teacher_selection_settings`);
+    if (!settingsCheck || settingsCheck.count === 0) {
+      await pool.query(`
+        INSERT INTO teacher_selection_settings (start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
+        VALUES (
+          NOW() - INTERVAL '1 day',
+          NOW() + INTERVAL '7 days',
+          true,
+          true,
+          true,
+          2,
+          3
+        );
+      `);
+      console.log('Seeded Teacher Selection default settings (Open, Min 2, Max 3).');
+    }
+
+    // 2. Seed Period Settings (Sunday P1-P9, Monday P1-P9 with standard time slots)
+    const periodTimeSlots = {
+      1: '7:30–8:15',
+      2: '8:15–9:00',
+      3: '9:00–9:45',
+      4: '10:30–11:15',
+      5: '11:25–12:10',
+      6: '12:10–12:55',
+      7: '2:00–2:40',
+      8: '2:40–3:20',
+      9: '3:30–4:10'
+    };
+
+    for (const day of ['Sunday', 'Monday']) {
+      for (let p = 1; p <= 9; p++) {
+        await pool.query(`
+          INSERT INTO teacher_selection_period_settings (day, period, time_slot, is_enabled)
+          VALUES ($1, $2, $3, true)
+          ON CONFLICT (day, period) DO NOTHING;
+        `, [day, p, periodTimeSlots[p]]);
+      }
+    }
+
+    // 3. Seed 29 Teachers
+    const teachersList = [
+      { name: 'Sinan MP', username: 'sinanmp' },
+      { name: 'Rafi', username: 'rafi' },
+      { name: 'Abdul Majid', username: 'abdulmajid' },
+      { name: 'Shahid KT', username: 'shahidkt' },
+      { name: 'Shakir P', username: 'shakirp' },
+      { name: 'Abdul Hadi', username: 'abdulhadi' },
+      { name: 'Fuhad', username: 'fuhad' },
+      { name: 'Shahid Muneer', username: 'shahidmuneer' },
+      { name: 'Fazlu', username: 'fazlu' },
+      { name: 'Shabeeb', username: 'shabeeb' },
+      { name: 'Hisham', username: 'hisham' },
+      { name: 'Razi VM', username: 'razivm' },
+      { name: 'Ramees M', username: 'rameesm' },
+      { name: 'Muhammed M', username: 'muhammedm' },
+      { name: 'Janees', username: 'janees' },
+      { name: 'Ameer Shafi', username: 'ameershafi' },
+      { name: 'Sinan KC', username: 'sinankc' },
+      { name: 'Muhasin', username: 'muhasin' },
+      { name: 'Sinan K', username: 'sinank' },
+      { name: 'Salmanul Faris', username: 'salmanulfaris' },
+      { name: 'Irshad', username: 'irshad' },
+      { name: 'Farsin', username: 'farsin' },
+      { name: 'Abdulla Majid', username: 'abdullamajid' },
+      { name: 'Varis', username: 'varis' },
+      { name: 'Ramees VP', username: 'rameesvp' },
+      { name: 'Naeem', username: 'naeem' },
+      { name: 'Rahees', username: 'rahees' },
+      { name: 'Nihal', username: 'nihal' },
+      { name: 'Aboobacker Sidheeq', username: 'aboobackersidheeq' }
+    ];
+
+    for (const t of teachersList) {
+      const existing = await get(`SELECT id FROM users WHERE username = $1`, [t.username]);
+      if (!existing) {
+        await pool.query(`
+          INSERT INTO users (username, password, full_name, email, role, is_active)
+          VALUES ($1, $2, $3, $4, 'teacher', true)
+          ON CONFLICT (username) DO NOTHING;
+        `, [t.username, 'teacher123', t.name, `${t.username}@school.com`]);
+      }
+    }
+
+    // 4. Seed Classes (Std 1 to Std 7)
+    const stdClasses = ['Std 1', 'Std 2', 'Std 3', 'Std 4', 'Std 5', 'Std 6', 'Std 7'];
+    for (let idx = 0; idx < stdClasses.length; idx++) {
+      await pool.query(`
+        INSERT INTO teacher_selection_classes (name, sort_order, status)
+        VALUES ($1, $2, 'active')
+        ON CONFLICT (name) DO NOTHING;
+      `, [stdClasses[idx], idx + 1]);
+    }
+
+    // 5. Seed Initial Master Timetable (126 entries from CSV)
+    const ttCheck = await get(`SELECT count(*)::int as count FROM teacher_selection_timetable`);
+    if (!ttCheck || ttCheck.count < 126) {
+      const timetableEntries = [
+        // Std 1 - Sunday
+        ['Std 1','Sunday',1,'7:30–8:15','MTS'],
+        ['Std 1','Sunday',2,'8:15–9:00','TJWD'],
+        ['Std 1','Sunday',3,'9:00–9:45','LBR'],
+        ['Std 1','Sunday',4,'10:30–11:15','SCI'],
+        ['Std 1','Sunday',5,'11:25–12:10','FQH'],
+        ['Std 1','Sunday',6,'12:10–12:55','HDS'],
+        ['Std 1','Sunday',7,'2:00–2:40','ADB'],
+        ['Std 1','Sunday',8,'2:40–3:20','SRF'],
+        ['Std 1','Sunday',9,'3:30–4:10','URD'],
+        // Std 1 - Monday
+        ['Std 1','Monday',1,'7:30–8:15','S S'],
+        ['Std 1','Monday',2,'8:15–9:00','ENG'],
+        ['Std 1','Monday',3,'9:00–9:45','MTS'],
+        ['Std 1','Monday',4,'10:30–11:15','TSWF'],
+        ['Std 1','Monday',5,'11:25–12:10','FQH'],
+        ['Std 1','Monday',6,'12:10–12:55','NHV'],
+        ['Std 1','Monday',7,'2:00–2:40','ADB'],
+        ['Std 1','Monday',8,'2:40–3:20','SRF'],
+        ['Std 1','Monday',9,'3:30–4:10','MLM'],
+
+        // Std 2 - Sunday
+        ['Std 2','Sunday',1,'7:30–8:15','S S'],
+        ['Std 2','Sunday',2,'8:15–9:00','T C'],
+        ['Std 2','Sunday',3,'9:00–9:45','MTS'],
+        ['Std 2','Sunday',4,'10:30–11:15','URD'],
+        ['Std 2','Sunday',5,'11:25–12:10','NHV'],
+        ['Std 2','Sunday',6,'12:10–12:55','FQH'],
+        ['Std 2','Sunday',7,'2:00–2:40','HDS'],
+        ['Std 2','Sunday',8,'2:40–3:20','ADB'],
+        ['Std 2','Sunday',9,'3:30–4:10','ENG'],
+        // Std 2 - Monday
+        ['Std 2','Monday',1,'7:30–8:15','AQD'],
+        ['Std 2','Monday',2,'8:15–9:00','TJWD'],
+        ['Std 2','Monday',3,'9:00–9:45','NHV'],
+        ['Std 2','Monday',4,'10:30–11:15','MTS'],
+        ['Std 2','Monday',5,'11:25–12:10','FQH'],
+        ['Std 2','Monday',6,'12:10–12:55','URD'],
+        ['Std 2','Monday',7,'2:00–2:40','SCI'],
+        ['Std 2','Monday',8,'2:40–3:20','ENG'],
+        ['Std 2','Monday',9,'3:30–4:10','SRF'],
+
+        // Std 3 - Sunday
+        ['Std 3','Sunday',1,'7:30–8:15','T C'],
+        ['Std 3','Sunday',2,'8:15–9:00','MTS'],
+        ['Std 3','Sunday',3,'9:00–9:45','S S'],
+        ['Std 3','Sunday',4,'10:30–11:15','URD'],
+        ['Std 3','Sunday',5,'11:25–12:10','ENG'],
+        ['Std 3','Sunday',6,'12:10–12:55','ADB'],
+        ['Std 3','Sunday',7,'2:00–2:40','TSWF'],
+        ['Std 3','Sunday',8,'2:40–3:20','SRF'],
+        ['Std 3','Sunday',9,'3:30–4:10','LBR'],
+        // Std 3 - Monday
+        ['Std 3','Monday',1,'7:30–8:15','ADB'],
+        ['Std 3','Monday',2,'8:15–9:00','MTS'],
+        ['Std 3','Monday',3,'9:00–9:45','URD'],
+        ['Std 3','Monday',4,'10:30–11:15','NHV'],
+        ['Std 3','Monday',5,'11:25–12:10','MLM'],
+        ['Std 3','Monday',6,'12:10–12:55','FQ'],
+        ['Std 3','Monday',7,'2:00–2:40','ENG'],
+        ['Std 3','Monday',8,'2:40–3:20','SRF'],
+        ['Std 3','Monday',9,'3:30–4:10','S S'],
+
+        // Std 4 - Sunday
+        ['Std 4','Sunday',1,'7:30–8:15','AQ'],
+        ['Std 4','Sunday',2,'8:15–9:00','S S'],
+        ['Std 4','Sunday',3,'9:00–9:45','ADB'],
+        ['Std 4','Sunday',4,'10:30–11:15','ENG'],
+        ['Std 4','Sunday',5,'11:25–12:10','FQH'],
+        ['Std 4','Sunday',6,'12:10–12:55','HDS'],
+        ['Std 4','Sunday',7,'2:00–2:40','SCI'],
+        ['Std 4','Sunday',8,'2:40–3:20','NHV'],
+        ['Std 4','Sunday',9,'3:30–4:10','T C'],
+        // Std 4 - Monday
+        ['Std 4','Monday',1,'7:30–8:15','HDS'],
+        ['Std 4','Monday',2,'8:15–9:00','S S'],
+        ['Std 4','Monday',3,'9:00–9:45','AQ'],
+        ['Std 4','Monday',4,'10:30–11:15','IT'],
+        ['Std 4','Monday',5,'11:25–12:10','SCI'],
+        ['Std 4','Monday',6,'12:10–12:55','MTS'],
+        ['Std 4','Monday',7,'2:00–2:40','MLM'],
+        ['Std 4','Monday',8,'2:40–3:20','ADB'],
+        ['Std 4','Monday',9,'3:30–4:10','TSWF'],
+
+        // Std 5 - Sunday
+        ['Std 5','Sunday',1,'7:30–8:15','HDS'],
+        ['Std 5','Sunday',2,'8:15–9:00','ALF'],
+        ['Std 5','Sunday',3,'9:00–9:45','ENG'],
+        ['Std 5','Sunday',4,'10:30–11:15','FQH'],
+        ['Std 5','Sunday',5,'11:25–12:10','TFSR'],
+        ['Std 5','Sunday',6,'12:10–12:55','T C'],
+        ['Std 5','Sunday',7,'2:00–2:40','NHV'],
+        ['Std 5','Sunday',8,'2:40–3:20','ADB'],
+        ['Std 5','Sunday',9,'3:30–4:10','URD'],
+        // Std 5 - Monday
+        ['Std 5','Monday',1,'7:30–8:15','ADB'],
+        ['Std 5','Monday',2,'8:15–9:00','FQH'],
+        ['Std 5','Monday',3,'9:00–9:45','T C'],
+        ['Std 5','Monday',4,'10:30–11:15','MTS'],
+        ['Std 5','Monday',5,'11:25–12:10','HNDI'],
+        ['Std 5','Monday',6,'12:10–12:55','S S'],
+        ['Std 5','Monday',7,'2:00–2:40','SCI'],
+        ['Std 5','Monday',8,'2:40–3:20','SCI'],
+        ['Std 5','Monday',9,'3:30–4:10','MTS'],
+
+        // Std 6 - Sunday
+        ['Std 6','Sunday',1,'7:30–8:15','FQH'],
+        ['Std 6','Sunday',2,'8:15–9:00','BLG'],
+        ['Std 6','Sunday',3,'9:00–9:45','ENG'],
+        ['Std 6','Sunday',4,'10:30–11:15','HDS'],
+        ['Std 6','Sunday',5,'11:25–12:10','ALF'],
+        ['Std 6','Sunday',6,'12:10–12:55','URD'],
+        ['Std 6','Sunday',7,'2:00–2:40','PSS'],
+        ['Std 6','Sunday',8,'2:40–3:20','TRQ'],
+        ['Std 6','Sunday',9,'3:30–4:10','HTR'],
+        // Std 6 - Monday
+        ['Std 6','Monday',1,'7:30–8:15','FQH'],
+        ['Std 6','Monday',2,'8:15–9:00','ADB'],
+        ['Std 6','Monday',3,'9:00–9:45','HDS'],
+        ['Std 6','Monday',4,'10:30–11:15','TFSR'],
+        ['Std 6','Monday',5,'11:25–12:10','ALF'],
+        ['Std 6','Monday',6,'12:10–12:55','ECN'],
+        ['Std 6','Monday',7,'2:00–2:40','URD'],
+        ['Std 6','Monday',8,'2:40–3:20','IT'],
+        ['Std 6','Monday',9,'3:30–4:10','T C'],
+
+        // Std 7 - Sunday
+        ['Std 7','Sunday',1,'7:30–8:15','ALF'],
+        ['Std 7','Sunday',2,'8:15–9:00','BLG'],
+        ['Std 7','Sunday',3,'9:00–9:45','FQH'],
+        ['Std 7','Sunday',4,'10:30–11:15','HDS'],
+        ['Std 7','Sunday',5,'11:25–12:10','PSS'],
+        ['Std 7','Sunday',6,'12:10–12:55','TSWF'],
+        ['Std 7','Sunday',7,'2:00–2:40','HTR'],
+        ['Std 7','Sunday',8,'2:40–3:20','ECN'],
+        ['Std 7','Sunday',9,'3:30–4:10','T C'],
+        // Std 7 - Monday
+        ['Std 7','Monday',1,'7:30–8:15','ECN'],
+        ['Std 7','Monday',2,'8:15–9:00','U FQ'],
+        ['Std 7','Monday',3,'9:00–9:45','TFSR'],
+        ['Std 7','Monday',4,'10:30–11:15','FQH'],
+        ['Std 7','Monday',5,'11:25–12:10','ALF'],
+        ['Std 7','Monday',6,'12:10–12:55','HDS'],
+        ['Std 7','Monday',7,'2:00–2:40','TSWF'],
+        ['Std 7','Monday',8,'2:40–3:20','PSS'],
+        ['Std 7','Monday',9,'3:30–4:10','ADB']
+      ];
+
+      for (const item of timetableEntries) {
+        const [className, day, period, timeSlot, subject] = item;
+        await pool.query(`
+          INSERT INTO teacher_selection_timetable (class_name, day, period, time_slot, subject, status)
+          VALUES ($1, $2, $3, $4, $5, 'active')
+          ON CONFLICT (day, period, class_name)
+          DO UPDATE SET subject = EXCLUDED.subject, time_slot = EXCLUDED.time_slot;
+        `, [className, day, period, timeSlot, subject]);
+
+        // Seed unique subjects into subjects table
+        await pool.query(`
+          INSERT INTO teacher_selection_subjects (name, code, status)
+          VALUES ($1, $1, 'active')
+          ON CONFLICT (name) DO NOTHING;
+        `, [subject]);
+      }
+    }
+
+    console.log(`✅ Seeded 29 Teachers, Classes, Subjects, and 126 Master Timetable entries for Teacher Selection module.`);
+  } catch (err) {
+    console.error('❌ Error seeding Teacher Selection data:', err.message);
+  }
+}
+
 // Export connection pool & helper methods
 module.exports = {
   pool,
@@ -295,3 +690,4 @@ module.exports = {
   run,
   initDb
 };
+

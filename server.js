@@ -1463,6 +1463,1059 @@ app.put('/api/student/profile', async (req, res) => {
   }
 });
 
+// =============================================================================
+// TEACHER SUBJECT SELECTION MODULE - API ENDPOINTS
+// =============================================================================
+
+// Helper: Audit logger
+async function logTeacherAction(userId, userName, action, details = {}) {
+  try {
+    await db.query(`
+      INSERT INTO teacher_selection_audit_logs (user_id, user_name, action, details)
+      VALUES ($1, $2, $3, $4)
+    `, [userId || null, userName || 'System', action, JSON.stringify(details)]);
+  } catch (e) {
+    console.error('Audit log error:', e.message);
+  }
+}
+
+// -------------------------------------------------------------
+// 1. SETTINGS & STATUS
+// -------------------------------------------------------------
+app.get('/api/teaching/settings', async (req, res) => {
+  try {
+    let settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    if (!settings) {
+      settings = {
+        is_open: true,
+        is_timetable_published: true,
+        allow_edit: true,
+        min_periods: 2,
+        max_periods: 3,
+        start_datetime: null,
+        end_datetime: null
+      };
+    }
+    res.json({
+      ...settings,
+      server_time: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/settings', async (req, res) => {
+  const { start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, admin_name, admin_id } = req.body;
+  try {
+    const existing = await db.get(`SELECT id FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    if (existing) {
+      await db.run(`
+        UPDATE teacher_selection_settings
+        SET start_datetime = $1, end_datetime = $2, is_open = $3, is_timetable_published = $4,
+            allow_edit = $5, min_periods = $6, max_periods = $7, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $8
+      `, [
+        start_datetime || null,
+        end_datetime || null,
+        is_open !== undefined ? is_open : true,
+        is_timetable_published !== undefined ? is_timetable_published : true,
+        allow_edit !== undefined ? allow_edit : true,
+        min_periods || 2,
+        max_periods || 3,
+        existing.id
+      ]);
+    } else {
+      await db.run(`
+        INSERT INTO teacher_selection_settings (start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [
+        start_datetime || null,
+        end_datetime || null,
+        is_open !== undefined ? is_open : true,
+        is_timetable_published !== undefined ? is_timetable_published : true,
+        allow_edit !== undefined ? allow_edit : true,
+        min_periods || 2,
+        max_periods || 3
+      ]);
+    }
+
+    await logTeacherAction(admin_id, admin_name || 'Admin', 'Updated Selection Settings', {
+      start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods
+    });
+
+    res.json({ message: 'Settings saved successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/toggle-status', async (req, res) => {
+  const { is_open, admin_id, admin_name } = req.body;
+  try {
+    await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [is_open]);
+    await logTeacherAction(admin_id, admin_name || 'Admin', is_open ? 'Opened Subject Selection' : 'Closed Subject Selection');
+    res.json({ message: `Subject Selection is now ${is_open ? 'OPEN' : 'CLOSED'}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 2. PERIOD SETTINGS (Enable/Disable Unwanted Periods dynamically)
+// -------------------------------------------------------------
+app.get('/api/teaching/period-settings', async (req, res) => {
+  try {
+    const settings = await db.all(`
+      SELECT day, period, time_slot, is_enabled
+      FROM teacher_selection_period_settings
+      ORDER BY CASE WHEN day = 'Sunday' THEN 1 ELSE 2 END, period ASC
+    `);
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/period-settings/toggle', async (req, res) => {
+  const { day, period, is_enabled, admin_id, admin_name } = req.body;
+  if (!day || period === undefined || is_enabled === undefined) {
+    return res.status(400).json({ error: 'Missing day, period, or is_enabled status' });
+  }
+  try {
+    await db.query(`
+      INSERT INTO teacher_selection_period_settings (day, period, is_enabled, updated_at)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (day, period)
+      DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
+    `, [day, parseInt(period), Boolean(is_enabled)]);
+
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Period ${day} P${period} ${is_enabled ? 'Enabled' : 'Disabled'}`);
+    res.json({ message: `Period ${day} P${period} is now ${is_enabled ? 'AVAILABLE' : 'DISABLED'}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/period-settings/bulk', async (req, res) => {
+  const { settings, admin_id, admin_name } = req.body;
+  if (!Array.isArray(settings)) {
+    return res.status(400).json({ error: 'Settings array required' });
+  }
+  try {
+    for (const item of settings) {
+      await db.query(`
+        INSERT INTO teacher_selection_period_settings (day, period, is_enabled, updated_at)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        ON CONFLICT (day, period)
+        DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
+      `, [item.day, parseInt(item.period), Boolean(item.is_enabled)]);
+    }
+    await logTeacherAction(admin_id, admin_name || 'Admin', 'Bulk updated period settings');
+    res.json({ message: 'Period settings updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 3. TEACHER MANAGEMENT
+// -------------------------------------------------------------
+app.get('/api/teaching/admin/teachers', async (req, res) => {
+  try {
+    const teachers = await db.all(`
+      SELECT 
+        u.id, 
+        u.username, 
+        u.full_name, 
+        u.email, 
+        u.phone,
+        COALESCE(u.is_active, true) as is_active, 
+        u.created_at,
+        COUNT(ts.id)::int as selected_count,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', ts.id,
+              'day', ts.day,
+              'period', ts.period,
+              'class_name', ts.class_name,
+              'subject', ts.subject,
+              'selected_at', ts.selected_at
+            )
+          ) FILTER (WHERE ts.id IS NOT NULL), '[]'::json
+        ) as selections
+      FROM users u
+      LEFT JOIN teacher_selections ts ON u.id = ts.teacher_id
+      WHERE u.role = 'teacher'
+      GROUP BY u.id
+      ORDER BY u.full_name ASC
+    `);
+
+    const result = teachers.map(t => {
+      let status = 'Pending';
+      if (t.selected_count >= 2) {
+        status = 'Completed';
+      } else if (t.selected_count > 0) {
+        status = 'In Progress';
+      }
+      return {
+        ...t,
+        status
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/teachers', async (req, res) => {
+  const { username, password, full_name, email, phone, admin_id, admin_name } = req.body;
+  if (!username || !password || !full_name) {
+    return res.status(400).json({ error: 'Username, password, and full name are required' });
+  }
+  try {
+    const cleanUsername = username.trim().toLowerCase();
+    const existing = await db.get(`SELECT id FROM users WHERE LOWER(username) = $1`, [cleanUsername]);
+    if (existing) {
+      return res.status(400).json({ error: 'A user with this username already exists' });
+    }
+
+    const inserted = await db.run(`
+      INSERT INTO users (username, password, full_name, email, phone, role, is_active)
+      VALUES ($1, $2, $3, $4, $5, 'teacher', true)
+      RETURNING id
+    `, [cleanUsername, password.trim(), full_name.trim(), email || `${cleanUsername}@school.com`, phone || '']);
+
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Added Teacher: ${full_name}`);
+    res.json({ message: 'Teacher added successfully', id: inserted.lastInsertRowid });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/teaching/admin/teachers/:id', async (req, res) => {
+  const teacherId = req.params.id;
+  const { username, password, full_name, email, phone, is_active, admin_id, admin_name } = req.body;
+  try {
+    let sql = `UPDATE users SET full_name = $1, email = $2, phone = $3, is_active = $4`;
+    const params = [full_name.trim(), email || '', phone || '', is_active !== undefined ? Boolean(is_active) : true];
+
+    if (username && username.trim() !== '') {
+      sql += `, username = $${params.length + 1}`;
+      params.push(username.trim().toLowerCase());
+    }
+    if (password && password.trim() !== '') {
+      sql += `, password = $${params.length + 1}`;
+      params.push(password.trim());
+    }
+
+    sql += ` WHERE id = $${params.length + 1} AND role = 'teacher'`;
+    params.push(teacherId);
+
+    await db.run(sql, params);
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Teacher: ${full_name} (ID: ${teacherId})`);
+    res.json({ message: 'Teacher updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teaching/admin/teachers/:id', async (req, res) => {
+  const teacherId = req.params.id;
+  const { admin_id, admin_name } = req.body;
+  try {
+    const teacher = await db.get(`SELECT full_name FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    await db.query(`DELETE FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted Teacher: ${teacher ? teacher.full_name : teacherId}`);
+    res.json({ message: 'Teacher deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 4. CLASSES & SUBJECTS MANAGEMENT
+// -------------------------------------------------------------
+app.get('/api/teaching/admin/classes', async (req, res) => {
+  try {
+    const classes = await db.all(`SELECT * FROM teacher_selection_classes ORDER BY sort_order ASC, name ASC`);
+    res.json(classes);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/classes', async (req, res) => {
+  const { name, sort_order } = req.body;
+  if (!name) return res.status(400).json({ error: 'Class name is required' });
+  try {
+    await db.query(`
+      INSERT INTO teacher_selection_classes (name, sort_order, status)
+      VALUES ($1, $2, 'active')
+      ON CONFLICT (name) DO NOTHING
+    `, [name.trim(), sort_order || 0]);
+    res.json({ message: 'Class added successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teaching/admin/classes/:id', async (req, res) => {
+  try {
+    await db.query(`DELETE FROM teacher_selection_classes WHERE id = $1`, [req.params.id]);
+    res.json({ message: 'Class deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/teaching/admin/subjects', async (req, res) => {
+  try {
+    const subjects = await db.all(`SELECT * FROM teacher_selection_subjects ORDER BY name ASC`);
+    res.json(subjects);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/subjects', async (req, res) => {
+  const { name, code } = req.body;
+  if (!name) return res.status(400).json({ error: 'Subject name is required' });
+  try {
+    await db.query(`
+      INSERT INTO teacher_selection_subjects (name, code, status)
+      VALUES ($1, $2, 'active')
+      ON CONFLICT (name) DO NOTHING
+    `, [name.trim(), (code || name).trim()]);
+    res.json({ message: 'Subject added successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teaching/admin/subjects/:id', async (req, res) => {
+  try {
+    await db.query(`DELETE FROM teacher_selection_subjects WHERE id = $1`, [req.params.id]);
+    res.json({ message: 'Subject deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 5. TIMETABLE MANAGEMENT & IMPORT
+// -------------------------------------------------------------
+app.get('/api/teaching/timetable', async (req, res) => {
+  try {
+    const timetable = await db.all(`
+      SELECT t.*, ps.is_enabled as is_period_enabled
+      FROM teacher_selection_timetable t
+      LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
+      ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+    `);
+    res.json(timetable);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
+  const { rows } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'No timetable rows provided' });
+  }
+
+  const validatedRows = [];
+  const errors = [];
+  const seenKeys = new Set();
+
+  rows.forEach((r, idx) => {
+    const rowNum = idx + 1;
+    const rowErrors = [];
+
+    const rawDay = (r.day || r.Day || '').toString().trim();
+    const rawPeriod = (r.period || r.Period || '').toString().trim().replace(/^P/i, '');
+    const rawClass = (r.class_name || r.class || r.Class || r.Standard || '').toString().trim();
+    const rawSubject = (r.subject || r.Subject || '').toString().trim();
+    const rawTime = (r.time_slot || r.time || r.Time || '').toString().trim();
+
+    // Day validation
+    let day = '';
+    if (/^sun/i.test(rawDay)) day = 'Sunday';
+    else if (/^mon/i.test(rawDay)) day = 'Monday';
+    else rowErrors.push('Day must be Sunday or Monday');
+
+    // Period validation
+    const period = parseInt(rawPeriod);
+    if (isNaN(period) || period < 1 || period > 9) {
+      rowErrors.push('Period must be a number between 1 and 9');
+    }
+
+    // Class & Subject validation
+    if (!rawClass) rowErrors.push('Class is required');
+    if (!rawSubject) rowErrors.push('Subject is required');
+
+    // Duplicate key in upload check
+    const key = `${day}_${period}_${rawClass.toLowerCase()}`;
+    if (day && period && rawClass) {
+      if (seenKeys.has(key)) {
+        rowErrors.push('Duplicate slot in uploaded file');
+      } else {
+        seenKeys.add(key);
+      }
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push(`Row ${rowNum}: ${rowErrors.join(', ')}`);
+    }
+
+    validatedRows.push({
+      row_number: rowNum,
+      day: day || rawDay,
+      period: isNaN(period) ? rawPeriod : period,
+      class_name: rawClass,
+      subject: rawSubject,
+      time_slot: rawTime,
+      valid: rowErrors.length === 0,
+      errors: rowErrors
+    });
+  });
+
+  res.json({
+    total_rows: rows.length,
+    valid_rows: validatedRows.filter(r => r.valid).length,
+    invalid_rows: validatedRows.filter(r => !r.valid).length,
+    errors,
+    preview: validatedRows
+  });
+});
+
+app.post('/api/teaching/admin/timetable/confirm-import', async (req, res) => {
+  const { rows, mode, admin_id, admin_name } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'No rows to import' });
+  }
+
+  try {
+    if (mode === 'replace') {
+      await db.query(`DELETE FROM teacher_selection_timetable`);
+    }
+
+    for (const r of rows) {
+      if (!r.day || !r.period || !r.class_name || !r.subject) continue;
+      const period = parseInt(r.period);
+      if (isNaN(period)) continue;
+
+      await db.query(`
+        INSERT INTO teacher_selection_timetable (class_name, day, period, time_slot, subject, status)
+        VALUES ($1, $2, $3, $4, $5, 'active')
+        ON CONFLICT (day, period, class_name)
+        DO UPDATE SET subject = EXCLUDED.subject, time_slot = COALESCE(EXCLUDED.time_slot, teacher_selection_timetable.time_slot);
+      `, [r.class_name.trim(), r.day.trim(), period, r.time_slot || '', r.subject.trim()]);
+
+      // Ensure class exists
+      await db.query(`
+        INSERT INTO teacher_selection_classes (name, status)
+        VALUES ($1, 'active')
+        ON CONFLICT (name) DO NOTHING;
+      `, [r.class_name.trim()]);
+
+      // Ensure subject exists
+      await db.query(`
+        INSERT INTO teacher_selection_subjects (name, code, status)
+        VALUES ($1, $1, 'active')
+        ON CONFLICT (name) DO NOTHING;
+      `, [r.subject.trim()]);
+    }
+
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Imported Timetable (${rows.length} rows, mode: ${mode || 'merge'})`);
+    res.json({ message: `Successfully imported ${rows.length} timetable entries` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/timetable/entry', async (req, res) => {
+  const { day, period, class_name, subject, time_slot, admin_id, admin_name } = req.body;
+  if (!day || !period || !class_name || !subject) {
+    return res.status(400).json({ error: 'Day, Period, Class, and Subject are required' });
+  }
+  try {
+    const periodNum = parseInt(period);
+    await db.query(`
+      INSERT INTO teacher_selection_timetable (class_name, day, period, time_slot, subject, status)
+      VALUES ($1, $2, $3, $4, $5, 'active')
+      ON CONFLICT (day, period, class_name)
+      DO UPDATE SET subject = EXCLUDED.subject, time_slot = EXCLUDED.time_slot;
+    `, [class_name.trim(), day.trim(), periodNum, time_slot || '', subject.trim()]);
+
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Added/Updated timetable slot: ${day} P${periodNum} ${class_name} - ${subject}`);
+    res.json({ message: 'Timetable entry saved successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teaching/admin/timetable/entry/:id', async (req, res) => {
+  const { admin_id, admin_name } = req.body;
+  try {
+    await db.query(`DELETE FROM teacher_selection_timetable WHERE id = $1`, [req.params.id]);
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted timetable slot ID: ${req.params.id}`);
+    res.json({ message: 'Timetable slot deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 6. TEACHER SELECTION FLOW & REAL-TIME CLASH PREVENTION ENGINE
+// -------------------------------------------------------------
+app.get('/api/teaching/slots', async (req, res) => {
+  const teacherId = parseInt(req.query.teacher_id);
+  try {
+    const [slots, periodSettings, settings] = await Promise.all([
+      db.all(`
+        SELECT 
+          t.id, 
+          t.day, 
+          t.period, 
+          t.time_slot, 
+          t.class_name, 
+          t.subject,
+          ts.id as selection_id,
+          ts.teacher_id as selected_teacher_id,
+          u.full_name as selected_teacher_name,
+          ps.is_enabled as is_period_enabled
+        FROM teacher_selection_timetable t
+        LEFT JOIN teacher_selections ts ON t.day = ts.day AND t.period = ts.period AND t.class_name = ts.class_name
+        LEFT JOIN users u ON ts.teacher_id = u.id
+        LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
+        WHERE t.status = 'active'
+        ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+      `),
+      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings`),
+      db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`)
+    ]);
+
+    const formattedSlots = slots.map(s => {
+      let status = 'available';
+      const isPeriodEnabled = s.is_period_enabled !== false;
+
+      if (!isPeriodEnabled) {
+        status = 'disabled_by_admin';
+      } else if (s.selected_teacher_id) {
+        if (teacherId && s.selected_teacher_id === teacherId) {
+          status = 'selected_by_me';
+        } else {
+          status = 'locked_by_other';
+        }
+      }
+
+      return {
+        id: s.id,
+        day: s.day,
+        period: s.period,
+        time_slot: s.time_slot,
+        class_name: s.class_name,
+        subject: s.subject,
+        status,
+        is_period_enabled: isPeriodEnabled,
+        selected_by_name: status === 'locked_by_other' ? s.selected_teacher_name : null,
+        my_selection_id: status === 'selected_by_me' ? s.selection_id : null
+      };
+    });
+
+    res.json({
+      slots: formattedSlots,
+      period_settings: periodSettings,
+      settings: settings || {}
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Select Slot with full atomic clash prevention
+app.post('/api/teaching/select', async (req, res) => {
+  const { teacher_id, timetable_id } = req.body;
+  if (!teacher_id || !timetable_id) {
+    return res.status(400).json({ error: 'Missing teacher ID or timetable slot ID' });
+  }
+
+  try {
+    // 1. Validate Selection Settings & Window
+    const settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    if (settings) {
+      if (!settings.is_open) {
+        return res.status(400).json({ error: 'Subject selection is currently closed.' });
+      }
+      const now = new Date();
+      if (settings.start_datetime && new Date(settings.start_datetime) > now) {
+        return res.status(400).json({ error: 'Subject selection has not started yet.' });
+      }
+      if (settings.end_datetime && new Date(settings.end_datetime) < now) {
+        return res.status(400).json({ error: 'Subject selection deadline has passed.' });
+      }
+      if (!settings.is_timetable_published) {
+        return res.status(400).json({ error: 'Subject selection is unavailable because the timetable has not been published by Admin.' });
+      }
+    }
+
+    // 2. Validate Teacher
+    const teacher = await db.get(`SELECT id, full_name, role, is_active FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]);
+    if (!teacher || teacher.is_active === false) {
+      return res.status(403).json({ error: 'Teacher account is inactive or not authorized.' });
+    }
+
+    // 3. Validate Timetable Slot
+    const slot = await db.get(`SELECT * FROM teacher_selection_timetable WHERE id = $1 AND status = 'active'`, [timetable_id]);
+    if (!slot) {
+      return res.status(404).json({ error: 'Timetable slot does not exist or is inactive.' });
+    }
+
+    // 4. Validate Period Settings (Admin enable/disable control)
+    const periodSetting = await db.get(`
+      SELECT is_enabled FROM teacher_selection_period_settings WHERE day = $1 AND period = $2
+    `, [slot.day, slot.period]);
+    if (periodSetting && periodSetting.is_enabled === false) {
+      return res.status(400).json({ error: `This period (${slot.day} Period ${slot.period}) has been disabled by the administrator.` });
+    }
+
+    // 5. Validate Selection Count Limit (Max 3)
+    const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);
+    const currentCount = countRes ? countRes.count : 0;
+    const maxPeriods = settings ? (settings.max_periods || 3) : 3;
+    if (currentCount >= maxPeriods) {
+      return res.status(400).json({ error: `You have reached the maximum limit of ${maxPeriods} periods.` });
+    }
+
+    // 6. RULE 1 — TEACHER CLASH (Same teacher, same day, same period)
+    const teacherClash = await db.get(`
+      SELECT s.id, s.class_name, s.subject
+      FROM teacher_selections s
+      WHERE s.teacher_id = $1 AND s.day = $2 AND s.period = $3
+    `, [teacher_id, slot.day, slot.period]);
+    if (teacherClash) {
+      return res.status(400).json({ error: `You have already selected a class (${teacherClash.class_name} - ${teacherClash.subject}) for ${slot.day} Period ${slot.period}.` });
+    }
+
+    // 7. RULE 2 — CLASS CLASH (Same day, same period, same class already taken by another teacher)
+    const classClash = await db.get(`
+      SELECT s.id, u.full_name as teacher_name
+      FROM teacher_selections s
+      JOIN users u ON s.teacher_id = u.id
+      WHERE s.day = $1 AND s.period = $2 AND s.class_name = $3
+    `, [slot.day, slot.period, slot.class_name]);
+    if (classClash) {
+      return res.status(409).json({ error: `This class has already been selected by ${classClash.teacher_name} for this period.` });
+    }
+
+    // 8. Atomic Insert into teacher_selections
+    const inserted = await db.run(`
+      INSERT INTO teacher_selections (teacher_id, timetable_id, day, period, class_name, subject, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')
+      RETURNING id
+    `, [teacher_id, slot.id, slot.day, slot.period, slot.class_name, slot.subject]);
+
+    await logTeacherAction(teacher_id, teacher.full_name, `Selected: ${slot.day} P${slot.period} ${slot.class_name} (${slot.subject})`);
+
+    res.json({
+      message: 'Period selected successfully',
+      selection_id: inserted.lastInsertRowid,
+      selected_count: currentCount + 1
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('uq_ts_teacher_day_period')) {
+      return res.status(400).json({ error: 'You already selected a class for this period.' });
+    }
+    if (err.message && err.message.includes('uq_ts_class_day_period')) {
+      return res.status(409).json({ error: 'This slot was just selected by another teacher.' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove Selection
+app.post('/api/teaching/remove', async (req, res) => {
+  const { teacher_id, selection_id } = req.body;
+  if (!teacher_id || !selection_id) {
+    return res.status(400).json({ error: 'Teacher ID and Selection ID are required' });
+  }
+  try {
+    // Check if selection window is open
+    const settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    if (settings) {
+      const now = new Date();
+      if (!settings.is_open || (settings.end_datetime && new Date(settings.end_datetime) < now)) {
+        return res.status(400).json({ error: 'Subject selection has closed. Edits are no longer allowed.' });
+      }
+    }
+
+    const selection = await db.get(`
+      SELECT s.*, u.full_name as teacher_name
+      FROM teacher_selections s
+      JOIN users u ON s.teacher_id = u.id
+      WHERE s.id = $1 AND s.teacher_id = $2
+    `, [selection_id, teacher_id]);
+
+    if (!selection) {
+      return res.status(404).json({ error: 'Selection not found or unauthorized' });
+    }
+
+    await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
+    await logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`);
+
+    res.json({ message: 'Selection removed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Submit Selection (Validate 2 to 3 periods limit)
+app.post('/api/teaching/submit', async (req, res) => {
+  const { teacher_id } = req.body;
+  if (!teacher_id) return res.status(400).json({ error: 'Teacher ID is required' });
+
+  try {
+    const settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    const minPeriods = settings ? (settings.min_periods || 2) : 2;
+
+    const [teacher, countRes] = await Promise.all([
+      db.get(`SELECT full_name FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id])
+    ]);
+
+    const count = countRes ? countRes.count : 0;
+    if (count < minPeriods) {
+      return res.status(400).json({ error: `Please select at least ${minPeriods} periods before submitting (Current: ${count}).` });
+    }
+
+    await db.query(`
+      UPDATE teacher_selections
+      SET status = 'confirmed', submitted_at = CURRENT_TIMESTAMP
+      WHERE teacher_id = $1
+    `, [teacher_id]);
+
+    await logTeacherAction(teacher_id, teacher ? teacher.full_name : 'Teacher', `Finalized and submitted ${count} teaching periods.`);
+
+    res.json({
+      message: 'Selections submitted successfully!',
+      selected_count: count
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Teacher's own selections
+app.get('/api/teaching/my-selections', async (req, res) => {
+  const teacherId = parseInt(req.query.teacher_id);
+  if (!teacherId) return res.status(400).json({ error: 'Teacher ID required' });
+  try {
+    const [selections, settings] = await Promise.all([
+      db.all(`
+        SELECT s.*, t.time_slot
+        FROM teacher_selections s
+        LEFT JOIN teacher_selection_timetable t ON s.timetable_id = t.id
+        WHERE s.teacher_id = $1
+        ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
+      `, [teacherId]),
+      db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`)
+    ]);
+
+    res.json({
+      selections,
+      total_selected: selections.length,
+      is_submitted: selections.length >= 2,
+      settings: settings || {}
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 7. ADMIN REPORTS & DASHBOARD METRICS
+// -------------------------------------------------------------
+app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
+  try {
+    const [
+      totalTeachersRes,
+      totalTimetableSlotsRes,
+      totalAllocationsRes,
+      disabledPeriodsRes,
+      sundayAllocRes,
+      mondayAllocRes,
+      settings
+    ] = await Promise.all([
+      db.get(`SELECT count(*)::int as count FROM users WHERE role = 'teacher' AND COALESCE(is_active, true) = true`),
+      db.get(`SELECT count(*)::int as count FROM teacher_selection_timetable WHERE status = 'active'`),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections`),
+      db.get(`SELECT count(*)::int as count FROM teacher_selection_period_settings WHERE is_enabled = false`),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE day = 'Sunday'`),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE day = 'Monday'`),
+      db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`)
+    ]);
+
+    // Teacher completion breakdown
+    const teacherCounts = await db.all(`
+      SELECT u.id, count(ts.id)::int as count
+      FROM users u
+      LEFT JOIN teacher_selections ts ON u.id = ts.teacher_id
+      WHERE u.role = 'teacher' AND COALESCE(u.is_active, true) = true
+      GROUP BY u.id
+    `);
+
+    let completed = 0;
+    let inProgress = 0;
+    let pending = 0;
+
+    teacherCounts.forEach(t => {
+      if (t.count >= 2) completed++;
+      else if (t.count > 0) inProgress++;
+      else pending++;
+    });
+
+    const totalTeachers = totalTeachersRes ? totalTeachersRes.count : 0;
+    const totalSlots = totalTimetableSlotsRes ? totalTimetableSlotsRes.count : 0;
+    const totalAllocations = totalAllocationsRes ? totalAllocationsRes.count : 0;
+    const disabledPeriods = disabledPeriodsRes ? disabledPeriodsRes.count : 0;
+    const remainingSlots = Math.max(0, totalSlots - totalAllocations);
+
+    res.json({
+      total_teachers: totalTeachers,
+      completed_teachers: completed,
+      in_progress_teachers: inProgress,
+      pending_teachers: pending,
+      total_allocations: totalAllocations,
+      total_slots: totalSlots,
+      remaining_slots: remainingSlots,
+      disabled_periods_count: disabledPeriods,
+      sunday_allocations: sundayAllocRes ? sundayAllocRes.count : 0,
+      monday_allocations: mondayAllocRes ? mondayAllocRes.count : 0,
+      is_open: settings ? settings.is_open : true,
+      settings: settings || {}
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Teacher-Wise Report
+app.get('/api/teaching/admin/reports/teacher-wise', async (req, res) => {
+  try {
+    const data = await db.all(`
+      SELECT 
+        u.id as teacher_id, 
+        u.full_name as teacher_name, 
+        u.username,
+        u.phone,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', s.id,
+              'day', s.day,
+              'period', s.period,
+              'class_name', s.class_name,
+              'subject', s.subject,
+              'time_slot', t.time_slot,
+              'selected_at', s.selected_at
+            ) ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
+          ) FILTER (WHERE s.id IS NOT NULL), '[]'::json
+        ) as periods,
+        COUNT(s.id)::int as total_periods
+      FROM users u
+      LEFT JOIN teacher_selections s ON u.id = s.teacher_id
+      LEFT JOIN teacher_selection_timetable t ON s.timetable_id = t.id
+      WHERE u.role = 'teacher'
+      GROUP BY u.id
+      ORDER BY u.full_name ASC
+    `);
+
+    const result = data.map(item => ({
+      ...item,
+      status: item.total_periods >= 2 ? 'Completed' : (item.total_periods > 0 ? 'In Progress' : 'Pending')
+    }));
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Class-Wise Report
+app.get('/api/teaching/admin/reports/class-wise', async (req, res) => {
+  try {
+    const data = await db.all(`
+      SELECT 
+        t.class_name,
+        t.day,
+        t.period,
+        t.time_slot,
+        t.subject,
+        s.id as selection_id,
+        u.full_name as teacher_name,
+        ps.is_enabled as is_period_enabled
+      FROM teacher_selection_timetable t
+      LEFT JOIN teacher_selections s ON t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
+      LEFT JOIN users u ON s.teacher_id = u.id
+      LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
+      ORDER BY t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC
+    `);
+
+    // Group by class_name
+    const classMap = {};
+    data.forEach(row => {
+      if (!classMap[row.class_name]) {
+        classMap[row.class_name] = [];
+      }
+      classMap[row.class_name].push(row);
+    });
+
+    res.json(classMap);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Timetable Matrix Grid Report (Sunday and Monday tabs)
+app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
+  try {
+    const [slots, classes, periodSettings] = await Promise.all([
+      db.all(`
+        SELECT 
+          t.day,
+          t.period,
+          t.class_name,
+          t.subject,
+          t.time_slot,
+          u.full_name as teacher_name,
+          ps.is_enabled as is_period_enabled
+        FROM teacher_selection_timetable t
+        LEFT JOIN teacher_selections s ON t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
+        LEFT JOIN users u ON s.teacher_id = u.id
+        LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
+        ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+      `),
+      db.all(`SELECT name FROM teacher_selection_classes ORDER BY sort_order ASC, name ASC`),
+      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings ORDER BY period ASC`)
+    ]);
+
+    res.json({
+      slots,
+      classes: classes.map(c => c.name),
+      period_settings: periodSettings
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Audit Logs
+app.get('/api/teaching/admin/audit-logs', async (req, res) => {
+  try {
+    const logs = await db.all(`
+      SELECT * FROM teacher_selection_audit_logs
+      ORDER BY created_at DESC
+      LIMIT 100
+    `);
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// CSV Export Endpoint
+app.get('/api/teaching/admin/export/:type', async (req, res) => {
+  const { type } = req.params;
+  try {
+    if (type === 'teacher-wise') {
+      const data = await db.all(`
+        SELECT 
+          u.full_name as "Teacher Name",
+          u.username as "Username",
+          u.phone as "Phone",
+          s.day as "Day",
+          s.period as "Period",
+          s.class_name as "Class",
+          s.subject as "Subject",
+          s.selected_at as "Selected Time"
+        FROM users u
+        LEFT JOIN teacher_selections s ON u.id = s.teacher_id
+        WHERE u.role = 'teacher'
+        ORDER BY u.full_name ASC, CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
+      `);
+
+      let csv = 'Teacher Name,Username,Phone,Day,Period,Class,Subject,Selected Time\n';
+      data.forEach(r => {
+        csv += `"${r['Teacher Name'] || ''}","${r['Username'] || ''}","${r['Phone'] || ''}","${r['Day'] || '—'}","${r['Period'] || '—'}","${r['Class'] || '—'}","${r['Subject'] || '—'}","${r['Selected Time'] || '—'}"\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="Teacher_Wise_Allocations.csv"');
+      return res.send(csv);
+    }
+
+    if (type === 'class-wise') {
+      const data = await db.all(`
+        SELECT 
+          t.class_name as "Class",
+          t.day as "Day",
+          t.period as "Period",
+          t.time_slot as "Time Slot",
+          t.subject as "Subject",
+          COALESCE(u.full_name, 'Unassigned') as "Assigned Teacher"
+        FROM teacher_selection_timetable t
+        LEFT JOIN teacher_selections s ON t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
+        LEFT JOIN users u ON s.teacher_id = u.id
+        ORDER BY t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC
+      `);
+
+      let csv = 'Class,Day,Period,Time Slot,Subject,Assigned Teacher\n';
+      data.forEach(r => {
+        csv += `"${r['Class']}","${r['Day']}","${r['Period']}","${r['Time Slot']}","${r['Subject']}","${r['Assigned Teacher']}"\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="Class_Wise_Allocations.csv"');
+      return res.send(csv);
+    }
+
+    if (type === 'all-allocations') {
+      const data = await db.all(`
+        SELECT 
+          s.id as "Allocation ID",
+          u.full_name as "Teacher",
+          s.day as "Day",
+          s.period as "Period",
+          s.class_name as "Class",
+          s.subject as "Subject",
+          s.selected_at as "Timestamp"
+        FROM teacher_selections s
+        JOIN users u ON s.teacher_id = u.id
+        ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC, s.class_name ASC
+      `);
+
+      let csv = 'Allocation ID,Teacher,Day,Period,Class,Subject,Timestamp\n';
+      data.forEach(r => {
+        csv += `"${r['Allocation ID']}","${r['Teacher']}","${r['Day']}","${r['Period']}","${r['Class']}","${r['Subject']}","${r['Timestamp']}"\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="All_Teaching_Allocations.csv"');
+      return res.send(csv);
+    }
+
+    res.status(400).json({ error: 'Invalid export type. Supported: teacher-wise, class-wise, all-allocations' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // Fallback to index.html for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

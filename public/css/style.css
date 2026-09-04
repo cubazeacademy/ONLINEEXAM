@@ -2450,3 +2450,426 @@ input, button, select, textarea {
     padding: 3px 8px;
   }
 }
+
+/* ========================================================================== */
+/* TEACHER SUBJECT SELECTION MODULE STYLES                                    */
+/* ========================================================================== */
+
+/* Wizard Navigation Header */
+.wizard-header-card {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  position: sticky;
+  top: 76px;
+  z-index: 100;
+}
+
+.wizard-steps-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+}
+
+.wizard-step.active {
+  color: var(--primary);
+}
+
+.wizard-step.completed {
+  color: #10b981;
+}
+
+.wizard-step .step-num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.wizard-step.active .step-num {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+}
+
+.wizard-step.completed .step-num {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.wizard-step-line {
+  height: 2px;
+  background: #e2e8f0;
+  flex: 1;
+  max-width: 60px;
+}
+
+.wizard-counter-box {
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 8px 18px;
+  text-align: right;
+}
+
+.wizard-counter-box .counter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.wizard-counter-box .counter-number {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1e1b4b;
+}
+
+.wizard-counter-box .counter-sub {
+  font-size: 0.74rem;
+}
+
+.wizard-section-banner {
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.wizard-footer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+}
+
+/* Period Cards Flow */
+.period-cards-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.period-card {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.period-card:hover {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+
+.period-card.disabled-period {
+  background: #fafafa;
+  border-color: #f1f5f9;
+  opacity: 0.85;
+}
+
+.period-card-header {
+  background: #f8fafc;
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.period-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 0.98rem;
+}
+
+.period-card-title .period-badge {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.period-card-time {
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.period-slots-grid {
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+/* Slot Selection Chip */
+.slot-chip {
+  border: 1.5px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.slot-chip:hover:not(.locked):not(.disabled-chip):not(.selected-me) {
+  border-color: var(--primary);
+  background: #f5f3ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.12);
+}
+
+.slot-chip-class {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.slot-chip-subject {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.slot-chip-status {
+  font-size: 0.74rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+/* Available Slot */
+.slot-chip.available {
+  border-color: #cbd5e1;
+}
+
+.slot-chip.available .slot-chip-status {
+  color: #059669;
+}
+
+/* Selected by Current Teacher */
+.slot-chip.selected-me {
+  border-color: #10b981;
+  background: #ecfdf5;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.slot-chip.selected-me .slot-chip-status {
+  color: #047857;
+  font-weight: 700;
+}
+
+.slot-chip.selected-me .btn-remove-slot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #fee2e2;
+  color: #ef4444;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.slot-chip.selected-me .btn-remove-slot:hover {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+/* Locked by Another Teacher */
+.slot-chip.locked {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.slot-chip.locked .slot-chip-subject {
+  color: #64748b;
+}
+
+.slot-chip.locked .slot-chip-status {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* Disabled by Admin Period */
+.slot-chip.disabled-chip {
+  border-color: #fee2e2;
+  background: #fff5f5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.slot-chip.disabled-chip .slot-chip-status {
+  color: #991b1b;
+}
+
+/* Period ON/OFF Settings Card */
+.period-toggle-card {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.period-toggle-card.disabled-mode {
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.period-toggle-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.period-toggle-info .toggle-p-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1e293b;
+}
+
+.period-toggle-info .toggle-p-time {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.period-toggle-info .toggle-p-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* Timetable Matrix Grid */
+.matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+}
+
+.matrix-table th {
+  background: #1e1b4b;
+  color: #ffffff;
+  padding: 10px 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  border-radius: 6px;
+}
+
+.matrix-table td {
+  padding: 8px 6px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  text-align: center;
+  vertical-align: middle;
+  transition: all 0.2s;
+  min-width: 100px;
+}
+
+.matrix-cell-period {
+  background: #f1f5f9;
+  font-weight: 800;
+  color: #334155;
+}
+
+.matrix-cell-available {
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  color: #475569;
+}
+
+.matrix-cell-allocated {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.matrix-cell-allocated .matrix-teacher-name {
+  font-weight: 700;
+  display: block;
+  color: #047857;
+  font-size: 0.8rem;
+}
+
+.matrix-cell-allocated .matrix-subject-code {
+  font-weight: 600;
+  color: #0f766e;
+  font-size: 0.74rem;
+}
+
+.matrix-cell-disabled {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 768px) {
+  .wizard-header-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    top: 60px;
+    padding: 12px 16px;
+  }
+
+  .wizard-counter-box {
+    text-align: center;
+  }
+
+  .period-slots-grid {
+    grid-template-columns: 1fr;
+  }
+}

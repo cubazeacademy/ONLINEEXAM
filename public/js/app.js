@@ -65,17 +65,22 @@ function checkPersistedSession() {
 function setLoginRole(role) {
   currentRole = role;
   const studentBtn = document.getElementById('tab-btn-student');
+  const teacherBtn = document.getElementById('tab-btn-teacher');
   const adminBtn = document.getElementById('tab-btn-admin');
   const usernameInput = document.getElementById('login-username');
   const usernameLabel = document.getElementById('login-username-label');
 
   if (studentBtn) studentBtn.classList.toggle('active', role === 'student');
+  if (teacherBtn) teacherBtn.classList.toggle('active', role === 'teacher');
   if (adminBtn) adminBtn.classList.toggle('active', role === 'admin');
 
   if (usernameInput) {
     if (role === 'admin') {
       usernameInput.placeholder = 'Enter admin username (e.g. admin)';
       if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-user-shield"></i> Admin Username';
+    } else if (role === 'teacher') {
+      usernameInput.placeholder = 'Enter teacher username (e.g. sinanmp, rafi)';
+      if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-chalkboard-user"></i> Teacher Username';
     } else {
       usernameInput.placeholder = 'Enter Username, Admission No, or Roll No';
       if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-user"></i> Username / Admission No / Roll No';
@@ -88,6 +93,9 @@ function fillDemoCredentials(role) {
   if (role === 'admin') {
     document.getElementById('login-username').value = 'admin';
     document.getElementById('login-password').value = 'admin123';
+  } else if (role === 'teacher') {
+    document.getElementById('login-username').value = 'sinanmp';
+    document.getElementById('login-password').value = 'teacher123';
   } else {
     document.getElementById('login-username').value = '4049';
     document.getElementById('login-password').value = '40492026';
@@ -139,26 +147,43 @@ function showPortalLayout() {
   const userName = document.getElementById('sidebar-user-name');
   const userSub = document.getElementById('sidebar-user-sub');
 
+  const role = currentUser.role || 'student';
+
   if (roleBadge) {
-    roleBadge.textContent = currentUser.role.toUpperCase();
-    roleBadge.className = `badge ${currentUser.role === 'admin' ? 'badge-role' : 'badge-success'}`;
+    roleBadge.textContent = role.toUpperCase();
+    if (role === 'admin') roleBadge.className = 'badge badge-role';
+    else if (role === 'teacher') roleBadge.className = 'badge badge-primary';
+    else roleBadge.className = 'badge badge-success';
   }
 
   if (rolePill) {
-    rolePill.textContent = `@${currentUser.username || 'user'} - ${currentUser.role === 'admin' ? 'Admin' : 'Student'}`;
+    let roleLabel = 'Student';
+    if (role === 'admin') roleLabel = 'Admin';
+    if (role === 'teacher') roleLabel = 'Teacher';
+    rolePill.textContent = `@${currentUser.username || 'user'} - ${roleLabel}`;
   }
 
   avatarInit.textContent = currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U';
   userName.textContent = currentUser.full_name;
   userSub.textContent = currentUser.email || currentUser.username;
 
-  if (currentUser.role === 'admin') {
-    document.getElementById('nav-admin').classList.remove('hidden');
-    document.getElementById('nav-student').classList.add('hidden');
-    switchTab('admin-dashboard');
+  // Navigation switching
+  const navAdmin = document.getElementById('nav-admin');
+  const navTeacher = document.getElementById('nav-teacher');
+  const navStudent = document.getElementById('nav-student');
+
+  if (navAdmin) navAdmin.classList.add('hidden');
+  if (navTeacher) navTeacher.classList.add('hidden');
+  if (navStudent) navStudent.classList.add('hidden');
+
+  if (role === 'admin') {
+    if (navAdmin) navAdmin.classList.remove('hidden');
+    switchTab('admin-teaching-dashboard');
+  } else if (role === 'teacher') {
+    if (navTeacher) navTeacher.classList.remove('hidden');
+    switchTab('teacher-dashboard');
   } else {
-    document.getElementById('nav-admin').classList.add('hidden');
-    document.getElementById('nav-student').classList.remove('hidden');
+    if (navStudent) navStudent.classList.remove('hidden');
     switchTab('student-dashboard');
   }
 }
@@ -200,19 +225,33 @@ function switchTab(tabId) {
 
   // Update Top Title
   const titleMap = {
-    'admin-dashboard': 'Admin Dashboard Overview',
+    'admin-dashboard': 'Exam Dashboard Overview',
     'admin-students': 'Student Accounts Management',
     'admin-classes': 'Classes & Batches Management',
     'admin-exams': 'Examinations Management',
     'admin-results': 'Student Results & Performance Analytics',
-    'admin-settings': 'System Settings',
+    'admin-settings': 'Exam System Settings',
+    'admin-teaching-dashboard': 'Teacher Subject Selection Dashboard',
+    'admin-teaching-teachers': 'Teachers Management (29 Teachers)',
+    'admin-teaching-timetable': 'Master Academic Timetable',
+    'admin-teaching-periods': 'Period Availability Settings (ON/OFF)',
+    'admin-teaching-settings': 'Selection Window & Deadline Settings',
+    'admin-teaching-reports': 'Teaching Allocation Reports & Exports',
+    'admin-teaching-logs': 'Subject Selection Audit Logs',
+    'teacher-dashboard': 'Teacher Subject Selection Portal',
+    'teacher-subject-selection': 'Period Selection Wizard',
+    'teacher-my-selections': 'My Teaching Period Allocations',
+    'teacher-profile': 'Teacher Profile Settings',
     'student-dashboard': 'Student Dashboard Overview',
     'student-exams': 'Available Examinations',
     'student-results': 'My Exam Performance & Results',
     'student-profile': 'Student Profile Settings'
   };
 
-  document.getElementById('page-title').textContent = titleMap[tabId] || 'Dashboard';
+  const pageTitle = document.getElementById('page-title');
+  if (pageTitle) {
+    pageTitle.textContent = titleMap[tabId] || 'Academic Portal';
+  }
 
   // Load View Specific Data
   if (tabId === 'admin-dashboard') loadAdminDashboard();
@@ -221,6 +260,23 @@ function switchTab(tabId) {
   if (tabId === 'admin-exams') { loadClasses(); loadExams(); }
   if (tabId === 'admin-results') { loadExamFilterDropdownOptions(); loadAdminResults(); }
   if (tabId === 'admin-settings') populateAdminSettings();
+
+  // Teacher Selection Admin Views
+  if (tabId === 'admin-teaching-dashboard') loadAdminTeachingDashboard();
+  if (tabId === 'admin-teaching-teachers') loadAdminTeachingTeachers();
+  if (tabId === 'admin-teaching-timetable') loadAdminTeachingTimetable();
+  if (tabId === 'admin-teaching-periods') loadAdminTeachingPeriods();
+  if (tabId === 'admin-teaching-settings') loadAdminTeachingSettings();
+  if (tabId === 'admin-teaching-reports') loadAdminTeachingReports();
+  if (tabId === 'admin-teaching-logs') loadAdminTeachingLogs();
+
+  // Teacher Portal Views
+  if (tabId === 'teacher-dashboard') loadTeacherDashboard();
+  if (tabId === 'teacher-subject-selection') startTeacherSelectionWizard();
+  if (tabId === 'teacher-my-selections') loadTeacherMySelectionsSlip();
+  if (tabId === 'teacher-profile') loadTeacherProfile();
+
+  // Student Views
   if (tabId === 'student-dashboard') loadStudentDashboard();
   if (tabId === 'student-exams') loadStudentAvailableExams();
   if (tabId === 'student-results') loadStudentResults();
@@ -2809,3 +2865,1382 @@ function showCSVError(containerId, message) {
     box.classList.remove('hidden');
   }
 }
+
+/* ==========================================================================
+   TEACHER SUBJECT SELECTION MODULE - CLIENT APPLICATION LOGIC
+   ========================================================================== */
+
+let teacherSelectionState = {
+  slots: [],
+  periodSettings: [],
+  settings: {},
+  mySelections: [],
+  currentStep: 1,
+  currentGridDay: 'Sunday',
+  allTeachers: [],
+  allTimetable: [],
+  parsedImportData: []
+};
+
+// -------------------------------------------------------------
+// 1. TEACHER PORTAL LOGIC & WIZARD
+// -------------------------------------------------------------
+
+async function loadTeacherDashboard() {
+  if (!currentUser || currentUser.role !== 'teacher') return;
+
+  const welcomeEl = document.getElementById('teacher-welcome-title');
+  if (welcomeEl) welcomeEl.textContent = `Welcome, ${currentUser.full_name || 'Teacher'}!`;
+
+  try {
+    const [slotsRes, mySelRes] = await Promise.all([
+      fetch(apiUrl(`/api/teaching/slots?teacher_id=${currentUser.id}`)),
+      fetch(apiUrl(`/api/teaching/my-selections?teacher_id=${currentUser.id}`))
+    ]);
+
+    const slotsData = await slotsRes.json();
+    const mySelData = await mySelRes.json();
+
+    teacherSelectionState.slots = slotsData.slots || [];
+    teacherSelectionState.periodSettings = slotsData.period_settings || [];
+    teacherSelectionState.settings = slotsData.settings || {};
+    teacherSelectionState.mySelections = mySelData.selections || [];
+
+    // Update Dashboard UI Elements
+    const countDisplay = document.getElementById('teacher-dash-count-display');
+    const statusText = document.getElementById('teacher-dash-status-text');
+    const statusSub = document.getElementById('teacher-dash-status-sub');
+    const statusPill = document.getElementById('teacher-dash-status-pill');
+    const deadlineEl = document.getElementById('teacher-dash-deadline');
+
+    const totalSelected = teacherSelectionState.mySelections.length;
+    const maxPeriods = teacherSelectionState.settings.max_periods || 3;
+    const minPeriods = teacherSelectionState.settings.min_periods || 2;
+
+    if (countDisplay) countDisplay.textContent = `${totalSelected} / ${maxPeriods}`;
+
+    if (statusText) {
+      if (totalSelected >= minPeriods) {
+        statusText.textContent = 'Completed';
+        statusText.className = 'stat-value text-success';
+        if (statusSub) statusSub.textContent = 'Selection submitted';
+      } else if (totalSelected > 0) {
+        statusText.textContent = 'In Progress';
+        statusText.className = 'stat-value text-warning';
+        if (statusSub) statusSub.textContent = `Select at least ${minPeriods - totalSelected} more period(s)`;
+      } else {
+        statusText.textContent = 'Pending';
+        statusText.className = 'stat-value text-muted';
+        if (statusSub) statusSub.textContent = `Select ${minPeriods} to ${maxPeriods} periods`;
+      }
+    }
+
+    if (statusPill) {
+      const isOpen = teacherSelectionState.settings.is_open !== false;
+      statusPill.innerHTML = isOpen ? '<i class="fa-solid fa-circle-dot"></i> Selection OPEN' : '<i class="fa-solid fa-circle-xmark"></i> Selection CLOSED';
+      statusPill.className = `badge ${isOpen ? 'badge-success' : 'badge-danger'}`;
+    }
+
+    if (deadlineEl && teacherSelectionState.settings.end_datetime) {
+      const deadlineDate = new Date(teacherSelectionState.settings.end_datetime);
+      deadlineEl.textContent = `Deadline: ${deadlineDate.toLocaleDateString()} ${deadlineDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+
+    // Render current selections table on dashboard
+    const tbody = document.getElementById('table-teacher-dash-selections');
+    if (tbody) {
+      if (teacherSelectionState.mySelections.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:20px;">No teaching periods selected yet. Click 'Select Teaching Periods' above to start.</td></tr>`;
+      } else {
+        tbody.innerHTML = teacherSelectionState.mySelections.map(s => `
+          <tr>
+            <td><strong class="badge ${s.day === 'Sunday' ? 'badge-warning' : 'badge-primary'}">${s.day}</strong></td>
+            <td><strong>Period ${s.period}</strong></td>
+            <td><span class="text-muted">${s.time_slot || '—'}</span></td>
+            <td><strong style="color:var(--primary);">${escapeHtml(s.class_name)}</strong></td>
+            <td><strong class="badge badge-success">${escapeHtml(s.subject)}</strong></td>
+            <td><span style="font-size:0.8rem; color:#64748b;">${new Date(s.selected_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span></td>
+            <td class="text-right">
+              <button type="button" class="btn btn-sm btn-outline text-danger" onclick="removeTeacherSelection(${s.id})">
+                <i class="fa-solid fa-trash"></i> Remove
+              </button>
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Error loading teacher dashboard:', err);
+  }
+}
+
+// Start Wizard
+async function startTeacherSelectionWizard() {
+  switchTab('teacher-subject-selection');
+  await refreshTeacherSelectionSlots();
+  goToWizardStep(1);
+}
+
+async function refreshTeacherSelectionSlots() {
+  if (!currentUser) return;
+  try {
+    const [slotsRes, mySelRes] = await Promise.all([
+      fetch(apiUrl(`/api/teaching/slots?teacher_id=${currentUser.id}`)),
+      fetch(apiUrl(`/api/teaching/my-selections?teacher_id=${currentUser.id}`))
+    ]);
+
+    const slotsData = await slotsRes.json();
+    const mySelData = await mySelRes.json();
+
+    teacherSelectionState.slots = slotsData.slots || [];
+    teacherSelectionState.periodSettings = slotsData.period_settings || [];
+    teacherSelectionState.settings = slotsData.settings || {};
+    teacherSelectionState.mySelections = mySelData.selections || [];
+
+    updateWizardCounters();
+    renderWizardPeriodCards('Sunday', 'teacher-periods-grid-sunday');
+    renderWizardPeriodCards('Monday', 'teacher-periods-grid-monday');
+    renderWizardReviewTable();
+  } catch (err) {
+    console.error('Error refreshing slots:', err);
+  }
+}
+
+function updateWizardCounters() {
+  const countEl = document.getElementById('wizard-live-counter');
+  const countSub = document.getElementById('wizard-live-counter-sub');
+  const count = teacherSelectionState.mySelections.length;
+  const max = teacherSelectionState.settings.max_periods || 3;
+  const min = teacherSelectionState.settings.min_periods || 2;
+
+  if (countEl) countEl.textContent = `${count} / ${max}`;
+  if (countSub) {
+    if (count >= max) countSub.textContent = 'Maximum limit reached';
+    else if (count >= min) countSub.textContent = 'Ready for submission';
+    else countSub.textContent = `Min required: ${min}`;
+  }
+}
+
+function goToWizardStep(step) {
+  teacherSelectionState.currentStep = step;
+
+  // Toggle step containers
+  const c1 = document.getElementById('wizard-container-step-1');
+  const c2 = document.getElementById('wizard-container-step-2');
+  const c3 = document.getElementById('wizard-container-step-3');
+
+  if (c1) c1.classList.toggle('hidden', step !== 1);
+  if (c2) c2.classList.toggle('hidden', step !== 2);
+  if (c3) c3.classList.toggle('hidden', step !== 3);
+
+  // Update step indicator
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById(`wiz-step-indicator-${i}`);
+    if (el) {
+      el.classList.toggle('active', i === step);
+      el.classList.toggle('completed', i < step);
+    }
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Render Period Cards (Period 1 to 9) for a given Day
+function renderWizardPeriodCards(day, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const daySlots = teacherSelectionState.slots.filter(s => s.day === day);
+  const maxPeriods = teacherSelectionState.settings.max_periods || 3;
+  const currentTotal = teacherSelectionState.mySelections.length;
+
+  let html = '';
+
+  for (let p = 1; p <= 9; p++) {
+    const periodSlots = daySlots.filter(s => s.period === p);
+    const periodSetting = teacherSelectionState.periodSettings.find(ps => ps.day === day && ps.period === p);
+    const isPeriodEnabled = periodSetting ? periodSetting.is_enabled !== false : true;
+    const timeSlot = (periodSlots[0] && periodSlots[0].time_slot) || (periodSetting && periodSetting.time_slot) || '';
+
+    // Check if current teacher already selected a slot in this period
+    const mySelectionInPeriod = teacherSelectionState.mySelections.find(s => s.day === day && s.period === p);
+
+    html += `
+      <div class="period-card ${!isPeriodEnabled ? 'disabled-period' : ''}">
+        <div class="period-card-header">
+          <div class="period-card-title">
+            <span class="period-badge">Period ${p}</span>
+            <span style="font-size:0.95rem;">${day}</span>
+            ${!isPeriodEnabled ? '<span class="badge badge-danger" style="font-size:0.75rem;"><i class="fa-solid fa-ban"></i> Disabled by Admin</span>' : ''}
+          </div>
+          <div class="period-card-time">
+            <i class="fa-regular fa-clock"></i> ${timeSlot || '—'}
+          </div>
+        </div>
+
+        <div class="period-slots-grid">
+    `;
+
+    if (!isPeriodEnabled) {
+      html += `
+        <div style="grid-column: 1 / -1; padding: 14px; text-align: center; color: #b91c1c; font-size: 0.88rem; font-weight: 600; background: #fff5f5; border-radius: 8px;">
+          <i class="fa-solid fa-circle-exclamation"></i> This period (${day} Period ${p}) is disabled for this teaching session and cannot be selected.
+        </div>
+      `;
+    } else if (periodSlots.length === 0) {
+      html += `<div class="text-muted" style="font-size:0.85rem; padding:8px;">No classes scheduled in master timetable.</div>`;
+    } else {
+      periodSlots.forEach(slot => {
+        let chipClass = 'slot-chip';
+        let statusBadge = '';
+        let clickHandler = '';
+
+        if (slot.status === 'selected_by_me') {
+          chipClass += ' selected-me';
+          statusBadge = `
+            <span class="slot-chip-status"><i class="fa-solid fa-circle-check"></i> Selected by You</span>
+            <button type="button" class="btn-remove-slot" onclick="removeTeacherSelection(${slot.my_selection_id}); event.stopPropagation();" title="Remove Selection">
+              <i class="fa-solid fa-xmark"></i> Remove
+            </button>
+          `;
+        } else if (slot.status === 'locked_by_other') {
+          chipClass += ' locked';
+          statusBadge = `
+            <span class="slot-chip-status"><i class="fa-solid fa-lock"></i> Taken by <strong>${escapeHtml(slot.selected_by_name || 'Teacher')}</strong></span>
+          `;
+        } else {
+          // Available slot
+          chipClass += ' available';
+          if (mySelectionInPeriod) {
+            statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Already picked P${p}</span>`;
+          } else if (currentTotal >= maxPeriods) {
+            statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Limit reached (3/3)</span>`;
+          } else {
+            statusBadge = `<span class="slot-chip-status"><i class="fa-solid fa-circle-plus"></i> Available (Click to Pick)</span>`;
+            clickHandler = `onclick="handleTeacherPickSlot(${slot.id})"`;
+          }
+        }
+
+        html += `
+          <div class="${chipClass}" ${clickHandler}>
+            <div class="slot-chip-class">${escapeHtml(slot.class_name)}</div>
+            <div class="slot-chip-subject">${escapeHtml(slot.subject)}</div>
+            ${statusBadge}
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+// Select a teaching period slot
+async function handleTeacherPickSlot(timetableId) {
+  if (!currentUser) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/select'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teacher_id: currentUser.id,
+        timetable_id: timetableId
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(`⚠️ Selection Blocked:\n\n${data.error || 'Failed to select slot'}`);
+      await refreshTeacherSelectionSlots();
+      return;
+    }
+
+    await refreshTeacherSelectionSlots();
+  } catch (err) {
+    alert('Connection error while selecting slot.');
+  }
+}
+
+// Remove a selected slot
+async function removeTeacherSelection(selectionId) {
+  if (!confirm('Are you sure you want to remove this teaching period selection? It will become available to other teachers immediately.')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/remove'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teacher_id: currentUser.id,
+        selection_id: selectionId
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to remove selection');
+      return;
+    }
+
+    await refreshTeacherSelectionSlots();
+    loadTeacherDashboard();
+  } catch (err) {
+    alert('Connection error while removing selection.');
+  }
+}
+
+// Render Review Table in Step 3
+function renderWizardReviewTable() {
+  const tbody = document.getElementById('table-teacher-review-selections');
+  const validationBox = document.getElementById('review-validation-box');
+  const submitBtn = document.getElementById('btn-confirm-submit-selections');
+
+  if (!tbody) return;
+
+  const selections = teacherSelectionState.mySelections;
+  const count = selections.length;
+  const min = teacherSelectionState.settings.min_periods || 2;
+  const max = teacherSelectionState.settings.max_periods || 3;
+
+  if (count === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:20px;">No teaching periods selected yet. Go back to Step 1 or Step 2 to make your selections.</td></tr>`;
+  } else {
+    tbody.innerHTML = selections.map(s => `
+      <tr>
+        <td><strong class="badge ${s.day === 'Sunday' ? 'badge-warning' : 'badge-primary'}">${s.day}</strong></td>
+        <td><strong>Period ${s.period}</strong></td>
+        <td><span class="text-muted">${s.time_slot || '—'}</span></td>
+        <td><strong style="color:var(--primary);">${escapeHtml(s.class_name)}</strong></td>
+        <td><strong class="badge badge-success">${escapeHtml(s.subject)}</strong></td>
+        <td class="text-right">
+          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="removeTeacherSelection(${s.id})">
+            <i class="fa-solid fa-trash"></i> Remove
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  if (validationBox && submitBtn) {
+    if (count < min) {
+      validationBox.className = 'alert-box alert-error mt-4 mb-4';
+      validationBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Selection Incomplete:</strong> You have selected <strong>${count}</strong> period(s). You must select at least <strong>${min} periods</strong> before final submission.`;
+      validationBox.classList.remove('hidden');
+      submitBtn.disabled = true;
+    } else {
+      validationBox.className = 'alert-box alert-success mt-4 mb-4';
+      validationBox.innerHTML = `<i class="fa-solid fa-circle-check"></i> <strong>Ready to Submit:</strong> You have selected <strong>${count}</strong> periods (${count >= min && count <= max ? 'Valid' : 'Warning'}). All clash prevention checks passed.`;
+      validationBox.classList.remove('hidden');
+      submitBtn.disabled = false;
+    }
+  }
+}
+
+// Final Submit
+async function confirmFinalTeacherSelections() {
+  if (!currentUser) return;
+  const count = teacherSelectionState.mySelections.length;
+  const min = teacherSelectionState.settings.min_periods || 2;
+
+  if (count < min) {
+    alert(`Please select at least ${min} teaching periods before submitting.`);
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/submit'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacher_id: currentUser.id })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(`⚠️ Submission Error:\n\n${data.error || 'Failed to submit'}`);
+      return;
+    }
+
+    alert('🎉 Congratulations! Your teaching periods have been submitted successfully.');
+    switchTab('teacher-my-selections');
+    loadTeacherMySelectionsSlip();
+  } catch (err) {
+    alert('Connection error while submitting selections.');
+  }
+}
+
+// Load Official Allocation Slip
+async function loadTeacherMySelectionsSlip() {
+  if (!currentUser) return;
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/my-selections?teacher_id=${currentUser.id}`));
+    const data = await res.json();
+    const selections = data.selections || [];
+
+    const nameEl = document.getElementById('slip-teacher-name');
+    const totalEl = document.getElementById('slip-total-periods');
+    const tbody = document.getElementById('table-teacher-slip-body');
+
+    if (nameEl) nameEl.textContent = currentUser.full_name;
+    if (totalEl) totalEl.textContent = `${selections.length} Periods`;
+
+    if (tbody) {
+      if (selections.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted" style="padding:20px;">No periods selected yet.</td></tr>`;
+      } else {
+        tbody.innerHTML = selections.map(s => `
+          <tr>
+            <td><strong>${s.day}</strong></td>
+            <td><strong>Period ${s.period}</strong></td>
+            <td>${s.time_slot || '—'}</td>
+            <td><strong>${escapeHtml(s.class_name)}</strong></td>
+            <td><strong class="badge badge-success">${escapeHtml(s.subject)}</strong></td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Error loading slip:', err);
+  }
+}
+
+// Teacher Profile
+function loadTeacherProfile() {
+  if (!currentUser) return;
+  document.getElementById('teacher-profile-username').value = currentUser.username || '';
+  document.getElementById('teacher-profile-fullname').value = currentUser.full_name || '';
+  document.getElementById('teacher-profile-phone').value = currentUser.phone || '';
+  document.getElementById('teacher-profile-email').value = currentUser.email || '';
+  document.getElementById('teacher-profile-password').value = '';
+}
+
+async function saveTeacherProfile(e) {
+  e.preventDefault();
+  const full_name = document.getElementById('teacher-profile-fullname').value.trim();
+  const phone = document.getElementById('teacher-profile-phone').value.trim();
+  const email = document.getElementById('teacher-profile-email').value.trim();
+  const password = document.getElementById('teacher-profile-password').value.trim();
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/admin/teachers/${currentUser.id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full_name, phone, email, password, is_active: true })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to update profile');
+      return;
+    }
+
+    currentUser.full_name = full_name;
+    currentUser.phone = phone;
+    currentUser.email = email;
+    localStorage.setItem('edupulse_user', JSON.stringify(currentUser));
+    showPortalLayout();
+    alert('Profile updated successfully!');
+  } catch (err) {
+    alert('Error updating profile.');
+  }
+}
+
+
+/* ==========================================================================
+   ADMIN TEACHER SELECTION CONTROLLERS
+   ========================================================================== */
+
+// 1. ADMIN DASHBOARD
+async function loadAdminTeachingDashboard() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/dashboard-stats'));
+    const data = await res.json();
+
+    document.getElementById('stat-ts-total-teachers').textContent = data.total_teachers || 0;
+    document.getElementById('stat-ts-completed-teachers').textContent = data.completed_teachers || 0;
+    document.getElementById('stat-ts-pending-teachers').textContent = data.pending_teachers || 0;
+    document.getElementById('stat-ts-total-allocations').textContent = data.total_allocations || 0;
+    document.getElementById('stat-ts-sunday-alloc').textContent = data.sunday_allocations || 0;
+    document.getElementById('stat-ts-monday-alloc').textContent = data.monday_allocations || 0;
+    document.getElementById('stat-ts-available-slots').textContent = data.total_slots || 0;
+    document.getElementById('stat-ts-disabled-periods').textContent = data.disabled_periods_count || 0;
+
+    const statusBadge = document.getElementById('admin-teaching-status-badge');
+    const deadlineText = document.getElementById('admin-teaching-deadline-text');
+    const toggleBtnText = document.getElementById('btn-toggle-status-text');
+
+    const isOpen = data.is_open !== false;
+    if (statusBadge) {
+      statusBadge.innerHTML = isOpen ? '<i class="fa-solid fa-circle-dot"></i> Selection OPEN' : '<i class="fa-solid fa-circle-xmark"></i> Selection CLOSED';
+      statusBadge.style.background = isOpen ? '#10b981' : '#ef4444';
+    }
+    if (toggleBtnText) {
+      toggleBtnText.textContent = isOpen ? 'Close Selection' : 'Reopen Selection';
+    }
+    if (deadlineText && data.settings && data.settings.end_datetime) {
+      const d = new Date(data.settings.end_datetime);
+      deadlineText.textContent = `Deadline: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}`;
+    }
+  } catch (err) {
+    console.error('Error loading admin teaching dashboard:', err);
+  }
+}
+
+async function toggleAdminSelectionStatus() {
+  try {
+    const settingsRes = await fetch(apiUrl('/api/teaching/settings'));
+    const currentSettings = await settingsRes.json();
+    const newStatus = !currentSettings.is_open;
+
+    const res = await fetch(apiUrl('/api/teaching/admin/toggle-status'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        is_open: newStatus,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    alert(data.message || 'Status updated');
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error toggling status.');
+  }
+}
+
+// 2. TEACHERS MANAGEMENT
+async function loadAdminTeachingTeachers() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/teachers'));
+    const teachers = await res.json();
+    teacherSelectionState.allTeachers = teachers;
+    renderTeachingTeachersTable(teachers);
+  } catch (err) {
+    console.error('Error loading teachers:', err);
+  }
+}
+
+function renderTeachingTeachersTable(teachers) {
+  const tbody = document.getElementById('table-admin-teaching-teachers');
+  if (!tbody) return;
+
+  if (teachers.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:20px;">No teachers found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = teachers.map(t => {
+    let statusBadge = '<span class="badge badge-muted">Pending (0)</span>';
+    if (t.status === 'Completed') statusBadge = `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Completed (${t.selected_count}/3)</span>`;
+    else if (t.status === 'In Progress') statusBadge = `<span class="badge badge-warning"><i class="fa-solid fa-clock"></i> In Progress (${t.selected_count}/3)</span>`;
+
+    const accountBadge = t.is_active !== false ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Disabled</span>';
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(t.full_name)}</strong></td>
+        <td><code>${escapeHtml(t.username)}</code></td>
+        <td>
+          <button type="button" class="btn btn-sm btn-link" onclick="viewTeacherAllocationsModal(${t.id}, '${escapeHtml(t.full_name)}')" style="padding:0; font-weight:700; color:var(--primary); text-decoration:underline;">
+            ${t.selected_count} Period(s)
+          </button>
+        </td>
+        <td>${statusBadge}</td>
+        <td>${accountBadge}</td>
+        <td class="text-right">
+          <button type="button" class="btn btn-sm btn-outline" onclick="openModalEditTeacher(${t.id})" title="Edit Credentials">
+            <i class="fa-solid fa-pen"></i> Edit
+          </button>
+          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingTeacher(${t.id}, '${escapeHtml(t.full_name)}')" title="Delete">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterTeachingTeachersTable() {
+  const query = (document.getElementById('search-teaching-teachers').value || '').toLowerCase();
+  const filtered = teacherSelectionState.allTeachers.filter(t => 
+    t.full_name.toLowerCase().includes(query) || 
+    t.username.toLowerCase().includes(query)
+  );
+  renderTeachingTeachersTable(filtered);
+}
+
+function openModalAddTeacher() {
+  document.getElementById('modal-teaching-teacher-title').innerHTML = '<i class="fa-solid fa-chalkboard-user" style="color: var(--primary);"></i> Add New Teacher';
+  document.getElementById('teaching-teacher-id').value = '';
+  document.getElementById('teaching-teacher-fullname').value = '';
+  document.getElementById('teaching-teacher-username').value = '';
+  document.getElementById('teaching-teacher-password').value = 'teacher123';
+  document.getElementById('teaching-teacher-password-hint').textContent = '(Default: teacher123)';
+  document.getElementById('teaching-teacher-phone').value = '';
+  document.getElementById('teaching-teacher-email').value = '';
+  document.getElementById('teaching-teacher-active').checked = true;
+  openModal('modal-teaching-teacher');
+}
+
+function openModalEditTeacher(id) {
+  const teacher = teacherSelectionState.allTeachers.find(t => t.id === id);
+  if (!teacher) return;
+
+  document.getElementById('modal-teaching-teacher-title').innerHTML = '<i class="fa-solid fa-user-pen" style="color: var(--primary);"></i> Edit Teacher Details';
+  document.getElementById('teaching-teacher-id').value = teacher.id;
+  document.getElementById('teaching-teacher-fullname').value = teacher.full_name || '';
+  document.getElementById('teaching-teacher-username').value = teacher.username || '';
+  document.getElementById('teaching-teacher-password').value = '';
+  document.getElementById('teaching-teacher-password-hint').textContent = '(Leave blank to keep unchanged)';
+  document.getElementById('teaching-teacher-phone').value = teacher.phone || '';
+  document.getElementById('teaching-teacher-email').value = teacher.email || '';
+  document.getElementById('teaching-teacher-active').checked = teacher.is_active !== false;
+  openModal('modal-teaching-teacher');
+}
+
+async function saveTeachingTeacherForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('teaching-teacher-id').value;
+  const full_name = document.getElementById('teaching-teacher-fullname').value.trim();
+  const username = document.getElementById('teaching-teacher-username').value.trim();
+  const password = document.getElementById('teaching-teacher-password').value.trim();
+  const phone = document.getElementById('teaching-teacher-phone').value.trim();
+  const email = document.getElementById('teaching-teacher-email').value.trim();
+  const is_active = document.getElementById('teaching-teacher-active').checked;
+
+  try {
+    let url = apiUrl('/api/teaching/admin/teachers');
+    let method = 'POST';
+
+    if (id) {
+      url = apiUrl(`/api/teaching/admin/teachers/${id}`);
+      method = 'PUT';
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name,
+        username,
+        password,
+        phone,
+        email,
+        is_active,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to save teacher');
+      return;
+    }
+
+    closeModal('modal-teaching-teacher');
+    loadAdminTeachingTeachers();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error saving teacher.');
+  }
+}
+
+async function deleteTeachingTeacher(id, name) {
+  if (!confirm(`Are you sure you want to delete teacher "${name}"? All of their teaching allocations will be removed.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/admin/teachers/${id}`), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to delete teacher');
+      return;
+    }
+
+    loadAdminTeachingTeachers();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error deleting teacher.');
+  }
+}
+
+function viewTeacherAllocationsModal(teacherId, teacherName) {
+  const teacher = teacherSelectionState.allTeachers.find(t => t.id === teacherId);
+  const title = document.getElementById('modal-view-teacher-allocations-title');
+  const tbody = document.getElementById('table-view-teacher-allocations-body');
+
+  if (title) title.innerHTML = `<i class="fa-solid fa-clipboard-list" style="color:var(--primary);"></i> ${escapeHtml(teacherName)}'s Selections`;
+
+  if (tbody) {
+    const selections = (teacher && teacher.selections) || [];
+    if (selections.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted" style="padding:16px;">No period selections made yet.</td></tr>`;
+    } else {
+      tbody.innerHTML = selections.map(s => `
+        <tr>
+          <td><strong>${s.day}</strong></td>
+          <td><strong>Period ${s.period}</strong></td>
+          <td>${escapeHtml(s.class_name)}</td>
+          <td><strong class="badge badge-success">${escapeHtml(s.subject)}</strong></td>
+          <td class="text-right">
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="adminRemoveAllocation(${s.id})">
+              <i class="fa-solid fa-xmark"></i> Remove
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  openModal('modal-view-teacher-allocations');
+}
+
+async function adminRemoveAllocation(selectionId) {
+  if (!confirm('Remove this allocation? The slot will become available again.')) return;
+  try {
+    await fetch(apiUrl('/api/teaching/remove'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacher_id: currentUser.id, selection_id: selectionId })
+    });
+    closeModal('modal-view-teacher-allocations');
+    loadAdminTeachingTeachers();
+    loadAdminTeachingDashboard();
+  } catch (e) {
+    alert('Error removing allocation');
+  }
+}
+
+// 3. MASTER TIMETABLE
+async function loadAdminTeachingTimetable() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/timetable'));
+    const timetable = await res.json();
+    teacherSelectionState.allTimetable = timetable;
+    renderTimetableTable();
+  } catch (err) {
+    console.error('Error loading timetable:', err);
+  }
+}
+
+function renderTimetableTable() {
+  const dayFilter = document.getElementById('filter-tt-day').value;
+  const classFilter = document.getElementById('filter-tt-class').value;
+  const tbody = document.getElementById('table-admin-teaching-timetable');
+
+  if (!tbody) return;
+
+  let list = teacherSelectionState.allTimetable;
+  if (dayFilter !== 'all') list = list.filter(t => t.day === dayFilter);
+  if (classFilter !== 'all') list = list.filter(t => t.class_name === classFilter);
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:20px;">No timetable entries match filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(t => {
+    const enabledBadge = t.is_period_enabled !== false 
+      ? '<span class="badge badge-success">🟢 Period Available</span>' 
+      : '<span class="badge badge-danger">🔴 Period Disabled</span>';
+
+    return `
+      <tr>
+        <td><strong class="badge ${t.day === 'Sunday' ? 'badge-warning' : 'badge-primary'}">${t.day}</strong></td>
+        <td><strong>Period ${t.period}</strong></td>
+        <td><span class="text-muted">${t.time_slot || '—'}</span></td>
+        <td><strong style="color:var(--primary);">${escapeHtml(t.class_name)}</strong></td>
+        <td><strong class="badge badge-success">${escapeHtml(t.subject)}</strong></td>
+        <td>${enabledBadge}</td>
+        <td class="text-right">
+          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingSlot(${t.id})">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openModalAddTimetableSlot() {
+  document.getElementById('teaching-slot-id').value = '';
+  document.getElementById('teaching-slot-day').value = 'Sunday';
+  document.getElementById('teaching-slot-period').value = '1';
+  document.getElementById('teaching-slot-class').value = 'Std 1';
+  document.getElementById('teaching-slot-subject').value = '';
+  document.getElementById('teaching-slot-time').value = '7:30–8:15';
+  openModal('modal-teaching-slot');
+}
+
+async function saveTeachingSlotForm(e) {
+  e.preventDefault();
+  const day = document.getElementById('teaching-slot-day').value;
+  const period = document.getElementById('teaching-slot-period').value;
+  const class_name = document.getElementById('teaching-slot-class').value;
+  const subject = document.getElementById('teaching-slot-subject').value.trim();
+  const time_slot = document.getElementById('teaching-slot-time').value.trim();
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/timetable/entry'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        day, period, class_name, subject, time_slot,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to save slot');
+      return;
+    }
+
+    closeModal('modal-teaching-slot');
+    loadAdminTeachingTimetable();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error saving slot.');
+  }
+}
+
+async function deleteTeachingSlot(id) {
+  if (!confirm('Are you sure you want to delete this master timetable slot?')) return;
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/admin/timetable/entry/${id}`), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    loadAdminTeachingTimetable();
+  } catch (e) {
+    alert('Error deleting slot');
+  }
+}
+
+// 4. PERIOD ON/OFF SETTINGS
+async function loadAdminTeachingPeriods() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/period-settings'));
+    const settings = await res.json();
+    teacherSelectionState.periodSettings = settings;
+
+    renderPeriodSettingsGrid('Sunday', 'grid-period-settings-sunday', settings);
+    renderPeriodSettingsGrid('Monday', 'grid-period-settings-monday', settings);
+  } catch (err) {
+    console.error('Error loading period settings:', err);
+  }
+}
+
+function renderPeriodSettingsGrid(day, containerId, settings) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const defaultTimes = {
+    1: '7:30–8:15', 2: '8:15–9:00', 3: '9:00–9:45',
+    4: '10:30–11:15', 5: '11:25–12:10', 6: '12:10–12:55',
+    7: '2:00–2:40', 8: '2:40–3:20', 9: '3:30–4:10'
+  };
+
+  let html = '';
+  for (let p = 1; p <= 9; p++) {
+    const item = settings.find(s => s.day === day && s.period === p);
+    const isEnabled = item ? item.is_enabled !== false : true;
+    const time = (item && item.time_slot) || defaultTimes[p];
+
+    html += `
+      <div class="period-toggle-card ${!isEnabled ? 'disabled-mode' : ''}">
+        <div class="period-toggle-info">
+          <span class="toggle-p-title">${day} — Period ${p}</span>
+          <span class="toggle-p-time"><i class="fa-regular fa-clock"></i> ${time}</span>
+          <span class="toggle-p-badge ${isEnabled ? 'text-success' : 'text-danger'}">
+            ${isEnabled ? '🟢 Available' : '🔴 Disabled'}
+          </span>
+        </div>
+        <label class="switch-toggle" style="position:relative; display:inline-block; width:50px; height:26px;">
+          <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="togglePeriodSetting('${day}', ${p}, this.checked)" style="opacity:0; width:0; height:0;">
+          <span class="slider round" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:${isEnabled ? '#10b981' : '#cbd5e1'}; transition:.3s; border-radius:34px;"></span>
+        </label>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+async function togglePeriodSetting(day, period, isEnabled) {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/period-settings/toggle'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        day,
+        period,
+        is_enabled: isEnabled,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to toggle period');
+      return;
+    }
+
+    loadAdminTeachingPeriods();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error updating period setting.');
+  }
+}
+
+async function setAllPeriodsStatus(day, isEnabled) {
+  const updates = [];
+  for (let p = 1; p <= 9; p++) {
+    updates.push({ day, period: p, is_enabled: isEnabled });
+  }
+
+  try {
+    await fetch(apiUrl('/api/teaching/admin/period-settings/bulk'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        settings: updates,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+    loadAdminTeachingPeriods();
+    loadAdminTeachingDashboard();
+  } catch (e) {
+    alert('Error in bulk update');
+  }
+}
+
+// 5. GLOBAL SETTINGS
+async function loadAdminTeachingSettings() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/settings'));
+    const data = await res.json();
+
+    if (data.start_datetime) {
+      document.getElementById('ts-setting-start').value = new Date(data.start_datetime).toISOString().slice(0, 16);
+    }
+    if (data.end_datetime) {
+      document.getElementById('ts-setting-end').value = new Date(data.end_datetime).toISOString().slice(0, 16);
+    }
+
+    document.getElementById('ts-setting-min').value = data.min_periods || 2;
+    document.getElementById('ts-setting-max').value = data.max_periods || 3;
+    document.getElementById('ts-setting-is-open').checked = data.is_open !== false;
+    document.getElementById('ts-setting-allow-edit').checked = data.allow_edit !== false;
+  } catch (err) {
+    console.error('Error loading settings:', err);
+  }
+}
+
+async function saveTeachingSettingsForm(e) {
+  e.preventDefault();
+  const start_datetime = document.getElementById('ts-setting-start').value || null;
+  const end_datetime = document.getElementById('ts-setting-end').value || null;
+  const min_periods = parseInt(document.getElementById('ts-setting-min').value) || 2;
+  const max_periods = parseInt(document.getElementById('ts-setting-max').value) || 3;
+  const is_open = document.getElementById('ts-setting-is-open').checked;
+  const allow_edit = document.getElementById('ts-setting-allow-edit').checked;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/settings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start_datetime,
+        end_datetime,
+        min_periods,
+        max_periods,
+        is_open,
+        allow_edit,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    alert(data.message || 'Settings saved successfully!');
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error saving settings.');
+  }
+}
+
+// 6. REPORTS & MATRIX GRID
+async function loadAdminTeachingReports() {
+  await Promise.all([
+    loadTeacherWiseReport(),
+    loadClassWiseReport(),
+    loadGridMatrixReport()
+  ]);
+}
+
+function switchReportTab(tab) {
+  document.getElementById('btn-rep-teacher-tab').classList.toggle('active', tab === 'teacher-wise');
+  document.getElementById('btn-rep-class-tab').classList.toggle('active', tab === 'class-wise');
+  document.getElementById('btn-rep-grid-tab').classList.toggle('active', tab === 'grid-matrix');
+
+  document.getElementById('report-view-teacher-wise').classList.toggle('hidden', tab !== 'teacher-wise');
+  document.getElementById('report-view-class-wise').classList.toggle('hidden', tab !== 'class-wise');
+  document.getElementById('report-view-grid-matrix').classList.toggle('hidden', tab !== 'grid-matrix');
+}
+
+async function loadTeacherWiseReport() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/reports/teacher-wise'));
+    const teachers = await res.json();
+    const tbody = document.getElementById('table-report-teacher-wise');
+    if (!tbody) return;
+
+    if (teachers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted" style="padding:20px;">No allocations found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = teachers.map(t => {
+      let statusBadge = '<span class="badge badge-muted">Pending</span>';
+      if (t.status === 'Completed') statusBadge = `<span class="badge badge-success">Completed (${t.total_periods}/3)</span>`;
+      else if (t.status === 'In Progress') statusBadge = `<span class="badge badge-warning">In Progress (${t.total_periods}/3)</span>`;
+
+      const periodsHtml = (t.periods && t.periods.length > 0)
+        ? t.periods.map(p => `
+            <span style="display:inline-block; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:3px 8px; margin:2px; font-size:0.8rem;">
+              <strong>${p.day} P${p.period}:</strong> ${escapeHtml(p.class_name)} (${escapeHtml(p.subject)})
+            </span>
+          `).join('')
+        : '<span class="text-muted" style="font-size:0.82rem;">None selected</span>';
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(t.teacher_name)}</strong>
+            <div style="font-size:0.75rem; color:#64748b;">@${escapeHtml(t.username)}</div>
+          </td>
+          <td><strong>${t.total_periods} Period(s)</strong></td>
+          <td>${periodsHtml}</td>
+          <td>${statusBadge}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Error loading teacher-wise report:', err);
+  }
+}
+
+async function loadClassWiseReport() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/reports/class-wise'));
+    const classData = await res.json();
+    const container = document.getElementById('container-report-class-wise');
+    if (!container) return;
+
+    let html = '';
+    const classes = Object.keys(classData).sort();
+
+    classes.forEach(cName => {
+      const slots = classData[cName];
+      html += `
+        <div class="panel-card mb-4">
+          <div class="panel-header" style="background:#f8fafc;">
+            <h4 style="margin:0; font-size:1rem; color:var(--primary);"><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(cName)}</h4>
+            <span class="badge badge-info" style="font-size:0.75rem;">${slots.length} Timetable Slots</span>
+          </div>
+          <div class="panel-body table-responsive">
+            <table class="data-table" style="font-size:0.82rem;">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Period</th>
+                  <th>Time Slot</th>
+                  <th>Subject</th>
+                  <th>Assigned Teacher</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${slots.map(s => {
+                  const teacherBadge = s.teacher_name 
+                    ? `<strong class="badge badge-success"><i class="fa-solid fa-user-check"></i> ${escapeHtml(s.teacher_name)}</strong>`
+                    : '<span class="badge badge-muted">Unassigned</span>';
+
+                  return `
+                    <tr>
+                      <td><strong class="badge ${s.day === 'Sunday' ? 'badge-warning' : 'badge-primary'}">${s.day}</strong></td>
+                      <td><strong>Period ${s.period}</strong></td>
+                      <td><span class="text-muted">${s.time_slot || '—'}</span></td>
+                      <td><strong>${escapeHtml(s.subject)}</strong></td>
+                      <td>${teacherBadge}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  } catch (err) {
+    console.error('Error loading class-wise report:', err);
+  }
+}
+
+async function loadGridMatrixReport() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/reports/timetable-grid'));
+    const data = await res.json();
+    teacherSelectionState.gridData = data;
+    renderGridMatrix(teacherSelectionState.currentGridDay || 'Sunday');
+  } catch (err) {
+    console.error('Error loading grid matrix report:', err);
+  }
+}
+
+function setGridDay(day) {
+  teacherSelectionState.currentGridDay = day;
+  const btnSun = document.getElementById('btn-grid-day-sunday');
+  const btnMon = document.getElementById('btn-grid-day-monday');
+
+  if (btnSun) btnSun.className = `btn btn-sm ${day === 'Sunday' ? 'btn-primary' : 'btn-outline'}`;
+  if (btnMon) btnMon.className = `btn btn-sm ${day === 'Monday' ? 'btn-primary' : 'btn-outline'}`;
+
+  renderGridMatrix(day);
+}
+
+function renderGridMatrix(day) {
+  const container = document.getElementById('container-timetable-grid-matrix');
+  if (!container || !teacherSelectionState.gridData) return;
+
+  const { slots, classes, period_settings } = teacherSelectionState.gridData;
+  const daySlots = slots.filter(s => s.day === day);
+
+  let tableHtml = `
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th style="width:90px;">Period</th>
+          ${classes.map(c => `<th>${escapeHtml(c)}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  for (let p = 1; p <= 9; p++) {
+    const periodSetting = period_settings.find(ps => ps.day === day && ps.period === p);
+    const isPeriodEnabled = periodSetting ? periodSetting.is_enabled !== false : true;
+
+    tableHtml += `
+      <tr>
+        <td class="matrix-cell-period">
+          Period ${p}
+          <div style="font-size:0.7rem; color:#64748b; font-weight:normal;">${(periodSetting && periodSetting.time_slot) || ''}</div>
+        </td>
+    `;
+
+    classes.forEach(cName => {
+      const slot = daySlots.find(s => s.period === p && s.class_name === cName);
+
+      if (!isPeriodEnabled) {
+        tableHtml += `<td class="matrix-cell-disabled">🔴 Disabled</td>`;
+      } else if (!slot) {
+        tableHtml += `<td class="matrix-cell-available">—</td>`;
+      } else if (slot.teacher_name) {
+        tableHtml += `
+          <td class="matrix-cell-allocated">
+            <span class="matrix-subject-code">${escapeHtml(slot.subject)}</span>
+            <span class="matrix-teacher-name"><i class="fa-solid fa-user-check"></i> ${escapeHtml(slot.teacher_name)}</span>
+          </td>
+        `;
+      } else {
+        tableHtml += `
+          <td class="matrix-cell-available">
+            <strong style="color:var(--primary); font-size:0.82rem;">${escapeHtml(slot.subject)}</strong>
+            <div style="font-size:0.7rem; color:#94a3b8;">Available</div>
+          </td>
+        `;
+      }
+    });
+
+    tableHtml += `</tr>`;
+  }
+
+  tableHtml += `</tbody></table>`;
+  container.innerHTML = tableHtml;
+}
+
+function exportTeachingReportCSV(type) {
+  window.open(apiUrl(`/api/teaching/admin/export/${type}`), '_blank');
+}
+
+// 7. CSV / EXCEL TIMETABLE IMPORT
+function openModalImportTimetable() {
+  document.getElementById('teaching-timetable-file-input').value = '';
+  document.getElementById('teaching-import-preview-box').classList.add('hidden');
+  document.getElementById('teaching-import-error-box').classList.add('hidden');
+  document.getElementById('btn-confirm-import-timetable').disabled = true;
+  openModal('modal-teaching-import');
+}
+
+function previewTeachingTimetableFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      const text = event.target.result;
+      const rows = parseCSV(text);
+
+      if (rows.length === 0) {
+        showCSVError('teaching-import-error-box', 'The selected file is empty.');
+        return;
+      }
+
+      // Send to server preview validator
+      const res = await fetch(apiUrl('/api/teaching/admin/timetable/preview-import'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showCSVError('teaching-import-error-box', data.error || 'Preview failed');
+        return;
+      }
+
+      teacherSelectionState.parsedImportData = rows;
+      document.getElementById('ts-import-valid-count').textContent = data.valid_rows || 0;
+      document.getElementById('ts-import-invalid-count').textContent = data.invalid_rows || 0;
+
+      const tbody = document.getElementById('table-ts-import-preview-body');
+      tbody.innerHTML = (data.preview || []).slice(0, 50).map(r => `
+        <tr style="${!r.valid ? 'background:#fff5f5;' : ''}">
+          <td>${r.row_number}</td>
+          <td><strong>${escapeHtml(r.day)}</strong></td>
+          <td>Period ${r.period}</td>
+          <td>${escapeHtml(r.time_slot || '—')}</td>
+          <td><strong>${escapeHtml(r.class_name)}</strong></td>
+          <td>${escapeHtml(r.subject)}</td>
+          <td>
+            ${r.valid 
+              ? '<span class="badge badge-success">Valid</span>' 
+              : `<span class="badge badge-danger">${escapeHtml(r.errors.join(', '))}</span>`}
+          </td>
+        </tr>
+      `).join('');
+
+      document.getElementById('teaching-import-preview-box').classList.remove('hidden');
+      document.getElementById('btn-confirm-import-timetable').disabled = (data.valid_rows === 0);
+    } catch (err) {
+      showCSVError('teaching-import-error-box', 'Error reading timetable CSV file.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function confirmImportTeachingTimetable() {
+  if (!teacherSelectionState.parsedImportData || teacherSelectionState.parsedImportData.length === 0) return;
+
+  const mode = document.querySelector('input[name="ts-import-mode"]:checked').value || 'merge';
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/timetable/confirm-import'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rows: teacherSelectionState.parsedImportData,
+        mode,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Import failed');
+      return;
+    }
+
+    alert(data.message || 'Timetable imported successfully!');
+    closeModal('modal-teaching-import');
+    loadAdminTeachingTimetable();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error importing timetable.');
+  }
+}
+
+function downloadSampleTimetableCSV() {
+  const csv = `Day,Period,Time,Class,Subject
+Sunday,1,7:30–8:15,Std 1,MTS
+Sunday,2,8:15–9:00,Std 1,TJWD
+Sunday,1,7:30–8:15,Std 2,S S
+Monday,1,7:30–8:15,Std 1,S S
+Monday,2,8:15–9:00,Std 1,ENG`;
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Sample_Timetable.csv';
+  a.click();
+}
+
+// 8. AUDIT LOGS
+async function loadAdminTeachingLogs() {
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/audit-logs'));
+    const logs = await res.json();
+    const tbody = document.getElementById('table-admin-teaching-logs');
+    if (!tbody) return;
+
+    if (logs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted" style="padding:20px;">No audit logs yet.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = logs.map(l => `
+      <tr>
+        <td style="font-size:0.8rem; color:#64748b;">${new Date(l.created_at).toLocaleString()}</td>
+        <td><strong>${escapeHtml(l.user_name || 'System')}</strong></td>
+        <td><strong class="badge badge-primary">${escapeHtml(l.action)}</strong></td>
+        <td style="font-size:0.82rem; color:#475569;"><code>${escapeHtml(JSON.stringify(l.details || {}))}</code></td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('Error loading audit logs:', err);
+  }
+}
+

@@ -904,9 +904,9 @@
                 <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTeachingTeachers()">
                   <i class="fa-solid fa-file-csv"></i> Import CSV
                 </button>
-                <button type="button" class="btn btn-outline btn-sm" onclick="downloadSampleTeachersCSV()" title="Download sample teachers CSV template">
+                <a href="/api/sample/teachers.csv" download="sample_teachers_template.csv" class="btn btn-outline btn-sm" title="Download sample teachers CSV template">
                   <i class="fa-solid fa-download"></i> Sample CSV
-                </button>
+                </a>
                 <button type="button" class="btn btn-outline btn-sm text-danger" onclick="clearAllTeachingTeachers()" style="border-color:#fca5a5; background:#fff5f5;">
                   <i class="fa-solid fa-trash"></i> Clear All
                 </button>
@@ -956,9 +956,9 @@
                   <option value="Std 6">Std 6</option>
                   <option value="Std 7">Std 7</option>
                 </select>
-                <button type="button" class="btn btn-outline btn-sm" onclick="downloadSampleTimetableCSV()" title="Download sample timetable CSV template">
+                <a href="/api/sample/timetable.csv" download="sample_timetable_template.csv" class="btn btn-outline btn-sm" title="Download sample timetable CSV template">
                   <i class="fa-solid fa-download"></i> Sample CSV
-                </button>
+                </a>
                 <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTimetable()">
                   <i class="fa-solid fa-file-import"></i> Upload CSV/Excel
                 </button>
@@ -2226,9 +2226,9 @@
           <p class="text-muted" style="font-size:0.82rem; margin:2px 0 0 0;">Upload a CSV file containing teacher credentials to import into the portal.</p>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
-          <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleTeachersCSV()">
+          <a href="/api/sample/teachers.csv" download="sample_teachers_template.csv" class="btn btn-sm btn-outline">
             <i class="fa-solid fa-download"></i> Download Sample CSV
-          </button>
+          </a>
           <button class="btn-close" onclick="closeModal('modal-import-teaching-teachers-csv')">&times;</button>
         </div>
       </div>
@@ -2281,7 +2281,7 @@
       <div class="modal-header">
         <div>
           <h3 id="modal-teaching-teacher-title" style="margin:0;"><i class="fa-solid fa-chalkboard-user" style="color: var(--primary);"></i> Add New Teacher</h3>
-          <p class="text-muted" style="font-size:0.8rem; margin:2px 0 0 0;">Or use <a href="javascript:void(0)" onclick="closeModal('modal-teaching-teacher'); openModalImportTeachingTeachers();" style="color:var(--primary); font-weight:600;">Bulk CSV Import</a> / <a href="javascript:void(0)" onclick="downloadSampleTeachersCSV();" style="color:var(--primary); font-weight:600;"><i class="fa-solid fa-download"></i> Download Sample CSV</a></p>
+          <p class="text-muted" style="font-size:0.8rem; margin:2px 0 0 0;">Or use <a href="javascript:void(0)" onclick="closeModal('modal-teaching-teacher'); openModalImportTeachingTeachers();" style="color:var(--primary); font-weight:600;">Bulk CSV Import</a> / <a href="/api/sample/teachers.csv" download="sample_teachers_template.csv" style="color:var(--primary); font-weight:600;"><i class="fa-solid fa-download"></i> Download Sample CSV</a></p>
         </div>
         <button class="btn-close" onclick="closeModal('modal-teaching-teacher')">&times;</button>
       </div>
@@ -2349,9 +2349,9 @@
             <label style="font-weight:600; display:block; margin-bottom:4px;">Select Timetable CSV File</label>
             <input type="file" id="teaching-timetable-file-input" accept=".csv" onchange="previewTeachingTimetableFile(event)">
           </div>
-          <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleTimetableCSV()">
+          <a href="/api/sample/timetable.csv" download="sample_timetable_template.csv" class="btn btn-sm btn-outline">
             <i class="fa-solid fa-download"></i> Download Sample CSV
-          </button>
+          </a>
         </div>
 
         <!-- PREVIEW CONTAINER -->

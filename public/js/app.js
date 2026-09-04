@@ -2786,6 +2786,10 @@ function openImportStudentsModal() {
 }
 
 function downloadCSVFile(filename, csvContent, fallbackUrl) {
+  if (fallbackUrl) {
+    window.location.href = apiUrl(fallbackUrl);
+    return;
+  }
   try {
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -2802,9 +2806,7 @@ function downloadCSVFile(filename, csvContent, fallbackUrl) {
       } catch (e) {}
     }, 4000);
   } catch (err) {
-    if (fallbackUrl) {
-      window.location.href = apiUrl(fallbackUrl);
-    }
+    console.error('Error downloading CSV:', err);
   }
 }
 

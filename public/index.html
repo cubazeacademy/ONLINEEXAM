@@ -901,6 +901,9 @@
                 <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTeachingTeachers()">
                   <i class="fa-solid fa-file-csv"></i> Import CSV
                 </button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="downloadSampleTeachersCSV()" title="Download sample teachers CSV template">
+                  <i class="fa-solid fa-download"></i> Sample CSV
+                </button>
                 <button type="button" class="btn btn-outline btn-sm text-danger" onclick="clearAllTeachingTeachers()">
                   <i class="fa-solid fa-trash"></i> Clear All
                 </button>
@@ -950,6 +953,9 @@
                   <option value="Std 6">Std 6</option>
                   <option value="Std 7">Std 7</option>
                 </select>
+                <button type="button" class="btn btn-outline btn-sm" onclick="downloadSampleTimetableCSV()" title="Download sample timetable CSV template">
+                  <i class="fa-solid fa-download"></i> Sample CSV
+                </button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTimetable()">
                   <i class="fa-solid fa-file-import"></i> Upload CSV/Excel
                 </button>
@@ -2212,7 +2218,12 @@
           <h3><i class="fa-solid fa-file-csv" style="color: var(--primary);"></i> Bulk Import Teachers from CSV</h3>
           <p class="text-muted" style="font-size:0.82rem; margin:2px 0 0 0;">Upload a CSV file containing teacher credentials to import into the portal.</p>
         </div>
-        <button class="btn-close" onclick="closeModal('modal-import-teaching-teachers-csv')">&times;</button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button type="button" class="btn btn-sm btn-outline" onclick="downloadSampleTeachersCSV()">
+            <i class="fa-solid fa-download"></i> Download Sample CSV
+          </button>
+          <button class="btn-close" onclick="closeModal('modal-import-teaching-teachers-csv')">&times;</button>
+        </div>
       </div>
       <div class="modal-body" style="padding: 20px;">
         <div class="csv-upload-dropzone mb-4" onclick="document.getElementById('teaching-teachers-csv-file').click()" style="cursor:pointer; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 24px; text-align: center; background: #f8fafc;">
@@ -2261,7 +2272,10 @@
   <div id="modal-teaching-teacher" class="modal-overlay hidden">
     <div class="modal-content max-w-md" style="max-width: 500px;">
       <div class="modal-header">
-        <h3 id="modal-teaching-teacher-title"><i class="fa-solid fa-chalkboard-user" style="color: var(--primary);"></i> Add New Teacher</h3>
+        <div>
+          <h3 id="modal-teaching-teacher-title" style="margin:0;"><i class="fa-solid fa-chalkboard-user" style="color: var(--primary);"></i> Add New Teacher</h3>
+          <p class="text-muted" style="font-size:0.8rem; margin:2px 0 0 0;">Or use <a href="javascript:void(0)" onclick="closeModal('modal-teaching-teacher'); openModalImportTeachingTeachers();" style="color:var(--primary); font-weight:600;">Bulk CSV Import</a> / <a href="javascript:void(0)" onclick="downloadSampleTeachersCSV();" style="color:var(--primary); font-weight:600;"><i class="fa-solid fa-download"></i> Download Sample CSV</a></p>
+        </div>
         <button class="btn-close" onclick="closeModal('modal-teaching-teacher')">&times;</button>
       </div>
       <form id="form-teaching-teacher" onsubmit="saveTeachingTeacherForm(event)">

@@ -4584,12 +4584,33 @@ Sunday,1,7:30–8:15,Std 2,S S
 Monday,1,7:30–8:15,Std 1,S S
 Monday,2,8:15–9:00,Std 1,ENG`;
 
-  const blob = new Blob([csv], { type: 'text/csv' });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'Sample_Timetable.csv';
+  a.download = 'sample_timetable_template.csv';
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadSampleTeachersCSV() {
+  const csv = `Full Name,Username,Password,Phone,Email
+Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
+Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
+Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
+Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sample_teachers_template.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // 8. AUDIT LOGS

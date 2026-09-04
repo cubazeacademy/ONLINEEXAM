@@ -2910,18 +2910,6 @@ function showCSVError(containerId, message) {
    TEACHER SUBJECT SELECTION MODULE - CLIENT APPLICATION LOGIC
    ========================================================================== */
 
-let teacherSelectionState = {
-  slots: [],
-  periodSettings: [],
-  settings: {},
-  mySelections: [],
-  currentStep: 1,
-  currentGridDay: 'Sunday',
-  allTeachers: [],
-  allTimetable: [],
-  parsedImportData: []
-};
-
 // -------------------------------------------------------------
 // 1. TEACHER PORTAL LOGIC & WIZARD
 // -------------------------------------------------------------

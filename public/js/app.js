@@ -10,6 +10,71 @@ function apiUrl(path) {
   return API_BASE + path;
 }
 
+// ==========================================================================
+// CLIENT-SIDE SWR CACHE & REQUEST DEDUPLICATION (0ms Tab Navigation)
+// ==========================================================================
+const clientCache = new Map();
+const inFlightRequests = new Map();
+
+async function fetchJsonWithCache(path, ttlMs = 15000, forceFresh = false) {
+  const now = Date.now();
+  const cached = clientCache.get(path);
+
+  if (!forceFresh && cached && (now - cached.time < ttlMs)) {
+    return cached.data;
+  }
+
+  // Deduplicate concurrent requests
+  if (inFlightRequests.has(path)) {
+    return inFlightRequests.get(path);
+  }
+
+  const reqPromise = fetch(apiUrl(path))
+    .then(async res => {
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      clientCache.set(path, { time: Date.now(), data });
+      return data;
+    })
+    .finally(() => {
+      inFlightRequests.delete(path);
+    });
+
+  inFlightRequests.set(path, reqPromise);
+  return reqPromise;
+}
+
+function clearClientCache(prefix = '') {
+  if (!prefix) {
+    clientCache.clear();
+    return;
+  }
+  for (const key of clientCache.keys()) {
+    if (key.includes(prefix)) {
+      clientCache.delete(key);
+    }
+  }
+}
+
+// Fast Debounce Utility for table search/filter
+function debounce(func, wait = 250) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+const debouncedLoadStudents = debounce(() => loadStudents(), 200);
+const debouncedLoadClassesTable = debounce(() => loadClassesTable(), 150);
+const debouncedLoadAdminResults = debounce(() => loadAdminResults(), 200);
+const debouncedFilterTeachingTeachersTable = debounce(() => filterTeachingTeachersTable(), 150);
+const debouncedFilterTeachingReportsView = debounce(() => filterTeachingReportsView(), 150);
+
 // CONFIG & CONSTANTS
 const QUESTIONS_PER_PAGE = 999999;
 
@@ -331,8 +396,7 @@ function switchTab(tabId) {
 // 1. ADMIN DASHBOARD
 async function loadAdminDashboard() {
   try {
-    const res = await fetch(apiUrl('/api/admin/dashboard'));
-    const data = await res.json();
+    const data = await fetchJsonWithCache('/api/admin/dashboard', 10000);
 
     document.getElementById('stat-total-students').textContent = data.totalStudents || 0;
     document.getElementById('stat-total-exams').textContent = data.totalExams || 0;
@@ -378,12 +442,9 @@ let selectedClassNames = new Set();
 
 async function loadClasses() {
   try {
-    const res = await fetch(apiUrl('/api/admin/classes'));
-    if (res.ok) {
-      const classes = await res.json();
-      if (Array.isArray(classes)) {
-        allClassesList = classes;
-      }
+    const classes = await fetchJsonWithCache('/api/admin/classes', 15000);
+    if (Array.isArray(classes)) {
+      allClassesList = classes;
     }
   } catch (err) {
     console.error('Error fetching classes:', err);
@@ -567,11 +628,7 @@ async function loadClassesTable() {
   tbody.innerHTML = '';
 
   try {
-    const res = await fetch(apiUrl('/api/admin/classes-detailed'));
-    let data = [];
-    if (res.ok) {
-      data = await res.json();
-    }
+    let data = await fetchJsonWithCache('/api/admin/classes-detailed', 10000);
 
     if (searchQuery) {
       data = (data || []).filter(c => c.name && c.name.toLowerCase().includes(searchQuery));
@@ -669,6 +726,7 @@ async function deleteSelectedClasses() {
         body: JSON.stringify({ names: Array.from(selectedClassNames) })
       });
       if (res.ok) {
+        clearClientCache('/api/admin/classes');
         selectedClassNames.clear();
         updateClassSelectionUI();
         await loadClasses();
@@ -727,6 +785,7 @@ async function saveClassForm(e) {
       return;
     }
 
+    clearClientCache('/api/admin/classes');
     closeModal('modal-class');
     await loadClasses();
     loadClassesTable();
@@ -740,6 +799,7 @@ async function deleteClass(name) {
     try {
       const res = await fetch(apiUrl(`/api/admin/classes/${encodeURIComponent(name)}`), { method: 'DELETE' });
       if (res.ok) {
+        clearClientCache('/api/admin/classes');
         selectedClassNames.delete(name);
         updateClassSelectionUI();
         await loadClasses();
@@ -774,8 +834,7 @@ async function loadStudents() {
   const filterClass = document.getElementById('filter-student-class') ? document.getElementById('filter-student-class').value : '';
 
   try {
-    const res = await fetch(apiUrl(`/api/admin/students?search=${encodeURIComponent(searchQuery)}&class_name=${encodeURIComponent(filterClass)}`));
-    const students = await res.json();
+    const students = await fetchJsonWithCache(`/api/admin/students?search=${encodeURIComponent(searchQuery)}&class_name=${encodeURIComponent(filterClass)}`, 10000);
 
     const tbody = document.getElementById('table-admin-students');
     tbody.innerHTML = '';
@@ -884,6 +943,8 @@ async function promptBulkChangeClass() {
       return;
     }
 
+    clearClientCache('/api/admin/students');
+    clearClientCache('/api/admin/classes');
     alert(data.message || 'Student classes updated successfully.');
     selectedStudentIds.clear();
     await loadClasses();
@@ -903,6 +964,9 @@ async function deleteSelectedStudents() {
         body: JSON.stringify({ ids: Array.from(selectedStudentIds) })
       });
       if (res.ok) {
+        clearClientCache('/api/admin/students');
+        clearClientCache('/api/admin/classes');
+        clearClientCache('/api/admin/dashboard');
         selectedStudentIds.clear();
         loadStudents();
       } else {
@@ -966,6 +1030,9 @@ async function saveStudentForm(e) {
       return;
     }
 
+    clearClientCache('/api/admin/students');
+    clearClientCache('/api/admin/classes');
+    clearClientCache('/api/admin/dashboard');
     closeModal('modal-student');
     await loadClasses();
     loadStudents();
@@ -979,6 +1046,9 @@ async function deleteStudent(id) {
     try {
       const res = await fetch(apiUrl(`/api/admin/students/${id}`), { method: 'DELETE' });
       if (res.ok) {
+        clearClientCache('/api/admin/students');
+        clearClientCache('/api/admin/classes');
+        clearClientCache('/api/admin/dashboard');
         loadStudents();
       } else {
         alert('Failed to delete student.');
@@ -994,6 +1064,9 @@ async function clearAllStudents() {
     try {
       const res = await fetch(apiUrl('/api/admin/students/clear-all'), { method: 'DELETE' });
       if (res.ok) {
+        clearClientCache('/api/admin/students');
+        clearClientCache('/api/admin/classes');
+        clearClientCache('/api/admin/dashboard');
         alert('All student accounts deleted successfully.');
         loadStudents();
       } else {
@@ -1008,8 +1081,7 @@ async function clearAllStudents() {
 // 3. ADMIN EXAMS MANAGEMENT
 async function loadExams() {
   try {
-    const res = await fetch(apiUrl('/api/admin/exams'));
-    const exams = await res.json();
+    const exams = await fetchJsonWithCache('/api/admin/exams', 10000);
     allExamsList = exams;
 
     const grid = document.getElementById('exams-cards-grid');
@@ -1059,12 +1131,12 @@ async function loadExams() {
               <i class="fa-solid fa-pen-to-square"></i> Edit Exam & Questions (${exam.question_count} Qs)
             </button>
             <div class="btn-group" style="width:100%; justify-content:space-between;">
-              ${resultsToggleBtn}
-              <button class="btn btn-sm btn-outline" onclick="toggleExamStatusPrompt(${exam.id}, '${exam.status}')" title="Change Status">
-                <i class="fa-solid fa-arrows-rotate"></i> Status
+              <button class="btn btn-sm btn-outline" onclick="toggleExamStatusPrompt(${exam.id}, '${exam.status}')" title="Change Exam Status (Draft/Published/Active/Stopped)">
+                <i class="fa-solid fa-arrow-rotate-right"></i> Status: <strong>${exam.status}</strong>
               </button>
+              ${resultsToggleBtn}
               <button class="btn btn-sm btn-danger" onclick="deleteExam(${exam.id})" title="Delete Exam">
-                <i class="fa-solid fa-trash"></i> Delete
+                <i class="fa-solid fa-trash"></i>
               </button>
             </div>
           </div>
@@ -1297,6 +1369,9 @@ async function saveExamForm(e) {
       alert(`Exam saved successfully with ${data.uploaded_questions_count} attached question(s) saved to Supabase!`);
     }
 
+    clearClientCache('/api/admin/exams');
+    clearClientCache('/api/student');
+    clearClientCache('/api/admin/classes');
     clearExamModalCSV();
     closeModal('modal-exam');
     await loadClasses();
@@ -1313,6 +1388,8 @@ async function toggleExamResultsPrompt(id) {
       headers: { 'Content-Type': 'application/json' }
     });
     if (res.ok) {
+      clearClientCache('/api/admin/exams');
+      clearClientCache('/api/student');
       loadExams();
     }
   } catch (err) {
@@ -1332,6 +1409,8 @@ async function toggleExamStatusPrompt(id, currentStatus) {
       body: JSON.stringify({ status: newStatus })
     });
     if (res.ok) {
+      clearClientCache('/api/admin/exams');
+      clearClientCache('/api/student');
       loadExams();
     }
   } catch (err) {
@@ -1344,6 +1423,9 @@ async function deleteExam(id) {
     try {
       const res = await fetch(apiUrl(`/api/admin/exams/${id}`), { method: 'DELETE' });
       if (res.ok) {
+        clearClientCache('/api/admin/exams');
+        clearClientCache('/api/student');
+        clearClientCache('/api/admin/classes');
         loadExams();
       }
     } catch (err) {
@@ -1730,8 +1812,7 @@ async function loadAdminResults() {
   }
 
   try {
-    const res = await fetch(apiUrl(`/api/admin/results?search=${encodeURIComponent(search)}&exam_id=${exam_id}`));
-    const data = await res.json();
+    const data = await fetchJsonWithCache(`/api/admin/results?search=${encodeURIComponent(search)}&exam_id=${exam_id}`, 6000);
     const results = Array.isArray(data) ? data : (data.results || []);
     const summary = data.summary;
 
@@ -1769,31 +1850,29 @@ async function loadAdminResults() {
           <td style="text-align: center; width: 40px;"><input type="checkbox" class="result-select-chk" value="${r.id}" onchange="updateResultSelection()"></td>
           <td style="white-space: nowrap;">
             <div class="lms-cell-date"><i class="fa-regular fa-calendar"></i> ${dateFormatted}</div>
-            ${timeFormatted ? `<div class="lms-cell-sub" style="margin-left: 20px;">${timeFormatted}</div>` : ''}
+            <div class="lms-cell-sub">${timeFormatted}</div>
           </td>
+          <td><span class="lms-code-badge">${escapeHtml(r.roll_no || '-')}</span></td>
+          <td><span class="lms-code-badge" style="background:#eff6ff; color:#2563eb;">${escapeHtml(r.admission_no || '-')}</span></td>
           <td>
             <div class="lms-cell-title">${escapeHtml(r.student_name)}</div>
             <div class="lms-cell-sub">@${escapeHtml(r.student_username)}</div>
           </td>
-          <td style="white-space: nowrap;">
-            <span class="text-success" style="font-weight:600;"><i class="fa-solid fa-check"></i> ${r.correct_answers} Right</span>, 
-            <span class="text-danger" style="font-weight:600;"><i class="fa-solid fa-xmark"></i> ${r.wrong_answers} Wrong</span>
-            ${(r.unanswered && r.unanswered > 0) ? `<br><span class="text-muted" style="font-size:0.75rem;"><i class="fa-solid fa-minus"></i> ${r.unanswered} Unanswered</span>` : ''}
+          <td>
+            <span class="lms-badge-pill" style="background:#f8fafc; color:#3b82f6; border: 1px solid #e0e7ff; font-weight:600;">
+              <i class="fa-solid fa-graduation-cap" style="color:#6366f1;"></i> ${escapeHtml(r.class_name || 'General')}
+            </span>
           </td>
-          <td style="text-align: center; white-space: nowrap;">
-            <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;">${r.obtained_marks} / ${r.total_marks}</div>
-            <div class="lms-cell-sub" style="font-weight: 600;">${r.percentage}%</div>
-          </td>
-          <td style="text-align: center; white-space: nowrap;">
-            ${statusBadge}
-          </td>
+          <td style="text-align: center;"><span class="lms-stat-score">${r.obtained_marks} / ${r.total_marks}</span></td>
+          <td style="text-align: center;"><span class="lms-stat-score">${r.percentage}%</span></td>
+          <td style="text-align: center;">${statusBadge}</td>
           <td class="text-right" style="white-space: nowrap;">
-            <div class="table-actions-cell">
-              <button type="button" class="btn-action-scorecard" onclick="viewAttemptScorecard(${r.id})" title="View Scorecard">
-                <i class="fa-regular fa-file-lines"></i> Scorecard
+            <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+              <button type="button" class="btn-action-scorecard" onclick="viewAttemptScorecard(${r.id})" title="View Complete Student Scorecard">
+                <i class="fa-solid fa-file-invoice" style="color:#2563eb;"></i> View
               </button>
-              <button type="button" class="btn-action-reattend" onclick="allowReattendAttempt(${r.id}, '${escapeHtml(r.student_name)}', '${escapeHtml(r.exam_title)}')" title="Allow student to re-attend this exam">
-                <i class="fa-solid fa-rotate-left"></i> Allow Re-attend
+              <button type="button" class="btn-action-scorecard" style="border-color:#fde047; background:#fefce8; color:#854d0e;" onclick="allowReattendAttempt(${r.id}, '${escapeHtml(r.student_name)}', '${escapeHtml(r.exam_title || '')}')" title="Allow Student to Re-attend Exam">
+                <i class="fa-solid fa-arrow-rotate-left"></i> Re-attend
               </button>
             </div>
           </td>
@@ -1830,10 +1909,10 @@ function updateResultSelection() {
 
 function updateResultSelectionUI() {
   const count = selectedResultIds.size;
-  const btn = document.getElementById('btn-allow-selected-reattend');
+  const btnBulk = document.getElementById('btn-bulk-allow-reattend');
   const countEl = document.getElementById('count-selected-results');
   if (countEl) countEl.textContent = count;
-  if (btn) btn.classList.toggle('hidden', count === 0);
+  if (btnBulk) btnBulk.classList.toggle('hidden', count === 0);
 }
 
 async function allowReattendAttempt(attemptId, studentName, examTitle) {
@@ -1855,6 +1934,9 @@ async function allowReattendAttempt(attemptId, studentName, examTitle) {
       return;
     }
 
+    clearClientCache('/api/admin/results');
+    clearClientCache('/api/admin/dashboard');
+    clearClientCache('/api/student');
     alert(data.message || 'Re-attend chance granted successfully!');
     selectedResultIds.delete(parseInt(attemptId));
     loadAdminResults();
@@ -1885,6 +1967,9 @@ async function bulkAllowReattend() {
       return;
     }
 
+    clearClientCache('/api/admin/results');
+    clearClientCache('/api/admin/dashboard');
+    clearClientCache('/api/student');
     alert(data.message || 'Re-attend chances granted successfully for selected students!');
     selectedResultIds.clear();
     loadAdminResults();
@@ -1931,8 +2016,7 @@ async function loadStudentDashboard() {
   document.getElementById('student-welcome-name').textContent = currentUser.full_name;
 
   try {
-    const res = await fetch(apiUrl(`/api/student/dashboard?student_id=${currentUser.id}`));
-    const data = await res.json();
+    const data = await fetchJsonWithCache(`/api/student/dashboard?student_id=${currentUser.id}`, 10000);
 
     document.getElementById('student-stat-available').textContent = data.availableExams || 0;
     document.getElementById('student-stat-completed').textContent = data.completedExams || 0;
@@ -1983,8 +2067,7 @@ async function loadStudentDashboard() {
 async function loadStudentDashboardAvailableExams() {
   if (!currentUser) return;
   try {
-    const res = await fetch(apiUrl(`/api/student/available-exams?student_id=${currentUser.id}`));
-    const exams = await res.json();
+    const exams = await fetchJsonWithCache(`/api/student/available-exams?student_id=${currentUser.id}`, 10000);
     renderStudentExamCards(exams, 'student-dashboard-exams-grid');
   } catch (err) { }
 }
@@ -2077,8 +2160,7 @@ function renderStudentExamCards(exams, containerId) {
 async function loadStudentAvailableExams() {
   if (!currentUser) return;
   try {
-    const res = await fetch(apiUrl(`/api/student/available-exams?student_id=${currentUser.id}`));
-    const exams = await res.json();
+    const exams = await fetchJsonWithCache(`/api/student/available-exams?student_id=${currentUser.id}`, 10000);
     renderStudentExamCards(exams, 'student-exams-grid');
   } catch (err) {
     console.error('Error loading available exams:', err);
@@ -2393,6 +2475,9 @@ async function confirmSubmitExam() {
       return;
     }
 
+    clearClientCache('/api/student');
+    clearClientCache('/api/admin');
+
     // Hide Exam View & Exit Fullscreen
     document.getElementById('exam-taker-container').classList.add('hidden');
     exitExamFullscreen();
@@ -2417,8 +2502,7 @@ async function confirmSubmitExam() {
 async function loadStudentResults() {
   if (!currentUser) return;
   try {
-    const res = await fetch(apiUrl(`/api/student/results?student_id=${currentUser.id}`));
-    const results = await res.json();
+    const results = await fetchJsonWithCache(`/api/student/results?student_id=${currentUser.id}`, 10000);
 
     const tbody = document.getElementById('table-student-all-results');
     tbody.innerHTML = '';
@@ -2921,13 +3005,10 @@ async function loadTeacherDashboard() {
   if (welcomeEl) welcomeEl.textContent = `Welcome, ${currentUser.full_name || 'Teacher'}!`;
 
   try {
-    const [slotsRes, mySelRes] = await Promise.all([
-      fetch(apiUrl(`/api/teaching/slots?teacher_id=${currentUser.id}`)),
-      fetch(apiUrl(`/api/teaching/my-selections?teacher_id=${currentUser.id}`))
+    const [slotsData, mySelData] = await Promise.all([
+      fetchJsonWithCache(`/api/teaching/slots?teacher_id=${currentUser.id}`, 8000),
+      fetchJsonWithCache(`/api/teaching/my-selections?teacher_id=${currentUser.id}`, 8000)
     ]);
-
-    const slotsData = await slotsRes.json();
-    const mySelData = await mySelRes.json();
 
     teacherSelectionState.slots = slotsData.slots || [];
     teacherSelectionState.periodSettings = slotsData.period_settings || [];
@@ -2959,23 +3040,23 @@ async function loadTeacherDashboard() {
         statusText.className = 'stat-value text-success';
         if (statusSub) statusSub.textContent = 'Ready for final confirmation';
       } else if (totalSelected > 0) {
-        statusText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> In Progress';
-        statusText.className = 'stat-value text-warning';
-        if (statusSub) statusSub.textContent = `Select at least ${minPeriods - totalSelected} more period(s)`;
+        statusText.innerHTML = '<i class="fa-solid fa-clock"></i> In Progress';
+        statusText.className = 'stat-value text-amber';
+        if (statusSub) statusSub.textContent = `Need ${minPeriods - totalSelected} more period(s)`;
       } else {
-        statusText.innerHTML = '<i class="fa-solid fa-clock"></i> Pending';
+        statusText.innerHTML = '<i class="fa-solid fa-circle-pause"></i> Not Started';
         statusText.className = 'stat-value text-muted';
-        if (statusSub) statusSub.textContent = `Select ${minPeriods} to ${maxPeriods} periods`;
+        if (statusSub) statusSub.textContent = 'No teaching periods selected';
       }
     }
 
     if (statusPill) {
       const isOpen = teacherSelectionState.settings.is_open !== false;
       if (isOpen) {
-        statusPill.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Selection Active';
+        statusPill.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Selection Portal Open';
         statusPill.className = 'teacher-status-pill-glowing';
       } else {
-        statusPill.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Selection Closed';
+        statusPill.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Selection Portal Closed';
         statusPill.className = 'teacher-status-pill-closed';
       }
     }
@@ -2983,22 +3064,24 @@ async function loadTeacherDashboard() {
     if (deadlineEl) {
       if (teacherSelectionState.settings.end_datetime) {
         const deadlineDate = new Date(teacherSelectionState.settings.end_datetime);
-        deadlineEl.innerHTML = `<i class="fa-regular fa-clock"></i> Deadline: <strong>${deadlineDate.toLocaleDateString()} ${deadlineDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>`;
+        deadlineEl.textContent = `Deadline: ${deadlineDate.toLocaleDateString()} ${deadlineDate.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}`;
       } else {
-        deadlineEl.innerHTML = `<i class="fa-regular fa-calendar-check"></i> Active Session`;
+        deadlineEl.textContent = 'Open for submissions';
       }
     }
 
-    // Render current selections table on dashboard
+    // Render Recent Selections on Dashboard
     const tbody = document.getElementById('table-teacher-dash-selections');
     if (tbody) {
       if (teacherSelectionState.mySelections.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="7" class="text-center text-muted" style="padding: 32px 20px;">
-              <i class="fa-regular fa-calendar-xmark" style="font-size: 2.2rem; color: #cbd5e1; display: block; margin-bottom: 10px;"></i>
-              <div style="font-weight: 600; color: #64748b; font-size: 0.95rem;">No teaching periods selected yet</div>
-              <div style="font-size: 0.82rem; color: #94a3b8; margin-top: 4px;">Click 'Select Teaching Periods' above to start choosing your slots.</div>
+            <td colspan="5" class="text-center text-muted" style="padding: 28px 20px;">
+              <i class="fa-regular fa-calendar-xmark" style="font-size: 1.8rem; opacity: 0.4; display:block; margin-bottom: 8px;"></i>
+              You have not selected any teaching periods yet.<br>
+              <button type="button" class="btn btn-sm btn-primary mt-2" onclick="startTeacherSelectionWizard()">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Launch Period Wizard
+              </button>
             </td>
           </tr>
         `;
@@ -3012,16 +3095,10 @@ async function loadTeacherDashboard() {
           return `
             <tr>
               <td>${dayBadge}</td>
-              <td><strong style="color:#0f172a; font-weight:700;">Period ${s.period}</strong></td>
-              <td><span style="color:#64748b; font-size:0.85rem; font-weight:500;"><i class="fa-regular fa-clock"></i> ${s.time_slot || '—'}</span></td>
+              <td><strong style="color:#0f172a;">Period ${s.period}</strong></td>
+              <td><span style="color:#64748b; font-size:0.85rem;"><i class="fa-regular fa-clock"></i> ${s.time_slot || '—'}</span></td>
               <td><strong style="background:#f1f5f9; padding:4px 10px; border-radius:8px; color:#334155; font-size:0.88rem;">${escapeHtml(s.class_name)}</strong></td>
               <td><strong class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.85rem;">${escapeHtml(s.subject)}</strong></td>
-              <td><span style="font-size:0.8rem; color:#64748b;">${new Date(s.selected_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span></td>
-              <td class="text-right">
-                <button type="button" class="btn btn-sm btn-outline text-danger" onclick="removeTeacherSelection(${s.id})" title="Remove Selection">
-                  <i class="fa-solid fa-trash"></i> Remove
-                </button>
-              </td>
             </tr>
           `;
         }).join('');
@@ -3046,13 +3123,10 @@ async function initTeacherSelectionWizard() {
 async function refreshTeacherSelectionSlots() {
   if (!currentUser) return;
   try {
-    const [slotsRes, mySelRes] = await Promise.all([
-      fetch(apiUrl(`/api/teaching/slots?teacher_id=${currentUser.id}`)),
-      fetch(apiUrl(`/api/teaching/my-selections?teacher_id=${currentUser.id}`))
+    const [slotsData, mySelData] = await Promise.all([
+      fetchJsonWithCache(`/api/teaching/slots?teacher_id=${currentUser.id}`, 8000),
+      fetchJsonWithCache(`/api/teaching/my-selections?teacher_id=${currentUser.id}`, 8000)
     ]);
-
-    const slotsData = await slotsRes.json();
-    const mySelData = await mySelRes.json();
 
     teacherSelectionState.slots = slotsData.slots || [];
     teacherSelectionState.periodSettings = slotsData.period_settings || [];
@@ -3222,10 +3296,12 @@ async function handleTeacherPickSlot(timetableId) {
 
     if (!res.ok) {
       alert(`⚠️ Selection Blocked:\n\n${data.error || 'Failed to select slot'}`);
+      clearClientCache('/api/teaching');
       await refreshTeacherSelectionSlots();
       return;
     }
 
+    clearClientCache('/api/teaching');
     await refreshTeacherSelectionSlots();
   } catch (err) {
     alert('Connection error while selecting slot.');
@@ -3254,6 +3330,7 @@ async function removeTeacherSelection(selectionId) {
       return;
     }
 
+    clearClientCache('/api/teaching');
     await refreshTeacherSelectionSlots();
     loadTeacherDashboard();
   } catch (err) {
@@ -3339,6 +3416,7 @@ async function confirmFinalTeacherSelections() {
       return;
     }
 
+    clearClientCache('/api/teaching');
     alert('🎉 Congratulations! Your teaching periods have been submitted successfully.');
     switchTab('teacher-my-selections');
     loadTeacherMySelectionsSlip();
@@ -3351,8 +3429,7 @@ async function confirmFinalTeacherSelections() {
 async function loadTeacherMySelectionsSlip() {
   if (!currentUser) return;
   try {
-    const res = await fetch(apiUrl(`/api/teaching/my-selections?teacher_id=${currentUser.id}`));
-    const data = await res.json();
+    const data = await fetchJsonWithCache(`/api/teaching/my-selections?teacher_id=${currentUser.id}`, 8000);
     const selections = data.selections || [];
 
     const nameEl = document.getElementById('slip-teacher-name');
@@ -3419,6 +3496,7 @@ async function saveTeacherProfile(e) {
       return;
     }
 
+    clearClientCache('/api/teaching');
     currentUser.full_name = full_name;
     currentUser.phone = phone;
     currentUser.email = email;
@@ -3438,8 +3516,7 @@ async function saveTeacherProfile(e) {
 // 1. ADMIN DASHBOARD
 async function loadAdminTeachingDashboard() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/admin/dashboard-stats'));
-    const data = await res.json();
+    const data = await fetchJsonWithCache('/api/teaching/admin/dashboard-stats', 5000);
 
     document.getElementById('stat-ts-total-teachers').textContent = data.total_teachers || 0;
     document.getElementById('stat-ts-completed-teachers').textContent = data.completed_teachers || 0;
@@ -3473,8 +3550,7 @@ async function loadAdminTeachingDashboard() {
 
 async function toggleAdminSelectionStatus() {
   try {
-    const settingsRes = await fetch(apiUrl('/api/teaching/settings'));
-    const currentSettings = await settingsRes.json();
+    const currentSettings = await fetchJsonWithCache('/api/teaching/settings', 1000, true);
     const newStatus = !currentSettings.is_open;
 
     const res = await fetch(apiUrl('/api/teaching/admin/toggle-status'), {
@@ -3488,6 +3564,7 @@ async function toggleAdminSelectionStatus() {
     });
 
     const data = await res.json();
+    clearClientCache('/api/teaching');
     alert(data.message || 'Status updated');
     loadAdminTeachingDashboard();
   } catch (err) {
@@ -3498,8 +3575,7 @@ async function toggleAdminSelectionStatus() {
 // 2. TEACHERS MANAGEMENT
 async function loadAdminTeachingTeachers() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/admin/teachers'));
-    const teachers = await res.json();
+    const teachers = await fetchJsonWithCache('/api/teaching/admin/teachers', 5000);
     teacherSelectionState.allTeachers = teachers;
     renderTeachingTeachersTable(teachers);
   } catch (err) {

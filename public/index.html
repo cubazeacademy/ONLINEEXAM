@@ -6,9 +6,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Online Examination Portal</title>
-  <!-- Google Fonts (Plus Jakarta Sans & Inter) & Font Awesome Icons -->
+  <!-- Google Fonts & Font Awesome CDN Optimization -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="css/style.css?v=3.5">
@@ -330,7 +332,7 @@
               <div class="lms-header-controls">
                 <div class="lms-search-pill">
                   <i class="fa-solid fa-magnifying-glass"></i>
-                  <input type="text" id="search-students" placeholder="Search by name, roll, adm..." oninput="loadStudents()">
+                  <input type="text" id="search-students" placeholder="Search by name, roll, adm..." oninput="debouncedLoadStudents()">
                 </div>
 
                 <div class="lms-filter-select-wrap">
@@ -398,7 +400,7 @@
               <div class="lms-header-controls">
                 <div class="lms-search-pill">
                   <i class="fa-solid fa-magnifying-glass"></i>
-                  <input type="text" id="search-classes" placeholder="Search class name..." oninput="loadClassesTable()">
+                  <input type="text" id="search-classes" placeholder="Search class name..." oninput="debouncedLoadClassesTable()">
                 </div>
 
                 <button class="btn btn-sm btn-warning hidden" id="btn-delete-selected-classes" onclick="deleteSelectedClasses()">
@@ -511,7 +513,7 @@
               <div class="lms-header-controls">
                 <div class="lms-search-pill">
                   <i class="fa-solid fa-magnifying-glass"></i>
-                  <input type="text" id="search-admin-results" placeholder="Search student, username..." oninput="loadAdminResults()">
+                  <input type="text" id="search-admin-results" placeholder="Search student, username..." oninput="debouncedLoadAdminResults()">
                 </div>
 
                 <div class="lms-filter-select-wrap">
@@ -892,7 +894,7 @@
                 <p class="text-muted" style="margin:4px 0 0 0; font-size:0.82rem;">Manage teacher credentials, status, and monitor their selected periods.</p>
               </div>
               <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="search-teaching-teachers" class="form-control" placeholder="Search teacher name..." style="width: 220px; padding: 7px 12px; font-size: 0.85rem;" oninput="filterTeachingTeachersTable()">
+                <input type="text" id="search-teaching-teachers" class="form-control" placeholder="Search teacher name..." style="width: 220px; padding: 7px 12px; font-size: 0.85rem;" oninput="debouncedFilterTeachingTeachersTable()">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openModalAddTeacher()">
                   <i class="fa-solid fa-user-plus"></i> Add Teacher
                 </button>
@@ -1116,7 +1118,7 @@
               </div>
 
               <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="text" id="search-teaching-reports" class="form-control" placeholder="Search teacher, class, subject..." style="font-size:0.85rem; padding:6px 12px; width:220px;" oninput="filterTeachingReportsView()">
+                <input type="text" id="search-teaching-reports" class="form-control" placeholder="Search teacher, class, subject..." style="font-size:0.85rem; padding:6px 12px; width:220px;" oninput="debouncedFilterTeachingReportsView()">
               </div>
             </div>
 

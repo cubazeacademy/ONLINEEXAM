@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
@@ -7,10 +8,49 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// High-performance gzip/brotli response compression
+app.use(compression({
+  level: 6,
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Fast Static Asset Serving with Cache-Control headers
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: process.env.NODE_ENV === 'production' ? '1d' : '1h',
+  etag: true,
+  lastModified: true
+}));
+
+// In-Memory Fast TTL Cache for static/semi-static data (0ms latency)
+const memCache = new Map();
+
+function getCache(key, ttlMs = 30000) {
+  const item = memCache.get(key);
+  if (item && (Date.now() - item.time < ttlMs)) {
+    return item.data;
+  }
+  return null;
+}
+
+function setCache(key, data) {
+  memCache.set(key, { time: Date.now(), data });
+}
+
+function invalidateCache(prefix) {
+  for (const k of memCache.keys()) {
+    if (k.startsWith(prefix)) {
+      memCache.delete(k);
+    }
+  }
+}
 
 // Safely ensure PDF upload directory exists if filesystem is writable
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
@@ -60,9 +100,6 @@ app.post('/api/admin/upload-pdf', (req, res) => {
     res.status(500).json({ error: 'Failed to process PDF file: ' + err.message });
   }
 });
-
-// Initialize Supabase PostgreSQL Tables & Seed Data
-db.initDb();
 
 // -------------------------------------------------------------
 // AUTH ENDPOINTS
@@ -179,11 +216,16 @@ async function removeClassByName(className) {
 
 app.get('/api/admin/classes', async (req, res) => {
   try {
+    const cached = getCache('admin_classes', 60000);
+    if (cached) return res.json(cached);
+
     const classes = await db.all(`
       SELECT name FROM classes
       ORDER BY name ASC
     `);
-    res.json(classes.map(c => c.name));
+    const result = classes.map(c => c.name);
+    setCache('admin_classes', result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -191,17 +233,28 @@ app.get('/api/admin/classes', async (req, res) => {
 
 app.get('/api/admin/classes-detailed', async (req, res) => {
   try {
-    const classes = await db.all(`
-      SELECT c.name,
-             COUNT(DISTINCT u.id)::int as student_count,
-             COUNT(DISTINCT e.id)::int as exam_count
-      FROM classes c
-      LEFT JOIN users u ON LOWER(u.class_name) = LOWER(c.name) AND u.role = 'student'
-      LEFT JOIN exams e ON (e.target_class ILIKE '%All Classes%' OR e.target_class ILIKE '%' || c.name || '%')
-      GROUP BY c.name
-      ORDER BY c.name ASC
-    `);
-    res.json(classes);
+    const [classes, studentCounts, examTargets] = await Promise.all([
+      db.all(`SELECT name FROM classes ORDER BY name ASC`),
+      db.all(`SELECT LOWER(COALESCE(class_name, 'general')) as class_name, count(*)::int as count FROM users WHERE role = 'student' GROUP BY LOWER(COALESCE(class_name, 'general'))`),
+      db.all(`SELECT target_class FROM exams`)
+    ]);
+
+    const studentMap = {};
+    studentCounts.forEach(s => { studentMap[s.class_name] = s.count; });
+
+    const detailed = classes.map(c => {
+      const cName = c.name;
+      const cLower = cName.toLowerCase();
+      const studentCount = studentMap[cLower] || 0;
+      let examCount = 0;
+      examTargets.forEach(e => {
+        const tc = (e.target_class || '').toLowerCase();
+        if (tc.includes('all classes') || tc.includes(cLower)) examCount++;
+      });
+      return { name: cName, student_count: studentCount, exam_count: examCount };
+    });
+
+    res.json(detailed);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -213,6 +266,7 @@ app.post('/api/admin/classes', async (req, res) => {
   const cleanName = name.trim();
   try {
     await db.run('INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [cleanName]);
+    invalidateCache('admin_classes');
     res.status(201).json({ message: 'Class created successfully', name: cleanName });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -232,6 +286,7 @@ app.put('/api/admin/classes/:oldName', async (req, res) => {
     if (oldName.toLowerCase() !== cleanNewName.toLowerCase()) {
       await db.run('DELETE FROM classes WHERE LOWER(name) = LOWER($1)', [oldName]);
     }
+    invalidateCache('admin_classes');
     res.json({ message: 'Class renamed successfully', name: cleanNewName });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -247,6 +302,7 @@ app.post('/api/admin/classes/bulk-delete', async (req, res) => {
     for (const name of names) {
       await removeClassByName(name);
     }
+    invalidateCache('admin_classes');
     res.json({ message: `Successfully deleted ${names.length} class(es)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -257,6 +313,7 @@ app.delete('/api/admin/classes/:name', async (req, res) => {
   const { name } = req.params;
   try {
     await removeClassByName(decodeURIComponent(name));
+    invalidateCache('admin_classes');
     res.json({ message: 'Class removed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1487,6 +1544,14 @@ async function logTeacherAction(userId, userName, action, details = {}) {
 // -------------------------------------------------------------
 app.get('/api/teaching/settings', async (req, res) => {
   try {
+    const cached = getCache('teaching_settings', 60000);
+    if (cached) {
+      return res.json({
+        ...cached,
+        server_time: new Date()
+      });
+    }
+
     let settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
     if (!settings) {
       settings = {
@@ -1499,6 +1564,7 @@ app.get('/api/teaching/settings', async (req, res) => {
         end_datetime: null
       };
     }
+    setCache('teaching_settings', settings);
     res.json({
       ...settings,
       server_time: new Date()
@@ -1543,6 +1609,9 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
       ]);
     }
 
+    invalidateCache('teaching_settings');
+    invalidateCache('teaching_slots');
+
     await logTeacherAction(admin_id, admin_name || 'Admin', 'Updated Selection Settings', {
       start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods
     });
@@ -1557,6 +1626,8 @@ app.post('/api/teaching/admin/toggle-status', async (req, res) => {
   const { is_open, admin_id, admin_name } = req.body;
   try {
     await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [is_open]);
+    invalidateCache('teaching_settings');
+    invalidateCache('teaching_slots');
     await logTeacherAction(admin_id, admin_name || 'Admin', is_open ? 'Opened Subject Selection' : 'Closed Subject Selection');
     res.json({ message: `Subject Selection is now ${is_open ? 'OPEN' : 'CLOSED'}` });
   } catch (err) {
@@ -1569,11 +1640,15 @@ app.post('/api/teaching/admin/toggle-status', async (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/teaching/period-settings', async (req, res) => {
   try {
+    const cached = getCache('teaching_period_settings', 60000);
+    if (cached) return res.json(cached);
+
     const settings = await db.all(`
       SELECT day, period, time_slot, is_enabled
       FROM teacher_selection_period_settings
       ORDER BY CASE WHEN day = 'Sunday' THEN 1 ELSE 2 END, period ASC
     `);
+    setCache('teaching_period_settings', settings);
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1592,6 +1667,9 @@ app.post('/api/teaching/admin/period-settings/toggle', async (req, res) => {
       ON CONFLICT (day, period)
       DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
     `, [day, parseInt(period), Boolean(is_enabled)]);
+
+    invalidateCache('teaching_period_settings');
+    invalidateCache('teaching_slots');
 
     await logTeacherAction(admin_id, admin_name || 'Admin', `Period ${day} P${period} ${is_enabled ? 'Enabled' : 'Disabled'}`);
     res.json({ message: `Period ${day} P${period} is now ${is_enabled ? 'AVAILABLE' : 'DISABLED'}` });
@@ -1614,6 +1692,8 @@ app.post('/api/teaching/admin/period-settings/bulk', async (req, res) => {
         DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
       `, [item.day, parseInt(item.period), Boolean(item.is_enabled)]);
     }
+    invalidateCache('teaching_period_settings');
+    invalidateCache('teaching_slots');
     await logTeacherAction(admin_id, admin_name || 'Admin', 'Bulk updated period settings');
     res.json({ message: 'Period settings updated successfully' });
   } catch (err) {
@@ -1777,7 +1857,11 @@ app.delete('/api/teaching/admin/classes/:id', async (req, res) => {
 
 app.get('/api/teaching/admin/subjects', async (req, res) => {
   try {
+    const cached = getCache('teaching_subjects', 60000);
+    if (cached) return res.json(cached);
+
     const subjects = await db.all(`SELECT * FROM teacher_selection_subjects ORDER BY name ASC`);
+    setCache('teaching_subjects', subjects);
     res.json(subjects);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1793,6 +1877,7 @@ app.post('/api/teaching/admin/subjects', async (req, res) => {
       VALUES ($1, $2, 'active')
       ON CONFLICT (name) DO NOTHING
     `, [name.trim(), (code || name).trim()]);
+    invalidateCache('teaching_subjects');
     res.json({ message: 'Subject added successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1802,6 +1887,7 @@ app.post('/api/teaching/admin/subjects', async (req, res) => {
 app.delete('/api/teaching/admin/subjects/:id', async (req, res) => {
   try {
     await db.query(`DELETE FROM teacher_selection_subjects WHERE id = $1`, [req.params.id]);
+    invalidateCache('teaching_subjects');
     res.json({ message: 'Subject deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2123,6 +2209,9 @@ app.post('/api/teaching/select', async (req, res) => {
       RETURNING id
     `, [teacher_id, slot.id, slot.day, slot.period, slot.class_name, slot.subject]);
 
+    invalidateCache('teaching_slots');
+    invalidateCache('teaching_stats');
+
     await logTeacherAction(teacher_id, teacher.full_name, `Selected: ${slot.day} P${slot.period} ${slot.class_name} (${slot.subject})`);
 
     res.json({
@@ -2169,6 +2258,8 @@ app.post('/api/teaching/remove', async (req, res) => {
     }
 
     await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
+    invalidateCache('teaching_slots');
+    invalidateCache('teaching_stats');
     await logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`);
 
     res.json({ message: 'Selection removed successfully' });
@@ -2202,6 +2293,8 @@ app.post('/api/teaching/submit', async (req, res) => {
       WHERE teacher_id = $1
     `, [teacher_id]);
 
+    invalidateCache('teaching_slots');
+    invalidateCache('teaching_stats');
     await logTeacherAction(teacher_id, teacher ? teacher.full_name : 'Teacher', `Finalized and submitted ${count} teaching periods.`);
 
     res.json({

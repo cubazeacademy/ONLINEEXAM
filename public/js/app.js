@@ -101,6 +101,19 @@ function setLoginRole(role) {
   }
 }
 
+function toggleLoginPasswordVisibility() {
+  const pwdInput = document.getElementById('login-password');
+  const icon = document.getElementById('toggle-pwd-icon');
+  if (!pwdInput) return;
+  if (pwdInput.type === 'password') {
+    pwdInput.type = 'text';
+    if (icon) icon.className = 'fa-solid fa-eye-slash';
+  } else {
+    pwdInput.type = 'password';
+    if (icon) icon.className = 'fa-solid fa-eye';
+  }
+}
+
 function fillDemoCredentials(role) {
   setLoginRole(role);
   if (role === 'admin') {
@@ -112,6 +125,15 @@ function fillDemoCredentials(role) {
   } else {
     document.getElementById('login-username').value = '4049';
     document.getElementById('login-password').value = '40492026';
+  }
+  // Auto-submit login immediately on 1-click
+  const form = document.getElementById('login-form');
+  if (form) {
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
   }
 }
 

@@ -49,8 +49,12 @@
 
         <div class="form-group">
           <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
-          <input type="password" id="login-password" placeholder="Enter your password" required
-            autocomplete="current-password">
+          <div style="position: relative;">
+            <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password" style="padding-right: 42px;">
+            <button type="button" onclick="toggleLoginPasswordVisibility()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1rem; padding: 4px;" title="Show/Hide Password">
+              <i class="fa-solid fa-eye" id="toggle-pwd-icon"></i>
+            </button>
+          </div>
         </div>
 
         <div id="login-error" class="alert-box alert-error hidden"></div>

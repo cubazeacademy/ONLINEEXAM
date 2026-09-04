@@ -86,7 +86,10 @@ app.post('/api/auth/login', async (req, res) => {
         LOWER(COALESCE(admission_no, '')) = LOWER($1) OR
         LOWER(COALESCE(roll_no, '')) = LOWER($1) OR
         LOWER(COALESCE(email, '')) = LOWER($1)
-      ) AND TRIM(password) = $2
+      ) AND (
+        TRIM(password) = $2 OR
+        LOWER(TRIM(password)) = LOWER($2)
+      )
     `, [cleanUsername, cleanPassword]);
 
     if (!user) {

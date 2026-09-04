@@ -3206,15 +3206,21 @@ input, button, select, textarea {
 }
 
 /* ========================================================================== */
-/* MODERN SELECTIONS PANEL & DATA TABLE STYLES                                */
+/* MODERN SELECTIONS PANEL & CURVED CARD CONTAINER STYLES                     */
 /* ========================================================================== */
 
 .modern-selections-panel {
   background: #ffffff;
-  border-radius: 22px;
+  border-radius: 24px;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 24px -2px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.02);
   overflow: hidden;
+  margin-top: 28px;
+  transition: all 0.25s ease;
+}
+
+.modern-selections-panel:hover {
+  box-shadow: 0 16px 40px -8px rgba(15, 23, 42, 0.09), 0 4px 12px rgba(15, 23, 42, 0.03);
 }
 
 .panel-header-title-group {
@@ -3224,16 +3230,17 @@ input, button, select, textarea {
 }
 
 .panel-header-icon {
-  width: 44px;
-  height: 44px;
-  background: #eef2ff;
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
   color: #4f46e5;
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.15rem;
-  box-shadow: 0 3px 10px rgba(79, 70, 229, 0.12);
+  font-size: 1.2rem;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+  border: 1px solid #c7d2fe;
 }
 
 .btn-outline-primary {
@@ -3241,13 +3248,14 @@ input, button, select, textarea {
   border: 1.5px solid #c7d2fe;
   color: #4338ca;
   font-weight: 700;
-  padding: 8px 16px;
-  border-radius: 12px;
+  padding: 9px 18px;
+  border-radius: 14px;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.06);
 }
 
 .btn-outline-primary:hover {
@@ -3255,7 +3263,7 @@ input, button, select, textarea {
   border-color: #818cf8;
   color: #3730a3;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.18);
 }
 
 .p-0 {
@@ -3275,12 +3283,12 @@ input, button, select, textarea {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.7px;
-  padding: 14px 22px;
+  padding: 16px 24px;
   border-bottom: 1px solid #e2e8f0;
 }
 
 .modern-table tbody td {
-  padding: 16px 22px;
+  padding: 16px 24px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
 }
@@ -3298,7 +3306,7 @@ input, button, select, textarea {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 14px;
+  padding: 6px 14px;
   border-radius: 9999px;
   font-size: 0.82rem;
   font-weight: 700;
@@ -3343,13 +3351,14 @@ input, button, select, textarea {
 .class-cell-badge {
   background: #f1f5f9;
   color: #334155;
-  padding: 5px 12px;
+  padding: 6px 12px;
   border-radius: 10px;
   font-size: 0.84rem;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  border: 1px solid #e2e8f0;
 }
 
 .class-cell-badge i {
@@ -3360,7 +3369,7 @@ input, button, select, textarea {
   background: #ecfdf5;
   color: #065f46;
   border: 1px solid #a7f3d0;
-  padding: 5px 12px;
+  padding: 6px 12px;
   border-radius: 10px;
   font-size: 0.84rem;
   font-weight: 700;
@@ -3374,7 +3383,7 @@ input, button, select, textarea {
 }
 
 .btn-action-ghost {
-  background: transparent;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
   color: #475569;
   padding: 6px 14px;
@@ -3389,39 +3398,49 @@ input, button, select, textarea {
 }
 
 .btn-action-ghost:hover {
-  background: #f1f5f9;
+  background: #f8fafc;
   border-color: #cbd5e1;
   color: #0f172a;
   transform: translateY(-1px);
 }
 
 /* ========================================================================== */
-/* EMPTY STATE COMPONENT                                                      */
+/* EMPTY STATE COMPONENT (CURVED INNER CARD)                                  */
 /* ========================================================================== */
 
 .table-empty-state {
+  margin: 20px 24px 24px 24px;
+  border-radius: 20px;
   padding: 48px 24px;
   text-align: center;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.5) 0%, rgba(241, 245, 249, 0.5) 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 2px dashed #cbd5e1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  box-shadow: inset 0 2px 6px rgba(15, 23, 42, 0.02);
+  transition: all 0.25s ease;
+}
+
+.table-empty-state:hover {
+  border-color: #a5b4fc;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
 }
 
 .empty-state-icon-wrapper {
   position: relative;
-  width: 72px;
-  height: 72px;
-  margin-bottom: 16px;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 18px;
 }
 
 .empty-state-icon-glow {
   position: absolute;
-  inset: -6px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, transparent 70%);
+  inset: -8px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, transparent 70%);
   border-radius: 50%;
-  filter: blur(8px);
+  filter: blur(10px);
 }
 
 .empty-state-icon {
@@ -3429,19 +3448,19 @@ input, button, select, textarea {
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-  border: 1px solid #c7d2fe;
-  border-radius: 20px;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 30px;
   color: #4f46e5;
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.12);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.15);
   animation: floatIcon 3s ease-in-out infinite;
 }
 
 .empty-state-title {
-  font-size: 1.18rem;
+  font-size: 1.22rem;
   font-weight: 800;
   color: #0f172a;
   margin: 0 0 6px 0;
@@ -3450,16 +3469,16 @@ input, button, select, textarea {
 
 .empty-state-desc {
   color: #64748b;
-  font-size: 0.9rem;
-  max-width: 480px;
-  line-height: 1.55;
-  margin: 0 0 20px 0;
+  font-size: 0.92rem;
+  max-width: 500px;
+  line-height: 1.6;
+  margin: 0 0 22px 0;
 }
 
 .btn-empty-cta {
   margin-bottom: 24px;
-  padding: 12px 24px;
-  font-size: 0.92rem;
+  padding: 13px 26px;
+  font-size: 0.94rem;
 }
 
 .empty-state-steps {
@@ -3467,14 +3486,14 @@ input, button, select, textarea {
   align-items: center;
   gap: 12px;
   background: #ffffff;
-  padding: 8px 18px;
+  padding: 8px 20px;
   border-radius: 9999px;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .empty-step-chip {
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #475569;
   display: flex;
@@ -3483,12 +3502,12 @@ input, button, select, textarea {
 }
 
 .step-dot {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #eef2ff;
   color: #4f46e5;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 800;
   display: flex;
   align-items: center;

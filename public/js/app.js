@@ -3588,35 +3588,78 @@ function renderTeachingTeachersTable(teachers) {
   if (!tbody) return;
 
   if (teachers.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:20px;">No teachers found.</td></tr>`;
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="padding: 48px 24px; text-align: center;">
+          <div style="width:64px; height:64px; background:#eff6ff; color:#3b82f6; border-radius:18px; display:inline-flex; align-items:center; justify-content:center; font-size:28px; margin-bottom:14px;">
+            <i class="fa-solid fa-chalkboard-user"></i>
+          </div>
+          <h4 style="font-size:1.1rem; color:#0f172a; margin:0 0 6px 0; font-weight:800;">No Teachers Added Yet</h4>
+          <p style="color:#64748b; font-size:0.86rem; margin:0 0 18px 0; max-width:400px; margin-left:auto; margin-right:auto;">
+            Get started by adding educators individually or upload your entire staff list in bulk using a CSV file.
+          </p>
+          <div style="display:inline-flex; gap:10px; justify-content:center;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="openModalAddTeacher()">
+              <i class="fa-solid fa-user-plus"></i> Add Teacher
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTeachingTeachers()">
+              <i class="fa-solid fa-file-csv"></i> Import CSV
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
     return;
   }
 
   tbody.innerHTML = teachers.map(t => {
-    let statusBadge = '<span class="badge badge-muted">Pending (0)</span>';
-    if (t.status === 'Completed') statusBadge = `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Completed (${t.selected_count}/3)</span>`;
-    else if (t.status === 'In Progress') statusBadge = `<span class="badge badge-warning"><i class="fa-solid fa-clock"></i> In Progress (${t.selected_count}/3)</span>`;
+    let statusBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-regular fa-clock"></i> Pending (0)</span>';
+    if (t.status === 'Completed') {
+      statusBadge = `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;"><i class="fa-solid fa-circle-check"></i> Completed (${t.selected_count}/3)</span>`;
+    } else if (t.status === 'In Progress') {
+      statusBadge = `<span class="badge badge-warning" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a;"><i class="fa-solid fa-clock-rotate-left"></i> In Progress (${t.selected_count}/3)</span>`;
+    }
 
-    const accountBadge = t.is_active !== false ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Disabled</span>';
+    const accountBadge = t.is_active !== false 
+      ? '<span class="badge badge-success" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Active</span>' 
+      : '<span class="badge badge-danger" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca;"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Disabled</span>';
+
+    const initials = (t.full_name || 'T').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
     return `
       <tr>
-        <td><strong>${escapeHtml(t.full_name)}</strong></td>
-        <td><code>${escapeHtml(t.username)}</code></td>
         <td>
-          <button type="button" class="btn btn-sm btn-link" onclick="viewTeacherAllocationsModal(${t.id}, '${escapeHtml(t.full_name)}')" style="padding:0; font-weight:700; color:var(--primary); text-decoration:underline;">
-            ${t.selected_count} Period(s)
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.82rem; flex-shrink:0;">
+              ${initials}
+            </div>
+            <div>
+              <strong style="color:#0f172a; font-size:0.92rem; display:block;">${escapeHtml(t.full_name)}</strong>
+              ${t.phone ? `<span style="font-size:0.75rem; color:#64748b;"><i class="fa-solid fa-phone" style="font-size:10px;"></i> ${escapeHtml(t.phone)}</span>` : ''}
+            </div>
+          </div>
+        </td>
+        <td>
+          <span style="background:#f8fafc; border:1px solid #e2e8f0; padding:3px 8px; border-radius:6px; font-family:monospace; font-size:0.84rem; color:#334155;">
+            @${escapeHtml(t.username)}
+          </span>
+        </td>
+        <td>
+          <button type="button" class="btn btn-sm btn-outline" onclick="viewTeacherAllocationsModal(${t.id}, '${escapeHtml(t.full_name)}')" style="font-weight:700; border-radius:8px;">
+            <i class="fa-solid fa-list-check" style="color:var(--primary);"></i> ${t.selected_count} Period(s)
           </button>
         </td>
         <td>${statusBadge}</td>
         <td>${accountBadge}</td>
         <td class="text-right">
-          <button type="button" class="btn btn-sm btn-outline" onclick="openModalEditTeacher(${t.id})" title="Edit Credentials">
-            <i class="fa-solid fa-pen"></i> Edit
-          </button>
-          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingTeacher(${t.id}, '${escapeHtml(t.full_name)}')" title="Delete">
-            <i class="fa-solid fa-trash"></i>
-          </button>
+          <div style="display:inline-flex; gap:6px;">
+            <button type="button" class="btn btn-sm btn-outline" onclick="openModalEditTeacher(${t.id})" title="Edit Credentials" style="border-radius:8px; padding:6px 10px;">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingTeacher(${t.id}, '${escapeHtml(t.full_name)}')" title="Delete" style="border-radius:8px; padding:6px 10px; border-color:#fca5a5; background:#fff5f5;">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
         </td>
       </tr>
     `;
@@ -3955,25 +3998,40 @@ function renderTimetableTable() {
   if (classFilter !== 'all') list = list.filter(t => t.class_name === classFilter);
 
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:20px;">No timetable entries match filter.</td></tr>`;
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="padding: 40px 20px; text-align: center;">
+          <div style="width:54px; height:54px; background:#f8fafc; color:#94a3b8; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:10px;">
+            <i class="fa-solid fa-calendar-xmark"></i>
+          </div>
+          <div style="font-weight:700; color:#334155; font-size:0.95rem;">No Timetable Entries Found</div>
+          <div style="color:#94a3b8; font-size:0.82rem; margin-top:2px;">Try changing the Day or Class filter, or upload a CSV file.</div>
+        </td>
+      </tr>
+    `;
     return;
   }
 
   tbody.innerHTML = list.map(t => {
+    const isSun = t.day === 'Sunday';
+    const dayBadge = isSun 
+      ? '<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700;"><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday</span>' 
+      : '<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;"><i class="fa-solid fa-calendar-day" style="color:#4f46e5;"></i> Monday</span>';
+
     const enabledBadge = t.is_period_enabled !== false 
-      ? '<span class="badge badge-success">🟢 Period Available</span>' 
-      : '<span class="badge badge-danger">🔴 Period Disabled</span>';
+      ? '<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Available</span>' 
+      : '<span class="badge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca;"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Disabled</span>';
 
     return `
       <tr>
-        <td><strong class="badge ${t.day === 'Sunday' ? 'badge-warning' : 'badge-primary'}">${t.day}</strong></td>
-        <td><strong>Period ${t.period}</strong></td>
-        <td><span class="text-muted">${t.time_slot || '—'}</span></td>
-        <td><strong style="color:var(--primary);">${escapeHtml(t.class_name)}</strong></td>
-        <td><strong class="badge badge-success">${escapeHtml(t.subject)}</strong></td>
+        <td>${dayBadge}</td>
+        <td><strong style="color:#0f172a; font-weight:700;">Period ${t.period}</strong></td>
+        <td><span style="color:#64748b; font-size:0.85rem;"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${t.time_slot || '—'}</span></td>
+        <td><strong style="background:#f1f5f9; padding:4px 10px; border-radius:8px; color:#334155; font-size:0.85rem;">${escapeHtml(t.class_name)}</strong></td>
+        <td><strong class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.85rem;">${escapeHtml(t.subject)}</strong></td>
         <td>${enabledBadge}</td>
         <td class="text-right">
-          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingSlot(${t.id})">
+          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingSlot(${t.id})" title="Delete Slot" style="border-radius:8px; padding:6px 10px; border-color:#fca5a5; background:#fff5f5;">
             <i class="fa-solid fa-trash"></i>
           </button>
         </td>
@@ -4076,15 +4134,22 @@ function renderPeriodSettingsGrid(day, containerId, settings) {
     html += `
       <div class="period-toggle-card ${!isEnabled ? 'disabled-mode' : ''}">
         <div class="period-toggle-info">
-          <span class="toggle-p-title">${day} — Period ${p}</span>
-          <span class="toggle-p-time"><i class="fa-regular fa-clock"></i> ${time}</span>
-          <span class="toggle-p-badge ${isEnabled ? 'text-success' : 'text-danger'}">
-            ${isEnabled ? '🟢 Available' : '🔴 Disabled'}
-          </span>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span style="background:${day === 'Sunday' ? '#fef3c7' : '#e0e7ff'}; color:${day === 'Sunday' ? '#92400e' : '#3730a3'}; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:6px;">
+              P${p}
+            </span>
+            <span class="toggle-p-title" style="margin:0;">${day} — Period ${p}</span>
+          </div>
+          <span class="toggle-p-time"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${time}</span>
+          <div style="margin-top:6px;">
+            <span class="badge ${isEnabled ? 'badge-success' : 'badge-danger'}" style="font-size:0.74rem; padding:3px 8px;">
+              <i class="fa-solid fa-circle" style="font-size:7px; margin-right:4px;"></i> ${isEnabled ? 'Available' : 'Disabled'}
+            </span>
+          </div>
         </div>
-        <label class="switch-toggle" style="position:relative; display:inline-block; width:50px; height:26px;">
-          <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="togglePeriodSetting('${day}', ${p}, this.checked)" style="opacity:0; width:0; height:0;">
-          <span class="slider round" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:${isEnabled ? '#10b981' : '#cbd5e1'}; transition:.3s; border-radius:34px;"></span>
+        <label class="switch-toggle">
+          <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="togglePeriodSetting('${day}', ${p}, this.checked)">
+          <span class="slider"></span>
         </label>
       </div>
     `;
@@ -4298,12 +4363,14 @@ async function loadClassWiseReport() {
       const slots = classData[cName] || [];
       html += `
         <div class="panel-card mb-4">
-          <div class="panel-header" style="background:#f8fafc;">
-            <h4 style="margin:0; font-size:1rem; color:var(--primary);"><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(cName)}</h4>
-            <span class="badge badge-info" style="font-size:0.75rem;">${slots.length} Timetable Slots</span>
+          <div class="panel-header" style="background:#f8fafc; padding:16px 22px;">
+            <h4 style="margin:0; font-size:1.05rem; color:#0f172a; font-weight:800;"><i class="fa-solid fa-graduation-cap" style="color:var(--primary);"></i> ${escapeHtml(cName)}</h4>
+            <span class="badge" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-size:0.78rem; font-weight:700;">
+              ${slots.length} Timetable Slots
+            </span>
           </div>
-          <div class="panel-body table-responsive">
-            <table class="data-table" style="font-size:0.82rem;">
+          <div class="panel-body table-responsive" style="padding:0;">
+            <table class="data-table">
               <thead>
                 <tr>
                   <th>Day</th>
@@ -4315,16 +4382,21 @@ async function loadClassWiseReport() {
               </thead>
               <tbody>
                 ${slots.map(s => {
+                  const isSun = s.day === 'Sunday';
+                  const dayBadge = isSun 
+                    ? '<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700;"><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday</span>' 
+                    : '<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;"><i class="fa-solid fa-calendar-day" style="color:#4f46e5;"></i> Monday</span>';
+
                   const teacherBadge = s.teacher_name 
-                    ? `<strong class="badge badge-success"><i class="fa-solid fa-user-check"></i> ${escapeHtml(s.teacher_name)}</strong>`
-                    : '<span class="badge badge-muted">Unassigned</span>';
+                    ? `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.84rem;"><i class="fa-solid fa-user-check"></i> ${escapeHtml(s.teacher_name)}</span>`
+                    : '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; font-size:0.8rem;"><i class="fa-regular fa-clock"></i> Unassigned</span>';
 
                   return `
                     <tr>
-                      <td><strong class="badge ${s.day === 'Sunday' ? 'badge-warning' : 'badge-primary'}">${s.day}</strong></td>
-                      <td><strong>Period ${s.period}</strong></td>
-                      <td><span class="text-muted">${s.time_slot || '—'}</span></td>
-                      <td><strong>${escapeHtml(s.subject)}</strong></td>
+                      <td>${dayBadge}</td>
+                      <td><strong style="color:#0f172a;">Period ${s.period}</strong></td>
+                      <td><span style="color:#64748b; font-size:0.85rem;"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${s.time_slot || '—'}</span></td>
+                      <td><strong class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;">${escapeHtml(s.subject)}</strong></td>
                       <td>${teacherBadge}</td>
                     </tr>
                   `;

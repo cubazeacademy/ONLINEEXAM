@@ -890,11 +890,14 @@
           <div class="panel-card">
             <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
               <div>
-                <h3 style="margin:0;"><i class="fa-solid fa-chalkboard-user"></i> Teachers Management</h3>
-                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.82rem;">Manage teacher credentials, import from CSV, and monitor selected periods.</p>
+                <h3 style="margin:0;"><i class="fa-solid fa-chalkboard-user" style="color:var(--primary);"></i> Teachers Directory</h3>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">Manage teacher credentials, import via CSV template, and monitor allocated periods.</p>
               </div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="search-teaching-teachers" class="form-control" placeholder="Search teacher name..." style="width: 190px; padding: 7px 12px; font-size: 0.85rem;" oninput="debouncedFilterTeachingTeachersTable()">
+                <div style="position:relative; display:inline-flex; align-items:center;">
+                  <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; color:#94a3b8; font-size:0.82rem; pointer-events:none;"></i>
+                  <input type="text" id="search-teaching-teachers" class="form-control" placeholder="Search teacher name..." style="width: 210px; padding: 7px 12px 7px 32px; font-size: 0.85rem; border-radius:10px;" oninput="debouncedFilterTeachingTeachersTable()">
+                </div>
                 <button type="button" class="btn btn-primary btn-sm" onclick="openModalAddTeacher()">
                   <i class="fa-solid fa-user-plus"></i> Add Teacher
                 </button>
@@ -904,7 +907,7 @@
                 <button type="button" class="btn btn-outline btn-sm" onclick="downloadSampleTeachersCSV()" title="Download sample teachers CSV template">
                   <i class="fa-solid fa-download"></i> Sample CSV
                 </button>
-                <button type="button" class="btn btn-outline btn-sm text-danger" onclick="clearAllTeachingTeachers()">
+                <button type="button" class="btn btn-outline btn-sm text-danger" onclick="clearAllTeachingTeachers()" style="border-color:#fca5a5; background:#fff5f5;">
                   <i class="fa-solid fa-trash"></i> Clear All
                 </button>
               </div>
@@ -934,16 +937,16 @@
           <div class="panel-card">
             <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
               <div>
-                <h3 style="margin:0;"><i class="fa-solid fa-calendar-days"></i> Master Academic Timetable</h3>
-                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.82rem;">Master schedule for Std 1 to Std 7 (Sunday & Monday, Periods 1 to 9).</p>
+                <h3 style="margin:0;"><i class="fa-solid fa-calendar-days" style="color:var(--primary);"></i> Master Academic Timetable</h3>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">Master schedule for Std 1 to Std 7 (Sunday & Monday, Periods 1 to 9).</p>
               </div>
-              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <select id="filter-tt-day" class="form-control" style="font-size:0.85rem; padding:6px 12px;" onchange="renderTimetableTable()">
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <select id="filter-tt-day" class="form-control" style="font-size:0.85rem; padding:7px 12px; border-radius:10px;" onchange="renderTimetableTable()">
                   <option value="all">All Days (Sun & Mon)</option>
                   <option value="Sunday">Sunday</option>
                   <option value="Monday">Monday</option>
                 </select>
-                <select id="filter-tt-class" class="form-control" style="font-size:0.85rem; padding:6px 12px;" onchange="renderTimetableTable()">
+                <select id="filter-tt-class" class="form-control" style="font-size:0.85rem; padding:7px 12px; border-radius:10px;" onchange="renderTimetableTable()">
                   <option value="all">All Classes</option>
                   <option value="Std 1">Std 1</option>
                   <option value="Std 2">Std 2</option>
@@ -988,16 +991,20 @@
         <!-- ADMIN 4: PERIOD ON/OFF SETTINGS (ENABLE/DISABLE UNWANTED PERIODS) -->
         <section id="view-admin-teaching-periods" class="tab-view hidden">
           <div class="panel-card">
-            <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+            <div class="panel-header" style="flex-wrap: wrap; gap: 14px;">
               <div>
-                <h3 style="margin:0;"><i class="fa-solid fa-toggle-on"></i> Period Availability Settings (ON / OFF)</h3>
+                <h3 style="margin:0;"><i class="fa-solid fa-toggle-on" style="color:var(--primary);"></i> Period Availability Controls</h3>
                 <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">
-                  Select which periods are actually available for this allocation event. Disabled periods are hidden/unselectable for teachers while preserving master timetable data.
+                  Turn periods ON or OFF for Sunday and Monday. Disabled periods are protected and hidden from teachers.
                 </p>
               </div>
               <div style="display: flex; gap: 8px;">
-                <button type="button" class="btn btn-sm btn-outline" onclick="setAllPeriodsStatus('Sunday', true)">Enable All Sunday</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="setAllPeriodsStatus('Monday', true)">Enable All Monday</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="setAllPeriodsStatus('Sunday', true)">
+                  <i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Enable All Sunday
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="setAllPeriodsStatus('Monday', true)">
+                  <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Enable All Monday
+                </button>
               </div>
             </div>
             <div class="panel-body" style="padding: 24px;">

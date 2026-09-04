@@ -2634,20 +2634,162 @@ input, button, select, textarea {
 }
 
 /* ========================================================================== */
-/* TEACHER SUBJECT SELECTION MODULE STYLES                                    */
+/* TEACHER SUBJECT SELECTION & SAAS PORTAL STYLES                             */
 /* ========================================================================== */
+
+/* Teacher Hero Card */
+.teacher-hero-card {
+  background: linear-gradient(135deg, #0b0f19 0%, #1e293b 60%, #334155 100%);
+  border-radius: 20px;
+  padding: 28px 32px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 24px;
+}
+
+.teacher-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 680px;
+}
+
+.teacher-hero-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.teacher-status-pill-glowing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  letter-spacing: 0.3px;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+}
+
+.teacher-status-pill-closed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  letter-spacing: 0.3px;
+}
+
+.teacher-deadline-tag {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.teacher-hero-title {
+  color: #ffffff;
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 8px 0;
+  line-height: 1.25;
+}
+
+.teacher-hero-desc {
+  color: #cbd5e1;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.teacher-hero-actions {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.teacher-btn-cta {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 13px 24px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.4);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.teacher-btn-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.55);
+  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
+}
+
+.teacher-hero-watermark {
+  position: absolute;
+  right: -15px;
+  bottom: -20px;
+  font-size: 140px;
+  color: #ffffff;
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Mini Progress Bar in Stat Cards */
+.progress-bar-mini {
+  width: 100%;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.progress-fill-emerald {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
 
 /* Wizard Navigation Header */
 .wizard-header-card {
-  background: #ffffff;
-  border: 1px solid var(--border-color);
-  border-radius: 18px;
-  padding: 16px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 16px 26px;
   margin-bottom: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 6px 24px -4px rgba(15, 23, 42, 0.06);
   position: sticky;
   top: 76px;
   z-index: 100;
@@ -2663,38 +2805,48 @@ input, button, select, textarea {
 .wizard-step {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: #64748b;
   font-weight: 600;
   font-size: 0.92rem;
   transition: all 0.2s ease;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 12px;
+  border-radius: 12px;
+}
+
+.wizard-step:hover {
+  background: #f8fafc;
+  color: #334155;
 }
 
 .wizard-step.active {
-  color: var(--primary);
+  color: #4f46e5;
   font-weight: 700;
+  background: #eef2ff;
 }
 
 .wizard-step.completed {
-  color: #10b981;
+  color: #059669;
 }
 
 .wizard-step .step-num {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: #f1f5f9;
   color: #64748b;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  transition: var(--transition);
+  transition: all 0.2s ease;
 }
 
 .wizard-step.active .step-num {
-  background: var(--primary);
+  background: #4f46e5;
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 }
@@ -2708,19 +2860,21 @@ input, button, select, textarea {
   height: 2px;
   background: #e2e8f0;
   flex: 1;
-  max-width: 60px;
+  max-width: 50px;
+  border-radius: 2px;
 }
 
 .wizard-counter-box {
-  background: #f8fafc;
-  border: 1px solid var(--border-color);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 14px;
   padding: 8px 18px;
   text-align: right;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .wizard-counter-box .counter-label {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
@@ -2728,9 +2882,9 @@ input, button, select, textarea {
 }
 
 .wizard-counter-box .counter-number {
-  font-size: 1.3rem;
+  font-size: 1.35rem;
   font-weight: 800;
-  color: #1e1b4b;
+  color: #0f172a;
   line-height: 1.15;
 }
 
@@ -2740,20 +2894,21 @@ input, button, select, textarea {
 
 .wizard-section-banner {
   border-radius: 18px;
-  padding: 18px 22px;
+  padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 22px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
 }
 
 .wizard-footer-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 0;
+  padding: 20px 0;
   flex-wrap: wrap;
   gap: 12px;
 }
@@ -2762,36 +2917,35 @@ input, button, select, textarea {
 .period-cards-flow {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 .period-card {
   background: #ffffff;
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .period-card:hover {
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 10px 28px -4px rgba(15, 23, 42, 0.07);
   border-color: #cbd5e1;
 }
 
 .period-card.disabled-period {
-  background: #fafafa;
+  background: #fcfcfd;
   border-color: #f1f5f9;
-  opacity: 0.85;
 }
 
 .period-card-header {
   background: #f8fafc;
-  padding: 14px 20px;
+  padding: 14px 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #edf2f7;
 }
 
 .period-card-title {
@@ -2799,37 +2953,45 @@ input, button, select, textarea {
   align-items: center;
   gap: 10px;
   font-weight: 700;
-  color: #1e293b;
-  font-size: 1rem;
+  color: #0f172a;
+  font-size: 0.98rem;
 }
 
 .period-card-title .period-badge {
-  background: #e0e7ff;
-  color: #3730a3;
+  background: #eef2ff;
+  color: #4338ca;
   font-size: 0.8rem;
   font-weight: 800;
   padding: 4px 10px;
   border-radius: 8px;
+  border: 1px solid #c7d2fe;
 }
 
 .period-card-time {
   font-size: 0.82rem;
   color: #64748b;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
 }
 
 .period-slots-grid {
-  padding: 18px 20px;
+  padding: 20px 22px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
 }
 
 /* Slot Selection Chip */
 .slot-chip {
-  border: 1.5px solid var(--border-color);
-  border-radius: 12px;
-  padding: 12px 16px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px 16px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
@@ -2837,17 +2999,18 @@ input, button, select, textarea {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
+  user-select: none;
 }
 
 .slot-chip:hover:not(.locked):not(.disabled-chip):not(.selected-me) {
-  border-color: var(--primary);
-  background: #f5f3ff;
+  border-color: #6366f1;
+  background: #fdfefe;
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.12);
 }
 
 .slot-chip-class {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
@@ -2858,6 +3021,7 @@ input, button, select, textarea {
   font-size: 1.05rem;
   font-weight: 800;
   color: #0f172a;
+  letter-spacing: -0.02em;
 }
 
 .slot-chip-status {
@@ -2866,12 +3030,12 @@ input, button, select, textarea {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 /* Available Slot */
 .slot-chip.available {
-  border-color: #cbd5e1;
+  border-color: #e2e8f0;
 }
 
 .slot-chip.available .slot-chip-status {
@@ -2881,8 +3045,8 @@ input, button, select, textarea {
 /* Selected by Current Teacher */
 .slot-chip.selected-me {
   border-color: #10b981;
-  background: #ecfdf5;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+  background: #f0fdf4;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3), 0 4px 14px rgba(16, 185, 129, 0.1);
 }
 
 .slot-chip.selected-me .slot-chip-status {
@@ -2892,30 +3056,34 @@ input, button, select, textarea {
 
 .slot-chip.selected-me .btn-remove-slot {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   background: #fee2e2;
-  color: #ef4444;
-  border: none;
-  border-radius: 6px;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
   padding: 3px 8px;
   font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .slot-chip.selected-me .btn-remove-slot:hover {
-  background: #ef4444;
+  background: #dc2626;
   color: #ffffff;
+  border-color: #dc2626;
 }
 
 /* Locked by Another Teacher */
 .slot-chip.locked {
-  border-color: #e2e8f0;
+  border-color: #f1f5f9;
   background: #f8fafc;
   cursor: not-allowed;
-  opacity: 0.9;
+  opacity: 0.88;
 }
 
 .slot-chip.locked .slot-chip-subject {
@@ -2937,6 +3105,64 @@ input, button, select, textarea {
 
 .slot-chip.disabled-chip .slot-chip-status {
   color: #991b1b;
+}
+
+/* Official Allocation Slip Modern Layout */
+.teacher-slip-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.teacher-slip-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  padding: 24px 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.teacher-slip-header h3 {
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.teacher-slip-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 20px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.teacher-slip-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.teacher-slip-meta-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.teacher-slip-meta-val {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 /* Period ON/OFF Settings Card */

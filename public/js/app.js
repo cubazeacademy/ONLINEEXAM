@@ -197,14 +197,19 @@ function logout() {
 }
 
 function toggleSidebar() {
-  document.querySelector('.sidebar').classList.toggle('show');
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.toggle('show');
+  if (overlay) overlay.classList.toggle('active');
 }
 
 // SPA TAB SWITCHER
 function switchTab(tabId) {
   // Close mobile sidebar if open
   const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
   if (sidebar) sidebar.classList.remove('show');
+  if (overlay) overlay.classList.remove('active');
 
   // Hide all tab views
   document.querySelectorAll('.tab-view').forEach(view => view.classList.add('hidden'));

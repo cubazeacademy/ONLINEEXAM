@@ -2199,28 +2199,31 @@ input, button, select, textarea {
 .q-review-item.unans { border-left: 5px solid var(--warning); }
 
 /* ==========================================================================
-   6. RESPONSIVE BREAKPOINTS
+   6. RESPONSIVE BREAKPOINTS & MOBILE DRAWER
    ========================================================================== */
 .sidebar-overlay {
-  display: none;
+  display: block;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 @media (max-width: 900px) {
-  .sidebar-overlay {
-    display: block;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-  }
-
+  .sidebar-overlay.active,
   .sidebar.show ~ .sidebar-overlay,
   .sidebar.show + .sidebar-overlay {
     opacity: 1;
@@ -2452,6 +2455,185 @@ input, button, select, textarea {
 }
 
 /* ========================================================================== */
+/* STATS GRID & STAT CARDS (MODERN METRICS ENGINE)                            */
+/* ========================================================================== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 22px 20px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.03);
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.09);
+  border-color: #cbd5e1;
+}
+
+.stat-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+}
+
+.stat-meta {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* Multi-Column Layout Utilities */
+.grid-2-cols {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.grid-3-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.grid-4-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+/* Modern Card Widgets */
+.modern-card {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+  overflow: hidden;
+}
+
+.modern-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e1;
+}
+
+.modern-section-card {
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modern-toggle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1.5px solid var(--border-color);
+  border-radius: 14px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.modern-toggle-card:hover {
+  border-color: var(--primary);
+  background: #fafafa;
+}
+
+.modern-toggle-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.toggle-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+/* Hero Banner Action Button Modern Styling */
+.hero-banner .btn-outline {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(8px);
+  font-weight: 600;
+}
+
+.hero-banner .btn-outline:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  border-color: #ffffff !important;
+  transform: translateY(-2px);
+}
+
+.hero-banner .btn-light {
+  background: #ffffff !important;
+  color: #1e1b4b !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  border: none !important;
+}
+
+.hero-banner .btn-light:hover {
+  background: #f8fafc !important;
+  transform: translateY(-2px);
+}
+
+/* ========================================================================== */
 /* TEACHER SUBJECT SELECTION MODULE STYLES                                    */
 /* ========================================================================== */
 
@@ -2459,13 +2641,13 @@ input, button, select, textarea {
 .wizard-header-card {
   background: #ffffff;
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 16px 24px;
   margin-bottom: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
   position: sticky;
   top: 76px;
   z-index: 100;
@@ -2490,6 +2672,7 @@ input, button, select, textarea {
 
 .wizard-step.active {
   color: var(--primary);
+  font-weight: 700;
 }
 
 .wizard-step.completed {
@@ -2497,8 +2680,8 @@ input, button, select, textarea {
 }
 
 .wizard-step .step-num {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: #f1f5f9;
   color: #64748b;
@@ -2507,12 +2690,13 @@ input, button, select, textarea {
   justify-content: center;
   font-size: 0.88rem;
   font-weight: 700;
+  transition: var(--transition);
 }
 
 .wizard-step.active .step-num {
   background: var(--primary);
   color: #ffffff;
-  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 }
 
 .wizard-step.completed .step-num {
@@ -2530,22 +2714,24 @@ input, button, select, textarea {
 .wizard-counter-box {
   background: #f8fafc;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 8px 18px;
   text-align: right;
 }
 
 .wizard-counter-box .counter-label {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .wizard-counter-box .counter-number {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 800;
   color: #1e1b4b;
+  line-height: 1.15;
 }
 
 .wizard-counter-box .counter-sub {
@@ -2553,13 +2739,13 @@ input, button, select, textarea {
 }
 
 .wizard-section-banner {
-  border-radius: 14px;
-  padding: 16px 20px;
+  border-radius: 18px;
+  padding: 18px 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 14px;
   margin-bottom: 20px;
 }
 
@@ -2568,26 +2754,29 @@ input, button, select, textarea {
   justify-content: space-between;
   align-items: center;
   padding: 16px 0;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 /* Period Cards Flow */
 .period-cards-flow {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .period-card {
   background: #ffffff;
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
   transition: all 0.2s ease;
 }
 
 .period-card:hover {
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+  border-color: #cbd5e1;
 }
 
 .period-card.disabled-period {
@@ -2598,7 +2787,7 @@ input, button, select, textarea {
 
 .period-card-header {
   background: #f8fafc;
-  padding: 12px 18px;
+  padding: 14px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2611,7 +2800,7 @@ input, button, select, textarea {
   gap: 10px;
   font-weight: 700;
   color: #1e293b;
-  font-size: 0.98rem;
+  font-size: 1rem;
 }
 
 .period-card-title .period-badge {
@@ -2619,34 +2808,34 @@ input, button, select, textarea {
   color: #3730a3;
   font-size: 0.8rem;
   font-weight: 800;
-  padding: 3px 10px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
 }
 
 .period-card-time {
   font-size: 0.82rem;
   color: #64748b;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .period-slots-grid {
-  padding: 16px 18px;
+  padding: 18px 20px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 /* Slot Selection Chip */
 .slot-chip {
   border: 1.5px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 12px;
+  padding: 12px 16px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
   gap: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
 }
 
@@ -2654,24 +2843,25 @@ input, button, select, textarea {
   border-color: var(--primary);
   background: #f5f3ff;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.12);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.15);
 }
 
 .slot-chip-class {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
 .slot-chip-subject {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: #0f172a;
 }
 
 .slot-chip-status {
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -2692,7 +2882,7 @@ input, button, select, textarea {
 .slot-chip.selected-me {
   border-color: #10b981;
   background: #ecfdf5;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
 }
 
 .slot-chip.selected-me .slot-chip-status {
@@ -2708,7 +2898,7 @@ input, button, select, textarea {
   color: #ef4444;
   border: none;
   border-radius: 6px;
-  padding: 3px 7px;
+  padding: 3px 8px;
   font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
@@ -2742,7 +2932,7 @@ input, button, select, textarea {
   border-color: #fee2e2;
   background: #fff5f5;
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .slot-chip.disabled-chip .slot-chip-status {
@@ -2753,13 +2943,18 @@ input, button, select, textarea {
 .period-toggle-card {
   background: #ffffff;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 14px 16px;
+  border-radius: 14px;
+  padding: 16px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
   transition: all 0.2s ease;
+}
+
+.period-toggle-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
 }
 
 .period-toggle-card.disabled-mode {
@@ -2774,18 +2969,19 @@ input, button, select, textarea {
 
 .period-toggle-info .toggle-p-title {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   color: #1e293b;
 }
 
 .period-toggle-info .toggle-p-time {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: #64748b;
+  font-weight: 500;
 }
 
 .period-toggle-info .toggle-p-badge {
   display: inline-block;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
   margin-top: 4px;
 }
@@ -2794,27 +2990,28 @@ input, button, select, textarea {
 .matrix-table {
   width: 100%;
   border-collapse: separate;
-  border-spacing: 4px;
+  border-spacing: 6px;
+  min-width: 680px;
 }
 
 .matrix-table th {
   background: #1e1b4b;
   color: #ffffff;
-  padding: 10px 8px;
-  font-size: 0.82rem;
+  padding: 12px 10px;
+  font-size: 0.84rem;
   font-weight: 700;
   text-align: center;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .matrix-table td {
-  padding: 8px 6px;
-  border-radius: 8px;
-  font-size: 0.78rem;
+  padding: 10px 8px;
+  border-radius: 10px;
+  font-size: 0.8rem;
   text-align: center;
   vertical-align: middle;
   transition: all 0.2s;
-  min-width: 100px;
+  min-width: 95px;
 }
 
 .matrix-cell-period {
@@ -2825,13 +3022,13 @@ input, button, select, textarea {
 
 .matrix-cell-available {
   background: #ffffff;
-  border: 1px dashed #cbd5e1;
+  border: 1.5px dashed #cbd5e1;
   color: #475569;
 }
 
 .matrix-cell-allocated {
   background: #ecfdf5;
-  border: 1px solid #a7f3d0;
+  border: 1.5px solid #a7f3d0;
   color: #065f46;
 }
 
@@ -2839,13 +3036,13 @@ input, button, select, textarea {
   font-weight: 700;
   display: block;
   color: #047857;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
 }
 
 .matrix-cell-allocated .matrix-subject-code {
-  font-weight: 600;
+  font-weight: 700;
   color: #0f766e;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
 }
 
 .matrix-cell-disabled {
@@ -2853,23 +3050,148 @@ input, button, select, textarea {
   border: 1px solid #fecaca;
   color: #b91c1c;
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
+}
+
+/* ========================================================================== */
+/* RESPONSIVE BREAKPOINTS (MOBILE & TABLET ADAPTATION)                        */
+/* ========================================================================== */
+
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid-3-cols {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
+  .top-header {
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    position: sticky;
+    top: 10px;
+  }
+
+  .header-left .page-title {
+    font-size: 1.05rem;
+  }
+
+  .header-time {
+    display: none;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .stat-card {
+    padding: 16px 14px;
+    gap: 12px;
+    border-radius: 16px;
+  }
+
+  .stat-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 1.15rem;
+    border-radius: 12px;
+  }
+
+  .stat-value {
+    font-size: 1.45rem;
+  }
+
+  .stat-label {
+    font-size: 0.72rem;
+  }
+
+  .stat-meta {
+    font-size: 0.72rem;
+  }
+
+  .grid-2-cols,
+  .grid-3-cols,
+  .grid-4-cols {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .hero-banner {
+    padding: 22px 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .hero-banner h2 {
+    font-size: 1.35rem;
+  }
+
+  .hero-banner p {
+    font-size: 0.86rem;
+  }
+
+  .hero-watermark {
+    font-size: 70px;
+    right: 12px;
+    bottom: 12px;
+    opacity: 0.08;
+  }
+
   .wizard-header-card {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
     top: 60px;
-    padding: 12px 16px;
+    padding: 14px 16px;
   }
 
   .wizard-counter-box {
     text-align: center;
   }
 
+  .wizard-steps-indicator {
+    justify-content: space-between;
+    gap: 6px;
+  }
+
   .period-slots-grid {
     grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-step .step-title {
+    display: none;
+  }
+
+  .wizard-step-line {
+    max-width: 25px;
+  }
+
+  .wizard-section-banner {
+    padding: 14px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .btn-logout-modern {
+    padding: 6px 12px;
+    font-size: 0.78rem;
   }
 }

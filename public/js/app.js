@@ -157,7 +157,7 @@ function setLoginRole(role) {
       usernameInput.placeholder = 'Enter admin username (e.g. admin)';
       if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-user-shield"></i> Admin Username';
     } else if (role === 'teacher') {
-      usernameInput.placeholder = 'Enter teacher username (e.g. sinanmp, rafi)';
+      usernameInput.placeholder = 'Enter teacher username';
       if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-chalkboard-user"></i> Teacher Username';
     } else {
       usernameInput.placeholder = 'Enter Username, Admission No, or Roll No';
@@ -185,7 +185,7 @@ function fillDemoCredentials(role) {
     document.getElementById('login-username').value = 'admin';
     document.getElementById('login-password').value = 'admin123';
   } else if (role === 'teacher') {
-    document.getElementById('login-username').value = 'sinanmp';
+    document.getElementById('login-username').value = '';
     document.getElementById('login-password').value = 'teacher123';
   } else {
     document.getElementById('login-username').value = '4049';
@@ -337,7 +337,7 @@ function switchTab(tabId) {
     'admin-results': 'Student Results & Performance Analytics',
     'admin-settings': 'Exam System Settings',
     'admin-teaching-dashboard': 'Teacher Subject Selection Dashboard',
-    'admin-teaching-teachers': 'Teachers Management (29 Teachers)',
+    'admin-teaching-teachers': 'Teachers Management',
     'admin-teaching-timetable': 'Master Academic Timetable',
     'admin-teaching-periods': 'Period Availability Settings (ON/OFF)',
     'admin-teaching-settings': 'Selection Window & Deadline Settings',
@@ -3701,7 +3701,7 @@ async function saveTeachingTeacherForm(e) {
       return;
     }
 
-    closeModal('modal-teaching-teacher');
+    clearClientCache('/api/teaching');
     loadAdminTeachingTeachers();
     loadAdminTeachingDashboard();
   } catch (err) {
@@ -3730,10 +3730,157 @@ async function deleteTeachingTeacher(id, name) {
       return;
     }
 
+    clearClientCache('/api/teaching');
     loadAdminTeachingTeachers();
     loadAdminTeachingDashboard();
   } catch (err) {
     alert('Error deleting teacher.');
+  }
+}
+
+// -------------------------------------------------------------
+// TEACHERS CSV IMPORT & BULK ACTIONS
+// -------------------------------------------------------------
+let parsedTeachingTeachersCSVData = [];
+
+function openModalImportTeachingTeachers() {
+  parsedTeachingTeachersCSVData = [];
+  const fileInput = document.getElementById('teaching-teachers-csv-file');
+  if (fileInput) fileInput.value = '';
+  const previewBox = document.getElementById('teaching-teachers-csv-preview-box');
+  if (previewBox) previewBox.classList.add('hidden');
+  const errorBox = document.getElementById('teaching-teachers-csv-error-box');
+  if (errorBox) errorBox.classList.add('hidden');
+  const btn = document.getElementById('btn-submit-import-teaching-teachers');
+  if (btn) btn.disabled = true;
+  openModal('modal-import-teaching-teachers-csv');
+}
+
+function previewTeachingTeachersCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const rows = parseCSV(text);
+
+      if (rows.length === 0) {
+        showCSVError('teaching-teachers-csv-error-box', 'The selected CSV file appears to be empty or invalid.');
+        return;
+      }
+
+      parsedTeachingTeachersCSVData = rows;
+      const countEl = document.getElementById('teaching-teachers-csv-count');
+      if (countEl) countEl.textContent = rows.length;
+
+      const tbody = document.getElementById('table-teaching-teachers-csv-preview');
+      if (tbody) {
+        tbody.innerHTML = '';
+        rows.forEach((r, idx) => {
+          const name = r.full_name || r.name || r.fullname || r.teacher_name || '-';
+          const username = r.username || r.user_name || name.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const pwd = r.password || 'teacher123';
+          const contact = r.phone || r.email || '-';
+
+          tbody.innerHTML += `
+            <tr>
+              <td style="color:#94a3b8;">${idx + 1}</td>
+              <td><strong>${escapeHtml(name)}</strong></td>
+              <td><code>${escapeHtml(username)}</code></td>
+              <td><span class="text-muted">${escapeHtml(pwd)}</span></td>
+              <td><span style="font-size:0.75rem; color:#64748b;">${escapeHtml(contact)}</span></td>
+            </tr>
+          `;
+        });
+      }
+
+      const errBox = document.getElementById('teaching-teachers-csv-error-box');
+      if (errBox) errBox.classList.add('hidden');
+      const prevBox = document.getElementById('teaching-teachers-csv-preview-box');
+      if (prevBox) prevBox.classList.remove('hidden');
+      const btn = document.getElementById('btn-submit-import-teaching-teachers');
+      if (btn) btn.disabled = false;
+    } catch (err) {
+      showCSVError('teaching-teachers-csv-error-box', 'Error parsing CSV file format.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function submitTeachingTeachersCSV() {
+  if (parsedTeachingTeachersCSVData.length === 0) return;
+
+  const submitBtn = document.getElementById('btn-submit-import-teaching-teachers');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importing...';
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/teachers/import-csv'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teachers: parsedTeachingTeachersCSVData,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      showCSVError('teaching-teachers-csv-error-box', data.error || 'Failed to import teachers.');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Confirm & Import Teachers';
+      }
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(data.message || 'Teachers imported successfully!');
+    closeModal('modal-import-teaching-teachers-csv');
+    loadAdminTeachingTeachers();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    showCSVError('teaching-teachers-csv-error-box', 'Connection error while importing teachers.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Confirm & Import Teachers';
+    }
+  }
+}
+
+async function clearAllTeachingTeachers() {
+  if (!confirm('⚠️ Are you sure you want to delete ALL teachers from the database?\n\nThis will remove all teacher accounts and their selected period allocations. This action cannot be undone.')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/teachers-clear-all'), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to clear teachers.');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(data.message || 'All teachers cleared successfully.');
+    loadAdminTeachingTeachers();
+    loadAdminTeachingDashboard();
+  } catch (err) {
+    alert('Error clearing teachers.');
   }
 }
 

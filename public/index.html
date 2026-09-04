@@ -128,7 +128,7 @@
           <i class="fa-solid fa-gauge-high"></i> <span>Allocation Overview</span>
         </a>
         <a href="#admin-teaching-teachers" class="nav-item" onclick="switchTab('admin-teaching-teachers')">
-          <i class="fa-solid fa-chalkboard-user"></i> <span>Teachers (29)</span>
+          <i class="fa-solid fa-chalkboard-user"></i> <span>Teachers</span>
         </a>
         <a href="#admin-teaching-timetable" class="nav-item" onclick="switchTab('admin-teaching-timetable')">
           <i class="fa-solid fa-calendar-days"></i> <span>Timetable & Import</span>
@@ -791,7 +791,7 @@
               <div class="stat-icon" style="background: #e0e7ff; color: #4338ca;"><i class="fa-solid fa-users"></i></div>
               <div class="stat-content">
                 <div class="stat-label">Total Teachers</div>
-                <div class="stat-value" id="stat-ts-total-teachers">29</div>
+                <div class="stat-value" id="stat-ts-total-teachers">0</div>
                 <div class="stat-meta text-muted">Assigned campus educators</div>
               </div>
             </div>
@@ -809,7 +809,7 @@
               <div class="stat-icon" style="background: #fef3c7; color: #b45309;"><i class="fa-solid fa-clock-rotate-left"></i></div>
               <div class="stat-content">
                 <div class="stat-label">Pending Teachers</div>
-                <div class="stat-value text-warning" id="stat-ts-pending-teachers">29</div>
+                <div class="stat-value text-warning" id="stat-ts-pending-teachers">0</div>
                 <div class="stat-meta text-muted">Awaiting completion</div>
               </div>
             </div>
@@ -850,11 +850,11 @@
                   <i class="fa-solid fa-user-gear"></i>
                 </div>
                 <div>
-                  <h4 style="margin:0; font-size:1rem; color:#1e293b;">Manage 29 Teachers</h4>
+                  <h4 style="margin:0; font-size:1rem; color:#1e293b;">Manage Teachers</h4>
                   <span style="font-size:0.78rem; color:#64748b;">Credentials & Status</span>
                 </div>
               </div>
-              <p style="font-size:0.82rem; color:#475569; margin:0;">View all 29 teachers, reset login passwords, add new educators, and see each teacher's selected slots.</p>
+              <p style="font-size:0.82rem; color:#475569; margin:0;">View all teachers, reset login passwords, add new educators, and see each teacher's selected slots.</p>
             </div>
 
             <div class="modern-card" style="padding: 20px; cursor: pointer;" onclick="switchTab('admin-teaching-periods')">
@@ -890,13 +890,19 @@
           <div class="panel-card">
             <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
               <div>
-                <h3 style="margin:0;"><i class="fa-solid fa-chalkboard-user"></i> Teachers Management (29 Campus Teachers)</h3>
-                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.82rem;">Manage teacher credentials, status, and monitor their selected periods.</p>
+                <h3 style="margin:0;"><i class="fa-solid fa-chalkboard-user"></i> Teachers Management</h3>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.82rem;">Manage teacher credentials, import from CSV, and monitor selected periods.</p>
               </div>
-              <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="search-teaching-teachers" class="form-control" placeholder="Search teacher name..." style="width: 220px; padding: 7px 12px; font-size: 0.85rem;" oninput="debouncedFilterTeachingTeachersTable()">
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <input type="text" id="search-teaching-teachers" class="form-control" placeholder="Search teacher name..." style="width: 190px; padding: 7px 12px; font-size: 0.85rem;" oninput="debouncedFilterTeachingTeachersTable()">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openModalAddTeacher()">
                   <i class="fa-solid fa-user-plus"></i> Add Teacher
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTeachingTeachers()">
+                  <i class="fa-solid fa-file-csv"></i> Import CSV
+                </button>
+                <button type="button" class="btn btn-outline btn-sm text-danger" onclick="clearAllTeachingTeachers()">
+                  <i class="fa-solid fa-trash"></i> Clear All
                 </button>
               </div>
             </div>
@@ -2197,6 +2203,59 @@
   <!-- ========================================================================= -->
   <!-- TEACHER SUBJECT SELECTION MODALS                                          -->
   <!-- ========================================================================= -->
+
+  <!-- MODAL: IMPORT TEACHERS CSV -->
+  <div id="modal-import-teaching-teachers-csv" class="modal-overlay hidden">
+    <div class="modal-content modal-content-wide" style="max-width: 700px;">
+      <div class="modal-header">
+        <div>
+          <h3><i class="fa-solid fa-file-csv" style="color: var(--primary);"></i> Bulk Import Teachers from CSV</h3>
+          <p class="text-muted" style="font-size:0.82rem; margin:2px 0 0 0;">Upload a CSV file containing teacher credentials to import into the portal.</p>
+        </div>
+        <button class="btn-close" onclick="closeModal('modal-import-teaching-teachers-csv')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div class="csv-upload-dropzone mb-4" onclick="document.getElementById('teaching-teachers-csv-file').click()" style="cursor:pointer; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 24px; text-align: center; background: #f8fafc;">
+          <i class="fa-solid fa-cloud-arrow-up" style="font-size: 2.2rem; color: var(--primary); margin-bottom: 8px;"></i>
+          <p style="font-weight: 600; margin:0 0 4px 0; color: #1e293b;">Click to browse or drop CSV file</p>
+          <span style="font-size: 0.8rem; color: #64748b;">Supported format: .csv (Columns: Full Name, Username, Password, Phone, Email)</span>
+          <input type="file" id="teaching-teachers-csv-file" accept=".csv" class="hidden" onchange="previewTeachingTeachersCSV(event)">
+        </div>
+
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; font-size:0.8rem; color:#475569; margin-bottom:15px;">
+          <strong><i class="fa-solid fa-circle-info"></i> CSV Format Guide:</strong> Headers can be <code>Full Name, Username, Password, Phone, Email</code>. Default password is <code>teacher123</code> if omitted.
+        </div>
+
+        <div id="teaching-teachers-csv-preview-box" class="hidden">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="font-size:0.9rem; color:#0f172a;"><i class="fa-solid fa-list-check"></i> Parsed Teachers (<span id="teaching-teachers-csv-count">0</span>)</strong>
+          </div>
+          <div class="table-responsive" style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <table class="data-table" style="font-size:0.82rem;">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Full Name</th>
+                  <th>Username</th>
+                  <th>Password</th>
+                  <th>Phone / Email</th>
+                </tr>
+              </thead>
+              <tbody id="table-teaching-teachers-csv-preview"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="teaching-teachers-csv-error-box" class="alert-box alert-error mt-3 hidden"></div>
+      </div>
+      <div class="modal-footer" style="padding: 14px 20px;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-import-teaching-teachers-csv')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-submit-import-teaching-teachers" onclick="submitTeachingTeachersCSV()" disabled>
+          <i class="fa-solid fa-cloud-arrow-up"></i> Confirm & Import Teachers
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL: ADD / EDIT TEACHER -->
   <div id="modal-teaching-teacher" class="modal-overlay hidden">

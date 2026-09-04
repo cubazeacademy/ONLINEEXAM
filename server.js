@@ -1812,8 +1812,82 @@ app.delete('/api/teaching/admin/teachers/:id', async (req, res) => {
   try {
     const teacher = await db.get(`SELECT full_name FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
     await db.query(`DELETE FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    invalidateCache('/api/teaching');
     await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted Teacher: ${teacher ? teacher.full_name : teacherId}`);
     res.json({ message: 'Teacher deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk Import Teachers from CSV
+app.post('/api/teaching/admin/teachers/import-csv', async (req, res) => {
+  const { teachers, admin_id, admin_name } = req.body;
+  if (!Array.isArray(teachers) || teachers.length === 0) {
+    return res.status(400).json({ error: 'No teacher rows provided for import.' });
+  }
+
+  let importedCount = 0;
+  let updatedCount = 0;
+  let errors = [];
+
+  try {
+    for (let i = 0; i < teachers.length; i++) {
+      const row = teachers[i];
+      const fullName = (row.full_name || row.name || row.fullname || row.teacher_name || '').trim();
+      let username = (row.username || row.user_name || '').trim().toLowerCase();
+      const password = (row.password || 'teacher123').trim();
+      const email = (row.email || (username ? `${username}@school.com` : '')).trim();
+      const phone = (row.phone || row.mobile || row.contact || '').trim();
+
+      if (!fullName) {
+        errors.push(`Row ${i + 1}: Missing teacher name, skipped.`);
+        continue;
+      }
+
+      if (!username) {
+        username = fullName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!username) username = `teacher${Date.now() % 10000}`;
+      }
+
+      const existing = await db.get(`SELECT id FROM users WHERE LOWER(username) = $1`, [username]);
+      if (existing) {
+        await db.run(`
+          UPDATE users SET full_name = $1, email = $2, phone = $3, role = 'teacher', is_active = true
+          WHERE id = $4
+        `, [fullName, email, phone, existing.id]);
+        updatedCount++;
+      } else {
+        await db.run(`
+          INSERT INTO users (username, password, full_name, email, phone, role, is_active)
+          VALUES ($1, $2, $3, $4, $5, 'teacher', true)
+        `, [username, password, fullName, email, phone]);
+        importedCount++;
+      }
+    }
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Imported ${importedCount} and updated ${updatedCount} teachers via CSV.`);
+    res.json({
+      message: `Successfully processed ${importedCount + updatedCount} teacher(s) (${importedCount} new, ${updatedCount} updated).`,
+      importedCount,
+      updatedCount,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Clear All Teachers
+app.delete('/api/teaching/admin/teachers-clear-all', async (req, res) => {
+  const { admin_id, admin_name } = req.body;
+  try {
+    await db.query(`DELETE FROM teacher_selections`);
+    const del = await db.query(`DELETE FROM users WHERE role = 'teacher'`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Cleared all teachers from the database.`);
+    res.json({ message: `Successfully cleared ${del.rowCount || 0} teacher records.` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

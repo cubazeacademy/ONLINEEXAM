@@ -3023,7 +3023,9 @@ async function loadTeacherDashboard() {
   if (!currentUser || currentUser.role !== 'teacher') return;
 
   const welcomeEl = document.getElementById('teacher-welcome-title');
-  if (welcomeEl) welcomeEl.textContent = `Welcome, ${currentUser.full_name || 'Teacher'}!`;
+  if (welcomeEl) {
+    welcomeEl.innerHTML = `Welcome, <span class="hero-name-gradient">${escapeHtml(currentUser.full_name || 'Teacher')}</span>!`;
+  }
 
   try {
     const [slotsData, mySelData] = await Promise.all([
@@ -3048,7 +3050,9 @@ async function loadTeacherDashboard() {
     const maxPeriods = teacherSelectionState.settings.max_periods || 3;
     const minPeriods = teacherSelectionState.settings.min_periods || 2;
 
-    if (countDisplay) countDisplay.textContent = `${totalSelected} / ${maxPeriods}`;
+    if (countDisplay) {
+      countDisplay.innerHTML = `${totalSelected} <span class="stat-value-sub">/ ${maxPeriods}</span>`;
+    }
 
     if (progressFill) {
       const percentage = Math.min(100, Math.round((totalSelected / maxPeriods) * 100));
@@ -3057,24 +3061,21 @@ async function loadTeacherDashboard() {
 
     if (statusText) {
       if (totalSelected >= minPeriods) {
-        statusText.innerHTML = '<i class="fa-solid fa-circle-check"></i> Completed';
-        statusText.className = 'stat-value text-success';
-        if (statusSub) statusSub.textContent = 'Ready for final confirmation';
+        statusText.innerHTML = '<span class="status-badge-completed"><i class="fa-solid fa-circle-check"></i> Completed</span>';
+        if (statusSub) statusSub.innerHTML = '<i class="fa-solid fa-check-double text-success"></i> Selections locked & ready';
       } else if (totalSelected > 0) {
-        statusText.innerHTML = '<i class="fa-solid fa-clock"></i> In Progress';
-        statusText.className = 'stat-value text-amber';
-        if (statusSub) statusSub.textContent = `Need ${minPeriods - totalSelected} more period(s)`;
+        statusText.innerHTML = '<span class="status-badge-inprogress"><i class="fa-solid fa-spinner fa-spin"></i> In Progress</span>';
+        if (statusSub) statusSub.innerHTML = `<i class="fa-solid fa-circle-exclamation text-amber"></i> Need ${minPeriods - totalSelected} more period(s)`;
       } else {
-        statusText.innerHTML = '<i class="fa-solid fa-circle-pause"></i> Not Started';
-        statusText.className = 'stat-value text-muted';
-        if (statusSub) statusSub.textContent = 'No teaching periods selected';
+        statusText.innerHTML = '<span class="status-badge-notstarted"><i class="fa-solid fa-circle-pause"></i> Not Started</span>';
+        if (statusSub) statusSub.innerHTML = '<i class="fa-regular fa-circle-dot"></i> No teaching periods selected yet';
       }
     }
 
     if (statusPill) {
       const isOpen = teacherSelectionState.settings.is_open !== false;
       if (isOpen) {
-        statusPill.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Selection Portal Open';
+        statusPill.innerHTML = '<span class="pulse-beacon"></span> Selection Portal Open';
         statusPill.className = 'teacher-status-pill-glowing';
       } else {
         statusPill.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Selection Portal Closed';
@@ -3085,9 +3086,9 @@ async function loadTeacherDashboard() {
     if (deadlineEl) {
       if (teacherSelectionState.settings.end_datetime) {
         const deadlineDate = new Date(teacherSelectionState.settings.end_datetime);
-        deadlineEl.textContent = `Deadline: ${deadlineDate.toLocaleDateString()} ${deadlineDate.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}`;
+        deadlineEl.innerHTML = `<i class="fa-regular fa-clock"></i> Deadline: ${deadlineDate.toLocaleDateString()} ${deadlineDate.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}`;
       } else {
-        deadlineEl.textContent = 'Open for submissions';
+        deadlineEl.innerHTML = '<i class="fa-regular fa-clock"></i> Open for submissions';
       }
     }
 
@@ -3097,12 +3098,28 @@ async function loadTeacherDashboard() {
       if (teacherSelectionState.mySelections.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="5" class="text-center text-muted" style="padding: 28px 20px;">
-              <i class="fa-regular fa-calendar-xmark" style="font-size: 1.8rem; opacity: 0.4; display:block; margin-bottom: 8px;"></i>
-              You have not selected any teaching periods yet.<br>
-              <button type="button" class="btn btn-sm btn-primary mt-2" onclick="startTeacherSelectionWizard()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Launch Period Wizard
-              </button>
+            <td colspan="6" class="p-0">
+              <div class="table-empty-state">
+                <div class="empty-state-icon-wrapper">
+                  <div class="empty-state-icon-glow"></div>
+                  <div class="empty-state-icon">
+                    <i class="fa-regular fa-calendar-plus"></i>
+                  </div>
+                </div>
+                <h4 class="empty-state-title">No Teaching Periods Selected Yet</h4>
+                <p class="empty-state-desc">Your teaching schedule is currently open. Select between <strong>2 and 3 periods</strong> across Sunday and Monday without scheduling conflicts.</p>
+                <button type="button" class="teacher-btn-cta btn-empty-cta" onclick="startTeacherSelectionWizard()">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i> Launch Period Wizard
+                  <i class="fa-solid fa-arrow-right-long btn-arrow-icon"></i>
+                </button>
+                <div class="empty-state-steps">
+                  <div class="empty-step-chip"><span class="step-dot">1</span> Pick Sunday</div>
+                  <i class="fa-solid fa-chevron-right step-arrow"></i>
+                  <div class="empty-step-chip"><span class="step-dot">2</span> Pick Monday</div>
+                  <i class="fa-solid fa-chevron-right step-arrow"></i>
+                  <div class="empty-step-chip"><span class="step-dot">3</span> Review &amp; Lock</div>
+                </div>
+              </div>
             </td>
           </tr>
         `;
@@ -3110,16 +3127,37 @@ async function loadTeacherDashboard() {
         tbody.innerHTML = teacherSelectionState.mySelections.map(s => {
           const isSun = s.day === 'Sunday';
           const dayBadge = isSun 
-            ? '<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700;"><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday</span>' 
-            : '<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;"><i class="fa-solid fa-calendar-day" style="color:#4f46e5;"></i> Monday</span>';
+            ? '<span class="day-badge day-badge-sunday"><i class="fa-solid fa-sun"></i> Sunday</span>' 
+            : '<span class="day-badge day-badge-monday"><i class="fa-solid fa-calendar-day"></i> Monday</span>';
           
           return `
-            <tr>
+            <tr class="selection-row">
               <td>${dayBadge}</td>
-              <td><strong style="color:#0f172a;">Period ${s.period}</strong></td>
-              <td><span style="color:#64748b; font-size:0.85rem;"><i class="fa-regular fa-clock"></i> ${s.time_slot || '—'}</span></td>
-              <td><strong style="background:#f1f5f9; padding:4px 10px; border-radius:8px; color:#334155; font-size:0.88rem;">${escapeHtml(s.class_name)}</strong></td>
-              <td><strong class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.85rem;">${escapeHtml(s.subject)}</strong></td>
+              <td>
+                <div class="period-cell-badge">
+                  <span class="period-pill">Period ${s.period}</span>
+                </div>
+              </td>
+              <td>
+                <span class="time-cell-badge">
+                  <i class="fa-regular fa-clock"></i> ${s.time_slot || '—'}
+                </span>
+              </td>
+              <td>
+                <span class="class-cell-badge">
+                  <i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(s.class_name)}
+                </span>
+              </td>
+              <td>
+                <span class="subject-cell-badge">
+                  <i class="fa-solid fa-book-open"></i> ${escapeHtml(s.subject)}
+                </span>
+              </td>
+              <td class="text-right">
+                <button type="button" class="btn-action-ghost" onclick="startTeacherSelectionWizard()" title="Modify Selection">
+                  <i class="fa-solid fa-pen-to-square"></i> Modify
+                </button>
+              </td>
             </tr>
           `;
         }).join('');

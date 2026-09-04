@@ -1214,75 +1214,123 @@
 
         <!-- TEACHER 1: DASHBOARD -->
         <section id="view-teacher-dashboard" class="tab-view hidden">
+          <!-- MODERN AURORA HERO BANNER -->
           <div class="teacher-hero-card">
+            <div class="teacher-hero-glow-orb teacher-hero-glow-1"></div>
+            <div class="teacher-hero-glow-orb teacher-hero-glow-2"></div>
+            
             <div class="teacher-hero-content">
               <div class="teacher-hero-header-row">
                 <span id="teacher-dash-status-pill" class="teacher-status-pill-glowing">
-                  <i class="fa-solid fa-circle-dot"></i> Selection Active
+                  <span class="pulse-beacon"></span> Selection Portal Open
                 </span>
-                <span id="teacher-dash-deadline" class="teacher-deadline-tag"></span>
+                <span id="teacher-dash-deadline" class="teacher-deadline-tag">
+                  <i class="fa-regular fa-clock"></i> Deadline: Active
+                </span>
               </div>
-              <h2 id="teacher-welcome-title" class="teacher-hero-title">Welcome, Teacher!</h2>
+              <h2 id="teacher-welcome-title" class="teacher-hero-title">Welcome, <span class="hero-name-gradient">Teacher</span>!</h2>
               <p class="teacher-hero-desc">
                 Select your assigned teaching periods for Sunday and Monday. Ensure you choose between <strong>2 and 3 periods</strong> without scheduling conflicts.
               </p>
+              
+              <div class="teacher-hero-features">
+                <div class="teacher-hero-chip">
+                  <i class="fa-solid fa-calendar-week"></i>
+                  <span>Sunday &amp; Monday</span>
+                </div>
+                <div class="teacher-hero-chip">
+                  <i class="fa-solid fa-layer-group"></i>
+                  <span>2 - 3 Slots Required</span>
+                </div>
+                <div class="teacher-hero-chip">
+                  <i class="fa-solid fa-bolt"></i>
+                  <span>Instant Conflict Lock</span>
+                </div>
+              </div>
             </div>
+
             <div class="teacher-hero-actions">
               <button type="button" class="teacher-btn-cta" onclick="startTeacherSelectionWizard()">
-                <i class="fa-solid fa-calendar-plus"></i> Select Teaching Periods
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Select Teaching Periods</span>
+                <i class="fa-solid fa-arrow-right-long btn-arrow-icon"></i>
               </button>
             </div>
             <i class="fa-solid fa-chalkboard-user teacher-hero-watermark"></i>
           </div>
 
           <!-- TEACHER STATUS SUMMARY METRIC CARDS -->
-          <div class="grid-3-cols mt-6">
-            <div class="stat-card">
-              <div class="stat-icon" style="background: #eef2ff; color: #4f46e5;"><i class="fa-solid fa-list-check"></i></div>
+          <div class="grid-3-cols mt-6 teacher-stats-grid">
+            <div class="stat-card stat-card-indigo">
+              <div class="stat-card-accent-bar"></div>
+              <div class="stat-icon stat-icon-indigo">
+                <i class="fa-solid fa-list-check"></i>
+              </div>
               <div class="stat-content">
                 <div class="stat-label">Selected Periods</div>
-                <div class="stat-value" id="teacher-dash-count-display">0 / 3</div>
+                <div class="stat-value" id="teacher-dash-count-display">0 <span class="stat-value-sub">/ 3</span></div>
                 <div class="progress-bar-mini">
                   <div class="progress-fill-emerald" id="teacher-dash-progress-fill" style="width: 0%;"></div>
                 </div>
-                <div class="stat-meta text-muted" style="margin-top: 6px;">Required: 2 to 3 periods</div>
+                <div class="stat-meta text-muted">
+                  <i class="fa-solid fa-circle-info"></i> Required: 2 to 3 periods
+                </div>
               </div>
             </div>
 
-            <div class="stat-card">
-              <div class="stat-icon" style="background: #ecfdf5; color: #059669;"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="stat-card stat-card-emerald">
+              <div class="stat-card-accent-bar"></div>
+              <div class="stat-icon stat-icon-emerald">
+                <i class="fa-solid fa-shield-halved"></i>
+              </div>
               <div class="stat-content">
                 <div class="stat-label">Clash Protection</div>
-                <div class="stat-value text-success" style="font-size: 1.5rem; display: flex; align-items: center; gap: 8px;">
-                  <i class="fa-solid fa-circle-check" style="font-size: 1.2rem;"></i> Active
+                <div class="stat-value text-success">
+                  <span class="shield-badge-live">
+                    <i class="fa-solid fa-circle-check"></i> Active
+                  </span>
                 </div>
-                <div class="stat-meta text-muted" style="margin-top: 6px;">Zero collisions guaranteed</div>
+                <div class="stat-meta text-muted">
+                  <i class="fa-solid fa-lock"></i> Zero collisions guaranteed
+                </div>
               </div>
             </div>
 
-            <div class="stat-card">
-              <div class="stat-icon" style="background: #fffbeb; color: #d97706;"><i class="fa-solid fa-clock-rotate-left"></i></div>
+            <div class="stat-card stat-card-amber">
+              <div class="stat-card-accent-bar"></div>
+              <div class="stat-icon stat-icon-amber">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+              </div>
               <div class="stat-content">
                 <div class="stat-label">Submission Status</div>
-                <div class="stat-value text-warning" id="teacher-dash-status-text">Pending</div>
-                <div class="stat-meta text-muted" id="teacher-dash-status-sub" style="margin-top: 6px;">Select minimum 2 periods</div>
+                <div class="stat-value" id="teacher-dash-status-text">
+                  <span class="status-badge-notstarted"><i class="fa-solid fa-circle-pause"></i> Not Started</span>
+                </div>
+                <div class="stat-meta text-muted" id="teacher-dash-status-sub">
+                  Select minimum 2 periods
+                </div>
               </div>
             </div>
           </div>
 
           <!-- MY CURRENT SELECTIONS TABLE -->
-          <div class="panel-card mt-6">
-            <div class="panel-header" style="padding: 18px 24px;">
-              <div>
-                <h3 style="margin: 0; font-size: 1.1rem; color: #0f172a;"><i class="fa-solid fa-clipboard-check" style="color: #4f46e5;"></i> My Current Teaching Selections</h3>
-                <p class="text-muted" style="margin: 3px 0 0 0; font-size: 0.82rem;">Your allocated periods are locked and reserved in the central database.</p>
+          <div class="panel-card mt-6 modern-selections-panel">
+            <div class="panel-header">
+              <div class="panel-header-title-group">
+                <div class="panel-header-icon">
+                  <i class="fa-solid fa-clipboard-check"></i>
+                </div>
+                <div>
+                  <h3>My Current Teaching Selections</h3>
+                  <p class="text-muted">Your allocated periods are locked and reserved in the central database.</p>
+                </div>
               </div>
-              <button type="button" class="btn btn-outline btn-sm" onclick="startTeacherSelectionWizard()">
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="startTeacherSelectionWizard()">
                 <i class="fa-solid fa-pen-to-square"></i> Modify Selections
               </button>
             </div>
-            <div class="panel-body table-responsive">
-              <table class="data-table">
+            <div class="panel-body table-responsive p-0">
+              <table class="data-table modern-table">
                 <thead>
                   <tr>
                     <th>Day</th>
@@ -1290,15 +1338,13 @@
                     <th>Time Slot</th>
                     <th>Class</th>
                     <th>Subject</th>
-                    <th>Selected At</th>
                     <th class="text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody id="table-teacher-dash-selections">
                   <tr>
-                    <td colspan="7" class="text-center text-muted" style="padding: 28px 20px;">
-                      <i class="fa-regular fa-calendar-xmark" style="font-size: 2rem; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>
-                      No periods selected yet. Click <strong>'Select Teaching Periods'</strong> above to make your choices.
+                    <td colspan="6" class="text-center p-0">
+                      <!-- Rendered by JS -->
                     </td>
                   </tr>
                 </tbody>

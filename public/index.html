@@ -130,6 +130,9 @@
         <a href="#admin-teaching-dashboard" class="nav-item" onclick="switchTab('admin-teaching-dashboard')">
           <i class="fa-solid fa-gauge-high"></i> <span>Allocation Overview</span>
         </a>
+        <a href="#admin-teaching-departments" class="nav-item" onclick="switchTab('admin-teaching-departments')">
+          <i class="fa-solid fa-building-user"></i> <span>Departments</span>
+        </a>
         <a href="#admin-teaching-teachers" class="nav-item" onclick="switchTab('admin-teaching-teachers')">
           <i class="fa-solid fa-chalkboard-user"></i> <span>Teachers</span>
         </a>
@@ -764,6 +767,127 @@
         <!-- TEACHER SELECTION: ADMIN VIEWS                                            -->
         <!-- ========================================================================= -->
 
+        <!-- GLOBAL DEPARTMENT SWITCHER TOOLBAR -->
+        <div id="teaching-global-dept-bar" class="teaching-dept-toolbar hidden" style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 12px 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="width: 32px; height: 32px; border-radius: 8px; background: #e0e7ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 0.95rem;">
+                <i class="fa-solid fa-building-user"></i>
+              </div>
+              <span style="font-size: 0.85rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.5px;">
+                Department Filter:
+              </span>
+            </div>
+            <select id="global-teaching-department-select" class="form-control" style="font-weight: 700; color: #1e1b4b; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 8px 16px; font-size: 0.9rem; min-width: 200px; cursor: pointer;" onchange="onTeachingDepartmentChanged(this.value)">
+              <option value="all">🌐 All Departments (Aggregated)</option>
+              <option value="1" selected>MEDIA (Default)</option>
+            </select>
+            <span id="active-dept-pill" class="badge" style="background: #e0e7ff; color: #4338ca; font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; border: 1px solid #c7d2fe;">
+              <i class="fa-solid fa-layer-group"></i> <span id="active-dept-name-display">MEDIA</span>
+            </span>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm btn-primary" onclick="openModalAddDepartment()">
+              <i class="fa-solid fa-plus"></i> New Department
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="switchTab('admin-teaching-departments')">
+              <i class="fa-solid fa-sliders"></i> Manage All Departments
+            </button>
+          </div>
+        </div>
+
+        <!-- ADMIN 0: DEPARTMENTS MANAGEMENT VIEW -->
+        <section id="view-admin-teaching-departments" class="tab-view hidden">
+          <div class="hero-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                <span class="badge" style="background:#3b82f6; color:#fff; font-size: 0.8rem; padding: 4px 12px; border-radius: 20px;">
+                  <i class="fa-solid fa-shield-halved"></i> Data Isolation System
+                </span>
+              </div>
+              <h2 style="color: #fff; margin: 0 0 6px 0;">Academic Departments Management</h2>
+              <p style="color: #cbd5e1; margin: 0; max-width: 650px;">Complete departmental separation for teachers, timetables, period settings, selection rules, and allocations.</p>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm btn-light" style="background:#fff; color:#0f172a; font-weight:700;" onclick="openModalAddDepartment()">
+                <i class="fa-solid fa-plus"></i> Add New Department
+              </button>
+            </div>
+            <i class="fa-solid fa-building hero-watermark"></i>
+          </div>
+
+          <!-- DEPARTMENT METRICS -->
+          <div class="stats-grid mt-6">
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #e0e7ff; color: #4338ca;"><i class="fa-solid fa-building"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Total Departments</div>
+                <div class="stat-value" id="stat-dept-count">1</div>
+                <div class="stat-meta text-muted">Isolated academic branches</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #dcfce7; color: #15803d;"><i class="fa-solid fa-users"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Total Assigned Teachers</div>
+                <div class="stat-value text-success" id="stat-dept-teachers">0</div>
+                <div class="stat-meta text-muted">Across all departments</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #fef3c7; color: #b45309;"><i class="fa-solid fa-calendar-days"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Total Master Slots</div>
+                <div class="stat-value text-warning" id="stat-dept-slots">0</div>
+                <div class="stat-meta text-muted">Independent timetables</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #ede9fe; color: #7c3aed;"><i class="fa-solid fa-clipboard-check"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Total Allocations</div>
+                <div class="stat-value" id="stat-dept-allocations">0</div>
+                <div class="stat-meta text-muted">Zero cross-department leakage</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DEPARTMENTS TABLE -->
+          <div class="panel-card mt-6">
+            <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-building-columns" style="color:var(--primary);"></i> Configured Departments</h3>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">Each department maintains its own independent schedule, teachers, classes, and allocation limits.</p>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" onclick="openModalAddDepartment()">
+                <i class="fa-solid fa-plus"></i> Create Department
+              </button>
+            </div>
+            <div class="panel-body table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Department Name</th>
+                    <th>Code</th>
+                    <th>Teachers</th>
+                    <th>Timetable Slots</th>
+                    <th>Selected Periods</th>
+                    <th>Selection Status</th>
+                    <th>Status</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admin-teaching-departments">
+                  <tr><td colspan="8" class="text-center">Loading departments...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <!-- ADMIN 1: TEACHING DASHBOARD -->
         <section id="view-admin-teaching-dashboard" class="tab-view hidden">
           <div class="hero-banner" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);">
@@ -1227,16 +1351,23 @@
                 <span id="teacher-dash-status-pill" class="teacher-status-pill-glowing">
                   <span class="pulse-beacon"></span> Selection Portal Open
                 </span>
+                <span id="teacher-dash-dept-pill" class="teacher-deadline-tag" style="background: rgba(99, 102, 241, 0.25); border-color: rgba(165, 180, 252, 0.4); color: #e0e7ff;">
+                  <i class="fa-solid fa-building"></i> Dept: <span id="teacher-dash-dept-name">MEDIA</span>
+                </span>
                 <span id="teacher-dash-deadline" class="teacher-deadline-tag">
                   <i class="fa-regular fa-clock"></i> Deadline: Active
                 </span>
               </div>
               <h2 id="teacher-welcome-title" class="teacher-hero-title">Welcome, <span class="hero-name-gradient">Teacher</span>!</h2>
               <p class="teacher-hero-desc">
-                Select your assigned teaching periods for Sunday and Monday. Ensure you choose between <strong>2 and 3 periods</strong> without scheduling conflicts.
+                Select your assigned teaching periods for Sunday and Monday in the <strong id="teacher-dash-dept-desc">MEDIA Department</strong>. Ensure you choose between <strong>2 and 3 periods</strong> without scheduling conflicts.
               </p>
               
               <div class="teacher-hero-features">
+                <div class="teacher-hero-chip" id="teacher-dash-dept-chip">
+                  <i class="fa-solid fa-building-columns"></i>
+                  <span id="teacher-chip-dept-name">Department: MEDIA</span>
+                </div>
                 <div class="teacher-hero-chip">
                   <i class="fa-solid fa-calendar-week"></i>
                   <span>Sunday &amp; Monday</span>
@@ -1247,7 +1378,7 @@
                 </div>
                 <div class="teacher-hero-chip">
                   <i class="fa-solid fa-bolt"></i>
-                  <span>Instant Conflict Lock</span>
+                  <span>Strict Dept Isolation</span>
                 </div>
               </div>
             </div>
@@ -2266,6 +2397,41 @@
   <!-- TEACHER SUBJECT SELECTION MODALS                                          -->
   <!-- ========================================================================= -->
 
+  <!-- MODAL: ADD / EDIT DEPARTMENT -->
+  <div id="modal-teaching-department" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 460px;">
+      <div class="modal-header">
+        <h3 id="modal-teaching-dept-title"><i class="fa-solid fa-building" style="color:var(--primary);"></i> Add New Department</h3>
+        <button class="btn-close" onclick="closeModal('modal-teaching-department')">&times;</button>
+      </div>
+      <form id="form-teaching-department" onsubmit="saveTeachingDepartmentForm(event)">
+        <input type="hidden" id="teaching-dept-id">
+        <div class="modal-body" style="padding: 18px 22px;">
+          <div class="form-group">
+            <label>Department Name <span class="text-danger">*</span></label>
+            <input type="text" id="teaching-dept-name" class="form-control" placeholder="e.g. MEDIA, SCIENCE, COMMERCE" required>
+          </div>
+          <div class="form-group">
+            <label>Department Code <span class="text-danger">*</span></label>
+            <input type="text" id="teaching-dept-code" class="form-control" placeholder="e.g. MEDIA, SCI, COMM" style="text-transform: uppercase;" required>
+            <small class="text-muted">Used in CSV imports and short labels</small>
+          </div>
+          <div class="form-group mb-0">
+            <label>Department Status</label>
+            <select id="teaching-dept-status" class="form-control">
+              <option value="active" selected>Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 22px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-teaching-department')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save Department</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL: IMPORT TEACHERS CSV -->
   <div id="modal-import-teaching-teachers-csv" class="modal-overlay hidden">
     <div class="modal-content modal-content-wide" style="max-width: 700px;">
@@ -2282,15 +2448,23 @@
         </div>
       </div>
       <div class="modal-body" style="padding: 20px;">
+        <div class="form-group mb-3">
+          <label style="font-weight:600;"><i class="fa-solid fa-building"></i> Default Target Department <span class="text-danger">*</span></label>
+          <select id="import-teachers-department-select" class="form-control" style="border: 1.5px solid #cbd5e1; font-weight:600;">
+            <option value="1">MEDIA</option>
+          </select>
+          <small class="text-muted">If CSV does not have a <code>Department</code> column, teachers are assigned to this department.</small>
+        </div>
+
         <div class="csv-upload-dropzone mb-4" onclick="document.getElementById('teaching-teachers-csv-file').click()" style="cursor:pointer; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 24px; text-align: center; background: #f8fafc;">
           <i class="fa-solid fa-cloud-arrow-up" style="font-size: 2.2rem; color: var(--primary); margin-bottom: 8px;"></i>
           <p style="font-weight: 600; margin:0 0 4px 0; color: #1e293b;">Click to browse or drop CSV file</p>
-          <span style="font-size: 0.8rem; color: #64748b;">Supported format: .csv (Columns: Full Name, Username, Password, Phone, Email)</span>
+          <span style="font-size: 0.8rem; color: #64748b;">Supported format: .csv (Columns: Department, Full Name, Username, Password, Phone, Email)</span>
           <input type="file" id="teaching-teachers-csv-file" accept=".csv" class="hidden" onchange="previewTeachingTeachersCSV(event)">
         </div>
 
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; font-size:0.8rem; color:#475569; margin-bottom:15px;">
-          <strong><i class="fa-solid fa-circle-info"></i> CSV Format Guide:</strong> Headers can be <code>Full Name, Username, Password, Phone, Email</code>. Default password is <code>teacher123</code> if omitted.
+          <strong><i class="fa-solid fa-circle-info"></i> CSV Format Guide:</strong> Headers can be <code>Department, Full Name, Username, Password, Phone, Email</code>. Default password is <code>teacher123</code> if omitted.
         </div>
 
         <div id="teaching-teachers-csv-preview-box" class="hidden">
@@ -2302,6 +2476,7 @@
               <thead>
                 <tr>
                   <th>#</th>
+                  <th>Department</th>
                   <th>Full Name</th>
                   <th>Username</th>
                   <th>Password</th>
@@ -2337,6 +2512,12 @@
       <form id="form-teaching-teacher" onsubmit="saveTeachingTeacherForm(event)">
         <input type="hidden" id="teaching-teacher-id">
         <div class="modal-body" style="padding: 18px 22px;">
+          <div class="form-group">
+            <label>Assigned Department <span class="text-danger">*</span></label>
+            <select id="teaching-teacher-dept-select" class="form-control" required style="font-weight:600;">
+              <option value="1">MEDIA</option>
+            </select>
+          </div>
           <div class="form-group">
             <label>Full Name <span class="text-danger">*</span></label>
             <input type="text" id="teaching-teacher-fullname" class="form-control" placeholder="e.g. Sinan MP" required>
@@ -2394,9 +2575,17 @@
       </div>
       <div class="modal-body" style="padding: 20px 24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
-          <div>
-            <label style="font-weight:600; display:block; margin-bottom:4px;">Select Timetable CSV File</label>
-            <input type="file" id="teaching-timetable-file-input" accept=".csv" onchange="previewTeachingTimetableFile(event)">
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div>
+              <label style="font-weight:600; display:block; margin-bottom:4px;"><i class="fa-solid fa-building"></i> Department</label>
+              <select id="import-tt-department-select" class="form-control" style="font-weight:600; min-width:160px;">
+                <option value="1">MEDIA</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-weight:600; display:block; margin-bottom:4px;">Select Timetable CSV File</label>
+              <input type="file" id="teaching-timetable-file-input" accept=".csv" onchange="previewTeachingTimetableFile(event)">
+            </div>
           </div>
           <a href="/api/sample/timetable.csv" download="sample_timetable_template.csv" class="btn btn-sm btn-outline">
             <i class="fa-solid fa-download"></i> Download Sample CSV
@@ -2425,6 +2614,7 @@
               <thead>
                 <tr>
                   <th>Row</th>
+                  <th>Department</th>
                   <th>Day</th>
                   <th>Period</th>
                   <th>Time Slot</th>
@@ -2461,6 +2651,12 @@
       <form id="form-teaching-slot" onsubmit="saveTeachingSlotForm(event)">
         <input type="hidden" id="teaching-slot-id">
         <div class="modal-body" style="padding: 16px 20px;">
+          <div class="form-group">
+            <label>Department <span class="text-danger">*</span></label>
+            <select id="teaching-slot-dept-select" class="form-control" required style="font-weight:600;">
+              <option value="1">MEDIA</option>
+            </select>
+          </div>
           <div class="form-row">
             <div class="form-group col-6">
               <label>Day <span class="text-danger">*</span></label>

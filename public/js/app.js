@@ -86,14 +86,17 @@ let selectedStudentIds = new Set();
 let selectedQuestionIds = new Set();
 let selectedResultIds = new Set();
 
-// TEACHER SELECTION STATE
+// TEACHER SELECTION STATE (WITH DEPARTMENT ISOLATION)
 let teacherSelectionState = {
+  currentDepartmentId: 'all', // 'all' or department ID number
+  departments: [],
   slots: [],
   periodSettings: [],
   settings: {},
   mySelections: [],
   currentStep: 1,
   allTeachers: [],
+  allTimetable: [],
   gridData: null,
   currentGridDay: 'Sunday',
   parsedImportData: []
@@ -328,6 +331,17 @@ function switchTab(tabId) {
     targetView.classList.remove('hidden');
   }
 
+  // Handle Global Department Toolbar Visibility in Admin Teaching Views
+  const deptToolbar = document.getElementById('teaching-global-dept-bar');
+  if (deptToolbar) {
+    if (tabId.startsWith('admin-teaching-')) {
+      deptToolbar.classList.remove('hidden');
+      loadTeachingDepartmentsDropdown();
+    } else {
+      deptToolbar.classList.add('hidden');
+    }
+  }
+
   // Update Top Title
   const titleMap = {
     'admin-dashboard': 'Exam Dashboard Overview',
@@ -336,6 +350,7 @@ function switchTab(tabId) {
     'admin-exams': 'Examinations Management',
     'admin-results': 'Student Results & Performance Analytics',
     'admin-settings': 'Exam System Settings',
+    'admin-teaching-departments': 'Academic Departments Management',
     'admin-teaching-dashboard': 'Teacher Subject Selection Dashboard',
     'admin-teaching-teachers': 'Teachers Management',
     'admin-teaching-timetable': 'Master Academic Timetable',
@@ -367,6 +382,7 @@ function switchTab(tabId) {
   if (tabId === 'admin-settings') populateAdminSettings();
 
   // Teacher Selection Admin Views
+  if (tabId === 'admin-teaching-departments') loadTeachingDepartments();
   if (tabId === 'admin-teaching-dashboard') loadAdminTeachingDashboard();
   if (tabId === 'admin-teaching-teachers') loadAdminTeachingTeachers();
   if (tabId === 'admin-teaching-timetable') loadAdminTeachingTimetable();
@@ -3038,6 +3054,15 @@ async function loadTeacherDashboard() {
     teacherSelectionState.settings = slotsData.settings || {};
     teacherSelectionState.mySelections = mySelData.selections || [];
 
+    const deptName = slotsData.department_name || currentUser.department_name || 'MEDIA';
+    const deptPill = document.getElementById('teacher-dash-dept-name');
+    const deptDesc = document.getElementById('teacher-dash-dept-desc');
+    const chipDept = document.getElementById('teacher-chip-dept-name');
+
+    if (deptPill) deptPill.textContent = deptName;
+    if (deptDesc) deptDesc.textContent = `${deptName} Department`;
+    if (chipDept) chipDept.textContent = `Department: ${deptName}`;
+
     // Update Dashboard UI Elements
     const countDisplay = document.getElementById('teacher-dash-count-display');
     const progressFill = document.getElementById('teacher-dash-progress-fill');
@@ -3569,13 +3594,250 @@ async function saveTeacherProfile(e) {
 
 
 /* ==========================================================================
-   ADMIN TEACHER SELECTION CONTROLLERS
+   ADMIN TEACHER SELECTION CONTROLLERS (DEPARTMENT-ISOLATED)
    ========================================================================== */
 
-// 1. ADMIN DASHBOARD
+// 0. DEPARTMENT MANAGEMENT & GLOBAL FILTER CONTROLLERS
+async function loadTeachingDepartmentsDropdown() {
+  try {
+    const departments = await fetchJsonWithCache('/api/teaching/admin/departments', 10000);
+    teacherSelectionState.departments = departments || [];
+
+    const globalSelect = document.getElementById('global-teaching-department-select');
+    const teacherDeptSelect = document.getElementById('teaching-teacher-dept-select');
+    const importTeacherDeptSelect = document.getElementById('import-teachers-department-select');
+    const importTtDeptSelect = document.getElementById('import-tt-department-select');
+    const slotDeptSelect = document.getElementById('teaching-slot-dept-select');
+
+    const currentVal = teacherSelectionState.currentDepartmentId || 'all';
+
+    if (globalSelect) {
+      globalSelect.innerHTML = `<option value="all">🌐 All Departments (Aggregated)</option>` + 
+        departments.map(d => `<option value="${d.id}" ${currentVal == d.id ? 'selected' : ''}>${escapeHtml(d.name)} (${escapeHtml(d.code)})</option>`).join('');
+      globalSelect.value = currentVal;
+    }
+
+    const modalOptions = departments.map(d => `<option value="${d.id}">${escapeHtml(d.name)} (${escapeHtml(d.code)})</option>`).join('');
+    if (teacherDeptSelect) teacherDeptSelect.innerHTML = modalOptions;
+    if (importTeacherDeptSelect) importTeacherDeptSelect.innerHTML = modalOptions;
+    if (importTtDeptSelect) importTtDeptSelect.innerHTML = modalOptions;
+    if (slotDeptSelect) slotDeptSelect.innerHTML = modalOptions;
+
+    updateActiveDeptBadge();
+  } catch (err) {
+    console.error('Error loading departments dropdown:', err);
+  }
+}
+
+function updateActiveDeptBadge() {
+  const badge = document.getElementById('active-dept-name-display');
+  if (!badge) return;
+
+  const currentVal = teacherSelectionState.currentDepartmentId;
+  if (currentVal === 'all') {
+    badge.textContent = 'All Departments';
+  } else {
+    const dept = (teacherSelectionState.departments || []).find(d => d.id == currentVal);
+    badge.textContent = dept ? dept.name : `Dept #${currentVal}`;
+  }
+}
+
+function onTeachingDepartmentChanged(deptId) {
+  teacherSelectionState.currentDepartmentId = deptId;
+  updateActiveDeptBadge();
+  clearClientCache('/api/teaching');
+
+  // Reload active tab view
+  const activeTab = document.querySelector('.nav-item.active')?.getAttribute('href')?.replace('#', '');
+  if (activeTab === 'admin-teaching-dashboard') loadAdminTeachingDashboard();
+  else if (activeTab === 'admin-teaching-departments') loadTeachingDepartments();
+  else if (activeTab === 'admin-teaching-teachers') loadAdminTeachingTeachers();
+  else if (activeTab === 'admin-teaching-timetable') loadAdminTeachingTimetable();
+  else if (activeTab === 'admin-teaching-periods') loadAdminTeachingPeriods();
+  else if (activeTab === 'admin-teaching-settings') loadAdminTeachingSettings();
+  else if (activeTab === 'admin-teaching-reports') loadAdminTeachingReports();
+  else if (activeTab === 'admin-teaching-logs') loadAdminTeachingLogs();
+}
+
+// DEPARTMENTS VIEW CRUD
+async function loadTeachingDepartments() {
+  try {
+    const departments = await fetchJsonWithCache('/api/teaching/admin/departments', 3000, true);
+    teacherSelectionState.departments = departments || [];
+
+    // Update Metrics
+    let totalTeachers = 0, totalSlots = 0, totalAlloc = 0;
+    departments.forEach(d => {
+      totalTeachers += (d.teacher_count || 0);
+      totalSlots += (d.slot_count || 0);
+      totalAlloc += (d.allocation_count || 0);
+    });
+
+    const countEl = document.getElementById('stat-dept-count');
+    const teachersEl = document.getElementById('stat-dept-teachers');
+    const slotsEl = document.getElementById('stat-dept-slots');
+    const allocEl = document.getElementById('stat-dept-allocations');
+
+    if (countEl) countEl.textContent = departments.length;
+    if (teachersEl) teachersEl.textContent = totalTeachers;
+    if (slotsEl) slotsEl.textContent = totalSlots;
+    if (allocEl) allocEl.textContent = totalAlloc;
+
+    const tbody = document.getElementById('table-admin-teaching-departments');
+    if (!tbody) return;
+
+    if (departments.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-4 text-muted">No departments created yet.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = departments.map(d => {
+      const isMedia = d.id === 1;
+      const statusBadge = d.status === 'active' 
+        ? '<span class="badge badge-success"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Active</span>'
+        : '<span class="badge badge-danger"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Inactive</span>';
+      
+      const selectionBadge = d.is_open 
+        ? '<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;"><i class="fa-solid fa-door-open"></i> Open</span>'
+        : '<span class="badge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca;"><i class="fa-solid fa-door-closed"></i> Closed</span>';
+
+      return `
+        <tr>
+          <td>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div style="width:34px; height:34px; border-radius:8px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem;">
+                <i class="fa-solid fa-building"></i>
+              </div>
+              <div>
+                <strong style="color:#0f172a; font-size:0.92rem;">${escapeHtml(d.name)}</strong>
+                ${isMedia ? '<span class="badge badge-primary" style="font-size:0.65rem; margin-left:4px;">Default</span>' : ''}
+              </div>
+            </div>
+          </td>
+          <td><span style="background:#f8fafc; border:1px solid #e2e8f0; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.82rem; color:#475569;">${escapeHtml(d.code)}</span></td>
+          <td><strong style="color:#0f172a;">${d.teacher_count || 0}</strong> <span class="text-muted" style="font-size:0.75rem;">Teachers</span></td>
+          <td><strong style="color:#0f172a;">${d.slot_count || 0}</strong> <span class="text-muted" style="font-size:0.75rem;">Slots</span></td>
+          <td><strong class="text-success">${d.allocation_count || 0}</strong> <span class="text-muted" style="font-size:0.75rem;">Allocated</span></td>
+          <td>${selectionBadge}</td>
+          <td>${statusBadge}</td>
+          <td class="text-right">
+            <div style="display:inline-flex; gap:6px;">
+              <button type="button" class="btn btn-sm btn-outline" onclick="openModalEditDepartment(${d.id})" title="Edit Department">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              ${!isMedia ? `
+                <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingDepartment(${d.id}, '${escapeHtml(d.name)}')" title="Delete Department" style="border-color:#fca5a5; background:#fff5f5;">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Error loading departments table:', err);
+  }
+}
+
+function openModalAddDepartment() {
+  document.getElementById('modal-teaching-dept-title').innerHTML = '<i class="fa-solid fa-building" style="color:var(--primary);"></i> Add New Department';
+  document.getElementById('teaching-dept-id').value = '';
+  document.getElementById('teaching-dept-name').value = '';
+  document.getElementById('teaching-dept-code').value = '';
+  document.getElementById('teaching-dept-status').value = 'active';
+  openModal('modal-teaching-department');
+}
+
+function openModalEditDepartment(id) {
+  const dept = (teacherSelectionState.departments || []).find(d => d.id === id);
+  if (!dept) return;
+
+  document.getElementById('modal-teaching-dept-title').innerHTML = '<i class="fa-solid fa-pen-to-square" style="color:var(--primary);"></i> Edit Department';
+  document.getElementById('teaching-dept-id').value = dept.id;
+  document.getElementById('teaching-dept-name').value = dept.name || '';
+  document.getElementById('teaching-dept-code').value = dept.code || '';
+  document.getElementById('teaching-dept-status').value = dept.status || 'active';
+  openModal('modal-teaching-department');
+}
+
+async function saveTeachingDepartmentForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('teaching-dept-id').value;
+  const name = document.getElementById('teaching-dept-name').value.trim();
+  const code = document.getElementById('teaching-dept-code').value.trim().toUpperCase();
+  const status = document.getElementById('teaching-dept-status').value;
+
+  try {
+    let url = apiUrl('/api/teaching/admin/departments');
+    let method = 'POST';
+
+    if (id) {
+      url = apiUrl(`/api/teaching/admin/departments/${id}`);
+      method = 'PUT';
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        code,
+        status,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to save department');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    closeModal('modal-teaching-department');
+    await loadTeachingDepartmentsDropdown();
+    loadTeachingDepartments();
+  } catch (err) {
+    alert('Error saving department.');
+  }
+}
+
+async function deleteTeachingDepartment(id, name) {
+  if (!confirm(`Are you sure you want to delete department "${name}"?\n\nThis will remove period settings and selection rules for this department. All teachers and timetable entries must be removed first.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/admin/departments/${id}`), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to delete department');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    await loadTeachingDepartmentsDropdown();
+    loadTeachingDepartments();
+  } catch (err) {
+    alert('Error deleting department.');
+  }
+}
+
+// 1. ADMIN DASHBOARD (DEPARTMENT-SCOPED)
 async function loadAdminTeachingDashboard() {
   try {
-    const data = await fetchJsonWithCache('/api/teaching/admin/dashboard-stats', 5000);
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const data = await fetchJsonWithCache(`/api/teaching/admin/dashboard-stats?department_id=${deptId}`, 5000);
 
     document.getElementById('stat-ts-total-teachers').textContent = data.total_teachers || 0;
     document.getElementById('stat-ts-completed-teachers').textContent = data.completed_teachers || 0;
@@ -3609,13 +3871,15 @@ async function loadAdminTeachingDashboard() {
 
 async function toggleAdminSelectionStatus() {
   try {
-    const currentSettings = await fetchJsonWithCache('/api/teaching/settings', 1000, true);
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const currentSettings = await fetchJsonWithCache(`/api/teaching/settings?department_id=${deptId === 'all' ? 1 : deptId}`, 1000, true);
     const newStatus = !currentSettings.is_open;
 
     const res = await fetch(apiUrl('/api/teaching/admin/toggle-status'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: deptId,
         is_open: newStatus,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
@@ -3631,10 +3895,11 @@ async function toggleAdminSelectionStatus() {
   }
 }
 
-// 2. TEACHERS MANAGEMENT
+// 2. TEACHERS MANAGEMENT (DEPARTMENT-SCOPED)
 async function loadAdminTeachingTeachers() {
   try {
-    const teachers = await fetchJsonWithCache('/api/teaching/admin/teachers', 5000);
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const teachers = await fetchJsonWithCache(`/api/teaching/admin/teachers?department_id=${deptId}`, 5000);
     teacherSelectionState.allTeachers = teachers;
     renderTeachingTeachersTable(teachers);
   } catch (err) {
@@ -3649,13 +3914,13 @@ function renderTeachingTeachersTable(teachers) {
   if (teachers.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" style="padding: 48px 24px; text-align: center;">
+        <td colspan="7" style="padding: 48px 24px; text-align: center;">
           <div style="width:64px; height:64px; background:#eff6ff; color:#3b82f6; border-radius:18px; display:inline-flex; align-items:center; justify-content:center; font-size:28px; margin-bottom:14px;">
             <i class="fa-solid fa-chalkboard-user"></i>
           </div>
-          <h4 style="font-size:1.1rem; color:#0f172a; margin:0 0 6px 0; font-weight:800;">No Teachers Added Yet</h4>
+          <h4 style="font-size:1.1rem; color:#0f172a; margin:0 0 6px 0; font-weight:800;">No Teachers in this Department</h4>
           <p style="color:#64748b; font-size:0.86rem; margin:0 0 18px 0; max-width:400px; margin-left:auto; margin-right:auto;">
-            Get started by adding educators individually or upload your entire staff list in bulk using a CSV file.
+            Add educators to this department individually or import via CSV file.
           </p>
           <div style="display:inline-flex; gap:10px; justify-content:center;">
             <button type="button" class="btn btn-primary btn-sm" onclick="openModalAddTeacher()">
@@ -3699,6 +3964,11 @@ function renderTeachingTeachersTable(teachers) {
           </div>
         </td>
         <td>
+          <span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700;">
+            <i class="fa-solid fa-building"></i> ${escapeHtml(t.department_name || 'MEDIA')}
+          </span>
+        </td>
+        <td>
           <span style="background:#f8fafc; border:1px solid #e2e8f0; padding:3px 8px; border-radius:6px; font-family:monospace; font-size:0.84rem; color:#334155;">
             @${escapeHtml(t.username)}
           </span>
@@ -3729,7 +3999,8 @@ function filterTeachingTeachersTable() {
   const query = (document.getElementById('search-teaching-teachers').value || '').toLowerCase();
   const filtered = teacherSelectionState.allTeachers.filter(t => 
     t.full_name.toLowerCase().includes(query) || 
-    t.username.toLowerCase().includes(query)
+    t.username.toLowerCase().includes(query) ||
+    (t.department_name && t.department_name.toLowerCase().includes(query))
   );
   renderTeachingTeachersTable(filtered);
 }
@@ -3744,6 +4015,12 @@ function openModalAddTeacher() {
   document.getElementById('teaching-teacher-phone').value = '';
   document.getElementById('teaching-teacher-email').value = '';
   document.getElementById('teaching-teacher-active').checked = true;
+
+  const deptSelect = document.getElementById('teaching-teacher-dept-select');
+  if (deptSelect) {
+    deptSelect.value = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  }
+
   openModal('modal-teaching-teacher');
 }
 
@@ -3760,12 +4037,19 @@ function openModalEditTeacher(id) {
   document.getElementById('teaching-teacher-phone').value = teacher.phone || '';
   document.getElementById('teaching-teacher-email').value = teacher.email || '';
   document.getElementById('teaching-teacher-active').checked = teacher.is_active !== false;
+
+  const deptSelect = document.getElementById('teaching-teacher-dept-select');
+  if (deptSelect) {
+    deptSelect.value = teacher.department_id || 1;
+  }
+
   openModal('modal-teaching-teacher');
 }
 
 async function saveTeachingTeacherForm(e) {
   e.preventDefault();
   const id = document.getElementById('teaching-teacher-id').value;
+  const department_id = document.getElementById('teaching-teacher-dept-select').value;
   const full_name = document.getElementById('teaching-teacher-fullname').value.trim();
   const username = document.getElementById('teaching-teacher-username').value.trim();
   const password = document.getElementById('teaching-teacher-password').value.trim();
@@ -3786,6 +4070,7 @@ async function saveTeachingTeacherForm(e) {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(department_id),
         full_name,
         username,
         password,
@@ -3804,6 +4089,7 @@ async function saveTeachingTeacherForm(e) {
     }
 
     clearClientCache('/api/teaching');
+    closeModal('modal-teaching-teacher');
     loadAdminTeachingTeachers();
     loadAdminTeachingDashboard();
   } catch (err) {
@@ -3840,9 +4126,7 @@ async function deleteTeachingTeacher(id, name) {
   }
 }
 
-// -------------------------------------------------------------
 // TEACHERS CSV IMPORT & BULK ACTIONS
-// -------------------------------------------------------------
 let parsedTeachingTeachersCSVData = [];
 
 function openModalImportTeachingTeachers() {
@@ -3855,6 +4139,12 @@ function openModalImportTeachingTeachers() {
   if (errorBox) errorBox.classList.add('hidden');
   const btn = document.getElementById('btn-submit-import-teaching-teachers');
   if (btn) btn.disabled = true;
+
+  const deptSelect = document.getElementById('import-teachers-department-select');
+  if (deptSelect) {
+    deptSelect.value = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  }
+
   openModal('modal-import-teaching-teachers-csv');
 }
 
@@ -3881,6 +4171,7 @@ function previewTeachingTeachersCSV(event) {
       if (tbody) {
         tbody.innerHTML = '';
         rows.forEach((r, idx) => {
+          const dept = r.department || r.Department || r.dept || '-';
           const name = r.full_name || r.name || r.fullname || r.teacher_name || '-';
           const username = r.username || r.user_name || name.toLowerCase().replace(/[^a-z0-9]/g, '');
           const pwd = r.password || 'teacher123';
@@ -3889,6 +4180,7 @@ function previewTeachingTeachersCSV(event) {
           tbody.innerHTML += `
             <tr>
               <td style="color:#94a3b8;">${idx + 1}</td>
+              <td><span class="badge" style="background:#eff6ff; color:#2563eb;">${escapeHtml(dept)}</span></td>
               <td><strong>${escapeHtml(name)}</strong></td>
               <td><code>${escapeHtml(username)}</code></td>
               <td><span class="text-muted">${escapeHtml(pwd)}</span></td>
@@ -3914,6 +4206,7 @@ function previewTeachingTeachersCSV(event) {
 async function submitTeachingTeachersCSV() {
   if (parsedTeachingTeachersCSVData.length === 0) return;
 
+  const targetDeptId = document.getElementById('import-teachers-department-select')?.value || 1;
   const submitBtn = document.getElementById('btn-submit-import-teaching-teachers');
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -3925,6 +4218,7 @@ async function submitTeachingTeachersCSV() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(targetDeptId),
         teachers: parsedTeachingTeachersCSVData,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
@@ -3957,15 +4251,19 @@ async function submitTeachingTeachersCSV() {
 }
 
 async function clearAllTeachingTeachers() {
-  if (!confirm('⚠️ Are you sure you want to delete ALL teachers from the database?\n\nThis will remove all teacher accounts and their selected period allocations. This action cannot be undone.')) {
-    return;
-  }
+  const deptId = teacherSelectionState.currentDepartmentId || 'all';
+  const confirmMsg = deptId === 'all'
+    ? '⚠️ Are you sure you want to delete ALL teachers from ALL departments?\n\nThis will remove all teacher accounts and their selected period allocations across the entire system.'
+    : `⚠️ Are you sure you want to delete ALL teachers from this department?\n\nThis will remove all teacher accounts and allocations for this department only.`;
+
+  if (!confirm(confirmMsg)) return;
 
   try {
     const res = await fetch(apiUrl('/api/teaching/admin/teachers-clear-all'), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: deptId,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
       })
@@ -3978,7 +4276,7 @@ async function clearAllTeachingTeachers() {
     }
 
     clearClientCache('/api/teaching');
-    alert(data.message || 'All teachers cleared successfully.');
+    alert(data.message || 'Teachers cleared successfully.');
     loadAdminTeachingTeachers();
     loadAdminTeachingDashboard();
   } catch (err) {
@@ -4033,10 +4331,11 @@ async function adminRemoveAllocation(selectionId) {
   }
 }
 
-// 3. MASTER TIMETABLE
+// 3. MASTER TIMETABLE (DEPARTMENT-SCOPED)
 async function loadAdminTeachingTimetable() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/timetable'));
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const res = await fetch(apiUrl(`/api/teaching/timetable?department_id=${deptId}`));
     const timetable = await res.json();
     teacherSelectionState.allTimetable = timetable;
     renderTimetableTable();
@@ -4059,12 +4358,12 @@ function renderTimetableTable() {
   if (list.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 40px 20px; text-align: center;">
+        <td colspan="8" style="padding: 40px 20px; text-align: center;">
           <div style="width:54px; height:54px; background:#f8fafc; color:#94a3b8; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:10px;">
             <i class="fa-solid fa-calendar-xmark"></i>
           </div>
           <div style="font-weight:700; color:#334155; font-size:0.95rem;">No Timetable Entries Found</div>
-          <div style="color:#94a3b8; font-size:0.82rem; margin-top:2px;">Try changing the Day or Class filter, or upload a CSV file.</div>
+          <div style="color:#94a3b8; font-size:0.82rem; margin-top:2px;">Try changing the Department, Day, or Class filter, or upload a CSV file.</div>
         </td>
       </tr>
     `;
@@ -4083,6 +4382,11 @@ function renderTimetableTable() {
 
     return `
       <tr>
+        <td>
+          <span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700;">
+            <i class="fa-solid fa-building"></i> ${escapeHtml(t.department_name || 'MEDIA')}
+          </span>
+        </td>
         <td>${dayBadge}</td>
         <td><strong style="color:#0f172a; font-weight:700;">Period ${t.period}</strong></td>
         <td><span style="color:#64748b; font-size:0.85rem;"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${t.time_slot || '—'}</span></td>
@@ -4106,11 +4410,18 @@ function openModalAddTimetableSlot() {
   document.getElementById('teaching-slot-class').value = 'Std 1';
   document.getElementById('teaching-slot-subject').value = '';
   document.getElementById('teaching-slot-time').value = '7:30–8:15';
+
+  const deptSelect = document.getElementById('teaching-slot-dept-select');
+  if (deptSelect) {
+    deptSelect.value = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  }
+
   openModal('modal-teaching-slot');
 }
 
 async function saveTeachingSlotForm(e) {
   e.preventDefault();
+  const department_id = document.getElementById('teaching-slot-dept-select').value;
   const day = document.getElementById('teaching-slot-day').value;
   const period = document.getElementById('teaching-slot-period').value;
   const class_name = document.getElementById('teaching-slot-class').value;
@@ -4122,6 +4433,7 @@ async function saveTeachingSlotForm(e) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(department_id),
         day, period, class_name, subject, time_slot,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
@@ -4160,10 +4472,11 @@ async function deleteTeachingSlot(id) {
   }
 }
 
-// 4. PERIOD ON/OFF SETTINGS
+// 4. PERIOD ON/OFF SETTINGS (DEPARTMENT-SCOPED)
 async function loadAdminTeachingPeriods() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/period-settings'));
+    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+    const res = await fetch(apiUrl(`/api/teaching/period-settings?department_id=${deptId}`));
     const settings = await res.json();
     teacherSelectionState.periodSettings = settings;
 
@@ -4219,10 +4532,12 @@ function renderPeriodSettingsGrid(day, containerId, settings) {
 
 async function togglePeriodSetting(day, period, isEnabled) {
   try {
+    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
     const res = await fetch(apiUrl('/api/teaching/admin/period-settings/toggle'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(deptId),
         day,
         period,
         is_enabled: isEnabled,
@@ -4245,6 +4560,7 @@ async function togglePeriodSetting(day, period, isEnabled) {
 }
 
 async function setAllPeriodsStatus(day, isEnabled) {
+  const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
   const updates = [];
   for (let p = 1; p <= 9; p++) {
     updates.push({ day, period: p, is_enabled: isEnabled });
@@ -4255,6 +4571,7 @@ async function setAllPeriodsStatus(day, isEnabled) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(deptId),
         settings: updates,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
@@ -4267,17 +4584,22 @@ async function setAllPeriodsStatus(day, isEnabled) {
   }
 }
 
-// 5. GLOBAL SETTINGS
+// 5. GLOBAL SETTINGS (DEPARTMENT-SCOPED)
 async function loadAdminTeachingSettings() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/settings'));
+    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+    const res = await fetch(apiUrl(`/api/teaching/settings?department_id=${deptId}`));
     const data = await res.json();
 
     if (data.start_datetime) {
       document.getElementById('ts-setting-start').value = new Date(data.start_datetime).toISOString().slice(0, 16);
+    } else {
+      document.getElementById('ts-setting-start').value = '';
     }
     if (data.end_datetime) {
       document.getElementById('ts-setting-end').value = new Date(data.end_datetime).toISOString().slice(0, 16);
+    } else {
+      document.getElementById('ts-setting-end').value = '';
     }
 
     document.getElementById('ts-setting-min').value = data.min_periods || 2;
@@ -4291,6 +4613,7 @@ async function loadAdminTeachingSettings() {
 
 async function saveTeachingSettingsForm(e) {
   e.preventDefault();
+  const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
   const start_datetime = document.getElementById('ts-setting-start').value || null;
   const end_datetime = document.getElementById('ts-setting-end').value || null;
   const min_periods = parseInt(document.getElementById('ts-setting-min').value) || 2;
@@ -4303,6 +4626,7 @@ async function saveTeachingSettingsForm(e) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(deptId),
         start_datetime,
         end_datetime,
         min_periods,
@@ -4322,7 +4646,7 @@ async function saveTeachingSettingsForm(e) {
   }
 }
 
-// 6. REPORTS & MATRIX GRID
+// 6. REPORTS & MATRIX GRID (DEPARTMENT-SCOPED)
 async function loadAdminTeachingReports() {
   await Promise.all([
     loadTeacherWiseReport(),
@@ -4349,11 +4673,7 @@ function switchReportTab(tab) {
   if (viewGrid) viewGrid.classList.toggle('hidden', tab !== 'grid-matrix');
 
   if (tab === 'grid-matrix') {
-    if (!teacherSelectionState.gridData) {
-      loadGridMatrixReport();
-    } else {
-      renderGridMatrix(teacherSelectionState.currentGridDay || 'Sunday');
-    }
+    loadGridMatrixReport();
   } else if (tab === 'class-wise') {
     loadClassWiseReport();
   } else if (tab === 'teacher-wise') {
@@ -4363,7 +4683,8 @@ function switchReportTab(tab) {
 
 async function loadTeacherWiseReport() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/admin/reports/teacher-wise'));
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const res = await fetch(apiUrl(`/api/teaching/admin/reports/teacher-wise?department_id=${deptId}`));
     const teachers = await res.json();
     const tbody = document.getElementById('table-report-teacher-wise');
     if (!tbody) return;
@@ -4389,7 +4710,10 @@ async function loadTeacherWiseReport() {
       return `
         <tr>
           <td>
-            <strong>${escapeHtml(t.teacher_name)}</strong>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <strong>${escapeHtml(t.teacher_name)}</strong>
+              <span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem;">${escapeHtml(t.department_name || 'MEDIA')}</span>
+            </div>
             <div style="font-size:0.75rem; color:#64748b;">@${escapeHtml(t.username)}</div>
           </td>
           <td><strong>${t.total_periods} Period(s)</strong></td>
@@ -4405,7 +4729,8 @@ async function loadTeacherWiseReport() {
 
 async function loadClassWiseReport() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/admin/reports/class-wise'));
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const res = await fetch(apiUrl(`/api/teaching/admin/reports/class-wise?department_id=${deptId}`));
     const classData = await res.json();
     const container = document.getElementById('container-report-class-wise');
     if (!container) return;
@@ -4432,6 +4757,7 @@ async function loadClassWiseReport() {
             <table class="data-table">
               <thead>
                 <tr>
+                  <th>Department</th>
                   <th>Day</th>
                   <th>Period</th>
                   <th>Time Slot</th>
@@ -4452,6 +4778,7 @@ async function loadClassWiseReport() {
 
                   return `
                     <tr>
+                      <td><span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.75rem;">${escapeHtml(s.department_name || 'MEDIA')}</span></td>
                       <td>${dayBadge}</td>
                       <td><strong style="color:#0f172a;">Period ${s.period}</strong></td>
                       <td><span style="color:#64748b; font-size:0.85rem;"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${s.time_slot || '—'}</span></td>
@@ -4475,12 +4802,13 @@ async function loadClassWiseReport() {
 
 async function loadGridMatrixReport() {
   const container = document.getElementById('container-timetable-grid-matrix');
-  if (container && !teacherSelectionState.gridData) {
+  if (container) {
     container.innerHTML = '<div class="text-center p-6 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading timetable matrix...</div>';
   }
 
   try {
-    const res = await fetch(apiUrl('/api/teaching/admin/reports/timetable-grid'));
+    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+    const res = await fetch(apiUrl(`/api/teaching/admin/reports/timetable-grid?department_id=${deptId}`));
     const data = await res.json();
     teacherSelectionState.gridData = data;
     renderGridMatrix(teacherSelectionState.currentGridDay || 'Sunday');
@@ -4512,15 +4840,18 @@ function renderGridMatrix(day) {
     return;
   }
 
-  const { slots = [], classes = [], period_settings = [] } = teacherSelectionState.gridData;
+  const { slots = [], classes = [], period_settings = [], department_name = 'MEDIA' } = teacherSelectionState.gridData;
   const daySlots = slots.filter(s => s.day === day);
 
   if (classes.length === 0) {
-    container.innerHTML = '<div class="text-center text-muted p-6">No timetable data available for grid.</div>';
+    container.innerHTML = `<div class="text-center text-muted p-6">No timetable data available for grid in ${escapeHtml(department_name)}.</div>`;
     return;
   }
 
   let tableHtml = `
+    <div style="margin-bottom:8px; font-weight:700; color:#475569; font-size:0.85rem;">
+      <i class="fa-solid fa-building"></i> Matrix for Department: <span class="badge badge-primary">${escapeHtml(department_name)}</span>
+    </div>
     <table class="matrix-table">
       <thead>
         <tr>
@@ -4605,21 +4936,30 @@ function filterTeachingReportsView() {
 }
 
 function exportTeachingReportCSV(type) {
-  window.open(apiUrl(`/api/teaching/admin/export/${type}`), '_blank');
+  const deptId = teacherSelectionState.currentDepartmentId || 'all';
+  window.open(apiUrl(`/api/teaching/admin/export/${type}?department_id=${deptId}`), '_blank');
 }
 
-// 7. CSV / EXCEL TIMETABLE IMPORT
+// 7. CSV / EXCEL TIMETABLE IMPORT (DEPARTMENT-AWARE)
 function openModalImportTimetable() {
   document.getElementById('teaching-timetable-file-input').value = '';
   document.getElementById('teaching-import-preview-box').classList.add('hidden');
   document.getElementById('teaching-import-error-box').classList.add('hidden');
   document.getElementById('btn-confirm-import-timetable').disabled = true;
+
+  const deptSelect = document.getElementById('import-tt-department-select');
+  if (deptSelect) {
+    deptSelect.value = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  }
+
   openModal('modal-teaching-import');
 }
 
 function previewTeachingTimetableFile(e) {
   const file = e.target.files[0];
   if (!file) return;
+
+  const targetDeptId = document.getElementById('import-tt-department-select')?.value || 1;
 
   const reader = new FileReader();
   reader.onload = async (event) => {
@@ -4636,7 +4976,7 @@ function previewTeachingTimetableFile(e) {
       const res = await fetch(apiUrl('/api/teaching/admin/timetable/preview-import'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows })
+        body: JSON.stringify({ rows, department_id: parseInt(targetDeptId) })
       });
 
       const data = await res.json();
@@ -4645,7 +4985,7 @@ function previewTeachingTimetableFile(e) {
         return;
       }
 
-      teacherSelectionState.parsedImportData = rows;
+      teacherSelectionState.parsedImportData = data.preview || rows;
       document.getElementById('ts-import-valid-count').textContent = data.valid_rows || 0;
       document.getElementById('ts-import-invalid-count').textContent = data.invalid_rows || 0;
 
@@ -4653,6 +4993,7 @@ function previewTeachingTimetableFile(e) {
       tbody.innerHTML = (data.preview || []).slice(0, 50).map(r => `
         <tr style="${!r.valid ? 'background:#fff5f5;' : ''}">
           <td>${r.row_number}</td>
+          <td><span class="badge" style="background:#eff6ff; color:#2563eb;">${escapeHtml(r.department_name || 'MEDIA')}</span></td>
           <td><strong>${escapeHtml(r.day)}</strong></td>
           <td>Period ${r.period}</td>
           <td>${escapeHtml(r.time_slot || '—')}</td>
@@ -4679,12 +5020,14 @@ async function confirmImportTeachingTimetable() {
   if (!teacherSelectionState.parsedImportData || teacherSelectionState.parsedImportData.length === 0) return;
 
   const mode = document.querySelector('input[name="ts-import-mode"]:checked').value || 'merge';
+  const targetDeptId = document.getElementById('import-tt-department-select')?.value || 1;
 
   try {
     const res = await fetch(apiUrl('/api/teaching/admin/timetable/confirm-import'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        department_id: parseInt(targetDeptId),
         rows: teacherSelectionState.parsedImportData,
         mode,
         admin_id: currentUser ? currentUser.id : null,
@@ -4698,6 +5041,7 @@ async function confirmImportTeachingTimetable() {
       return;
     }
 
+    clearClientCache('/api/teaching');
     alert(data.message || 'Timetable imported successfully!');
     closeModal('modal-teaching-import');
     loadAdminTeachingTimetable();
@@ -4708,28 +5052,29 @@ async function confirmImportTeachingTimetable() {
 }
 
 function downloadSampleTimetableCSV() {
-  const csv = `Day,Period,Time,Class,Subject
-Sunday,1,7:30–8:15,Std 1,MTS
-Sunday,2,8:15–9:00,Std 1,TJWD
-Sunday,1,7:30–8:15,Std 2,S S
-Monday,1,7:30–8:15,Std 1,S S
-Monday,2,8:15–9:00,Std 1,ENG`;
+  const csv = `Department,Day,Period,Time,Class,Subject
+MEDIA,Sunday,1,7:30–8:15,Std 1,MTS
+MEDIA,Sunday,2,8:15–9:00,Std 1,TJWD
+MEDIA,Sunday,1,7:30–8:15,Std 2,S S
+MEDIA,Monday,1,7:30–8:15,Std 1,S S
+MEDIA,Monday,2,8:15–9:00,Std 1,ENG`;
   downloadCSVFile('sample_timetable_template.csv', csv, '/api/sample/timetable.csv');
 }
 
 function downloadSampleTeachersCSV() {
-  const csv = `Full Name,Username,Password,Phone,Email
-Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
-Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
-Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
-Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
+  const csv = `Department,Full Name,Username,Password,Phone,Email
+MEDIA,Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
+MEDIA,Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
+MEDIA,Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
+MEDIA,Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
   downloadCSVFile('sample_teachers_template.csv', csv, '/api/sample/teachers.csv');
 }
 
-// 8. AUDIT LOGS
+// 8. AUDIT LOGS (DEPARTMENT-SCOPED)
 async function loadAdminTeachingLogs() {
   try {
-    const res = await fetch(apiUrl('/api/teaching/admin/audit-logs'));
+    const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    const res = await fetch(apiUrl(`/api/teaching/admin/audit-logs?department_id=${deptId}`));
     const logs = await res.json();
     const tbody = document.getElementById('table-admin-teaching-logs');
     if (!tbody) return;
@@ -4742,7 +5087,10 @@ async function loadAdminTeachingLogs() {
     tbody.innerHTML = logs.map(l => `
       <tr>
         <td style="font-size:0.8rem; color:#64748b;">${new Date(l.created_at).toLocaleString()}</td>
-        <td><strong>${escapeHtml(l.user_name || 'System')}</strong></td>
+        <td>
+          <strong>${escapeHtml(l.user_name || 'System')}</strong>
+          ${l.department_name ? `<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem; margin-left:4px;">${escapeHtml(l.department_name)}</span>` : ''}
+        </td>
         <td><strong class="badge badge-primary">${escapeHtml(l.action)}</strong></td>
         <td style="font-size:0.82rem; color:#475569;"><code>${escapeHtml(JSON.stringify(l.details || {}))}</code></td>
       </tr>

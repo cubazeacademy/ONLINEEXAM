@@ -112,23 +112,23 @@ app.post('/api/admin/upload-pdf', (req, res) => {
 // SAMPLE CSV FILE DOWNLOAD ENDPOINTS
 // -------------------------------------------------------------
 app.get(['/api/sample/teachers.csv', '/api/teaching/sample-teachers-csv'], (req, res) => {
-  const csv = `Full Name,Username,Password,Phone,Email
-Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
-Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
-Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
-Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
+  const csv = `Department,Full Name,Username,Password,Phone,Email
+MEDIA,Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
+MEDIA,Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
+MEDIA,Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
+MEDIA,Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="sample_teachers_template.csv"');
   res.send(csv);
 });
 
 app.get(['/api/sample/timetable.csv', '/api/teaching/sample-timetable-csv'], (req, res) => {
-  const csv = `Day,Period,Time,Class,Subject
-Sunday,1,7:30–8:15,Std 1,MTS
-Sunday,2,8:15–9:00,Std 1,TJWD
-Sunday,1,7:30–8:15,Std 2,S S
-Monday,1,7:30–8:15,Std 1,S S
-Monday,2,8:15–9:00,Std 1,ENG`;
+  const csv = `Department,Day,Period,Time,Class,Subject
+MEDIA,Sunday,1,7:30–8:15,Std 1,MTS
+MEDIA,Sunday,2,8:15–9:00,Std 1,TJWD
+MEDIA,Sunday,1,7:30–8:15,Std 2,S S
+MEDIA,Monday,1,7:30–8:15,Std 1,S S
+MEDIA,Monday,2,8:15–9:00,Std 1,ENG`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="sample_timetable_template.csv"');
   res.send(csv);
@@ -171,16 +171,28 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     const user = await db.get(`
-      SELECT id, username, full_name, email, role, roll_no, admission_no
-      FROM users
+      SELECT 
+        u.id, 
+        u.username, 
+        u.full_name, 
+        u.email, 
+        u.phone,
+        u.role, 
+        u.roll_no, 
+        u.admission_no, 
+        u.department_id,
+        COALESCE(d.name, 'MEDIA') as department_name,
+        COALESCE(d.code, 'MEDIA') as department_code
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
       WHERE (
-        LOWER(username) = LOWER($1) OR
-        LOWER(COALESCE(admission_no, '')) = LOWER($1) OR
-        LOWER(COALESCE(roll_no, '')) = LOWER($1) OR
-        LOWER(COALESCE(email, '')) = LOWER($1)
+        LOWER(u.username) = LOWER($1) OR
+        LOWER(COALESCE(u.admission_no, '')) = LOWER($1) OR
+        LOWER(COALESCE(u.roll_no, '')) = LOWER($1) OR
+        LOWER(COALESCE(u.email, '')) = LOWER($1)
       ) AND (
-        TRIM(password) = $2 OR
-        LOWER(TRIM(password)) = LOWER($2)
+        TRIM(u.password) = $2 OR
+        LOWER(TRIM(u.password)) = LOWER($2)
       )
     `, [cleanUsername, cleanPassword]);
 
@@ -1579,37 +1591,202 @@ app.put('/api/student/profile', async (req, res) => {
 });
 
 // =============================================================================
-// TEACHER SUBJECT SELECTION MODULE - API ENDPOINTS
+// TEACHER SUBJECT SELECTION MODULE - API ENDPOINTS (DEPARTMENT-ISOLATED)
 // =============================================================================
 
 // Helper: Audit logger
-async function logTeacherAction(userId, userName, action, details = {}) {
+async function logTeacherAction(userId, userName, action, details = {}, departmentId = null) {
   try {
     await db.query(`
-      INSERT INTO teacher_selection_audit_logs (user_id, user_name, action, details)
-      VALUES ($1, $2, $3, $4)
-    `, [userId || null, userName || 'System', action, JSON.stringify(details)]);
+      INSERT INTO teacher_selection_audit_logs (user_id, user_name, department_id, action, details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [userId || null, userName || 'System', departmentId || null, action, JSON.stringify(details)]);
   } catch (e) {
     console.error('Audit log error:', e.message);
   }
 }
 
 // -------------------------------------------------------------
-// 1. SETTINGS & STATUS
+// 0. DEPARTMENT MANAGEMENT ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/teaching/settings', async (req, res) => {
+app.get('/api/teaching/admin/departments', async (req, res) => {
   try {
-    const cached = getCache('teaching_settings', 60000);
-    if (cached) {
-      return res.json({
-        ...cached,
-        server_time: new Date()
+    const departments = await db.all(`
+      SELECT 
+        d.id, 
+        d.name, 
+        d.code, 
+        COALESCE(d.status, 'active') as status, 
+        d.created_at,
+        COUNT(DISTINCT u.id)::int as teacher_count,
+        COUNT(DISTINCT t.id)::int as slot_count,
+        COUNT(DISTINCT s.id)::int as allocation_count,
+        COALESCE(st.is_open, true) as is_open,
+        COALESCE(st.is_timetable_published, true) as is_timetable_published
+      FROM departments d
+      LEFT JOIN users u ON d.id = u.department_id AND u.role = 'teacher' AND COALESCE(u.is_active, true) = true
+      LEFT JOIN teacher_selection_timetable t ON d.id = t.department_id AND t.status = 'active'
+      LEFT JOIN teacher_selections s ON d.id = s.department_id
+      LEFT JOIN teacher_selection_settings st ON d.id = st.department_id
+      GROUP BY d.id, d.name, d.code, d.status, d.created_at, st.is_open, st.is_timetable_published
+      ORDER BY d.id ASC
+    `);
+    res.json(departments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/departments', async (req, res) => {
+  const { name, code, status, admin_id, admin_name } = req.body;
+  if (!name || !code) {
+    return res.status(400).json({ error: 'Department name and code are required' });
+  }
+  try {
+    const cleanName = name.trim();
+    const cleanCode = code.trim().toUpperCase();
+
+    const existing = await db.get(`SELECT id FROM departments WHERE UPPER(code) = $1 OR LOWER(name) = LOWER($2)`, [cleanCode, cleanName]);
+    if (existing) {
+      return res.status(400).json({ error: 'Department with this code or name already exists' });
+    }
+
+    const inserted = await db.run(`
+      INSERT INTO departments (name, code, status, created_at, updated_at)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      RETURNING id
+    `, [cleanName, cleanCode, status || 'active']);
+
+    const newDeptId = inserted.lastInsertRowid;
+
+    // Seed default settings for the new department
+    await db.query(`
+      INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
+      VALUES ($1, true, true, true, 2, 3)
+      ON CONFLICT (department_id) DO NOTHING
+    `, [newDeptId]);
+
+    // Seed default period settings for the new department (Sunday 1-9, Monday 1-9)
+    const timeSlots = {
+      1: '7:30–8:15', 2: '8:15–9:00', 3: '9:00–9:45', 4: '10:00–10:45',
+      5: '10:45–11:30', 6: '11:30–12:15', 7: '1:30–2:15', 8: '2:15–3:00', 9: '3:00–3:45'
+    };
+
+    for (const day of ['Sunday', 'Monday']) {
+      for (let p = 1; p <= 9; p++) {
+        await db.query(`
+          INSERT INTO teacher_selection_period_settings (department_id, day, period, time_slot, is_enabled)
+          VALUES ($1, $2, $3, $4, true)
+          ON CONFLICT (department_id, day, period) DO NOTHING
+        `, [newDeptId, day, p, timeSlots[p] || '']);
+      }
+    }
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Created Department: ${cleanName} (${cleanCode})`, { id: newDeptId }, newDeptId);
+    res.json({ message: 'Department created successfully', id: newDeptId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/teaching/admin/departments/:id', async (req, res) => {
+  const deptId = parseInt(req.params.id);
+  const { name, code, status, admin_id, admin_name } = req.body;
+  if (!deptId) return res.status(400).json({ error: 'Valid department ID required' });
+
+  try {
+    const cleanName = name ? name.trim() : undefined;
+    const cleanCode = code ? code.trim().toUpperCase() : undefined;
+
+    const existing = await db.get(`SELECT id FROM departments WHERE id = $1`, [deptId]);
+    if (!existing) return res.status(404).json({ error: 'Department not found' });
+
+    let sql = 'UPDATE departments SET updated_at = CURRENT_TIMESTAMP';
+    const params = [];
+
+    if (cleanName) {
+      params.push(cleanName);
+      sql += `, name = $${params.length}`;
+    }
+    if (cleanCode) {
+      params.push(cleanCode);
+      sql += `, code = $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      sql += `, status = $${params.length}`;
+    }
+
+    params.push(deptId);
+    sql += ` WHERE id = $${params.length}`;
+
+    await db.run(sql, params);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Department ID: ${deptId}`, { name: cleanName, code: cleanCode, status }, deptId);
+    res.json({ message: 'Department updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teaching/admin/departments/:id', async (req, res) => {
+  const deptId = parseInt(req.params.id);
+  const { admin_id, admin_name } = req.body;
+  if (!deptId) return res.status(400).json({ error: 'Valid department ID required' });
+  if (deptId === 1) return res.status(400).json({ error: 'Default MEDIA department cannot be deleted' });
+
+  try {
+    const [teachers, slots, selections] = await Promise.all([
+      db.get(`SELECT count(*)::int as count FROM users WHERE department_id = $1 AND role = 'teacher'`, [deptId]),
+      db.get(`SELECT count(*)::int as count FROM teacher_selection_timetable WHERE department_id = $1`, [deptId]),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE department_id = $1`, [deptId])
+    ]);
+
+    const totalUsage = (teachers?.count || 0) + (slots?.count || 0) + (selections?.count || 0);
+    if (totalUsage > 0) {
+      return res.status(400).json({
+        error: `Cannot delete department: It currently contains ${teachers?.count || 0} teachers, ${slots?.count || 0} timetable slots, and ${selections?.count || 0} selections. Please remove or reassign these first.`
       });
     }
 
-    let settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    await db.query(`DELETE FROM teacher_selection_period_settings WHERE department_id = $1`, [deptId]);
+    await db.query(`DELETE FROM teacher_selection_settings WHERE department_id = $1`, [deptId]);
+    await db.query(`DELETE FROM teacher_selection_classes WHERE department_id = $1`, [deptId]);
+    await db.query(`DELETE FROM teacher_selection_subjects WHERE department_id = $1`, [deptId]);
+    await db.query(`DELETE FROM departments WHERE id = $1`, [deptId]);
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted Department ID: ${deptId}`, {}, deptId);
+    res.json({ message: 'Department deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 1. SETTINGS & STATUS (DEPARTMENT-SCOPED)
+// -------------------------------------------------------------
+app.get('/api/teaching/settings', async (req, res) => {
+  try {
+    let departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    const teacherId = req.query.teacher_id ? parseInt(req.query.teacher_id) : null;
+
+    if (!departmentId && teacherId) {
+      const teacher = await db.get(`SELECT department_id FROM users WHERE id = $1`, [teacherId]);
+      if (teacher && teacher.department_id) {
+        departmentId = teacher.department_id;
+      }
+    }
+    if (!departmentId) departmentId = 1;
+
+    let settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [departmentId]);
+    if (!settings) {
+      settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id ASC LIMIT 1`);
+    }
     if (!settings) {
       settings = {
+        department_id: departmentId,
         is_open: true,
         is_timetable_published: true,
         allow_edit: true,
@@ -1619,9 +1796,13 @@ app.get('/api/teaching/settings', async (req, res) => {
         end_datetime: null
       };
     }
-    setCache('teaching_settings', settings);
+
+    const dept = await db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId]);
+
     res.json({
       ...settings,
+      department_name: dept ? dept.name : 'MEDIA',
+      department_code: dept ? dept.code : 'MEDIA',
       server_time: new Date()
     });
   } catch (err) {
@@ -1630,9 +1811,10 @@ app.get('/api/teaching/settings', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/settings', async (req, res) => {
-  const { start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, admin_name, admin_id } = req.body;
+  const { department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, admin_name, admin_id } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
   try {
-    const existing = await db.get(`SELECT id FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    const existing = await db.get(`SELECT id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
     if (existing) {
       await db.run(`
         UPDATE teacher_selection_settings
@@ -1651,9 +1833,10 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
       ]);
     } else {
       await db.run(`
-        INSERT INTO teacher_selection_settings (start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
+        deptId,
         start_datetime || null,
         end_datetime || null,
         is_open !== undefined ? is_open : true,
@@ -1664,12 +1847,10 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
       ]);
     }
 
-    invalidateCache('teaching_settings');
-    invalidateCache('teaching_slots');
-
-    await logTeacherAction(admin_id, admin_name || 'Admin', 'Updated Selection Settings', {
-      start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods
-    });
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Selection Settings for Dept ${deptId}`, {
+      department_id: deptId, start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods
+    }, deptId);
 
     res.json({ message: 'Settings saved successfully' });
   } catch (err) {
@@ -1678,12 +1859,22 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/toggle-status', async (req, res) => {
-  const { is_open, admin_id, admin_name } = req.body;
+  const { department_id, is_open, admin_id, admin_name } = req.body;
   try {
-    await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [is_open]);
-    invalidateCache('teaching_settings');
-    invalidateCache('teaching_slots');
-    await logTeacherAction(admin_id, admin_name || 'Admin', is_open ? 'Opened Subject Selection' : 'Closed Subject Selection');
+    if (department_id && department_id !== 'all') {
+      const deptId = parseInt(department_id);
+      await db.query(`
+        INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
+        VALUES ($1, $2, true, true, 2, 3, CURRENT_TIMESTAMP)
+        ON CONFLICT (department_id)
+        DO UPDATE SET is_open = EXCLUDED.is_open, updated_at = CURRENT_TIMESTAMP
+      `, [deptId, Boolean(is_open)]);
+    } else {
+      await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [Boolean(is_open)]);
+    }
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', is_open ? 'Opened Subject Selection' : 'Closed Subject Selection', { department_id }, department_id && department_id !== 'all' ? parseInt(department_id) : null);
     res.json({ message: `Subject Selection is now ${is_open ? 'OPEN' : 'CLOSED'}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1691,19 +1882,48 @@ app.post('/api/teaching/admin/toggle-status', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 2. PERIOD SETTINGS (Enable/Disable Unwanted Periods dynamically)
+// 2. PERIOD SETTINGS (DEPARTMENT-SCOPED)
 // -------------------------------------------------------------
 app.get('/api/teaching/period-settings', async (req, res) => {
   try {
-    const cached = getCache('teaching_period_settings', 60000);
-    if (cached) return res.json(cached);
+    let departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    const teacherId = req.query.teacher_id ? parseInt(req.query.teacher_id) : null;
 
-    const settings = await db.all(`
-      SELECT day, period, time_slot, is_enabled
+    if (!departmentId && teacherId) {
+      const teacher = await db.get(`SELECT department_id FROM users WHERE id = $1`, [teacherId]);
+      if (teacher && teacher.department_id) {
+        departmentId = teacher.department_id;
+      }
+    }
+    if (!departmentId) departmentId = 1;
+
+    let settings = await db.all(`
+      SELECT day, period, time_slot, is_enabled, department_id
       FROM teacher_selection_period_settings
+      WHERE department_id = $1
       ORDER BY CASE WHEN day = 'Sunday' THEN 1 ELSE 2 END, period ASC
-    `);
-    setCache('teaching_period_settings', settings);
+    `, [departmentId]);
+
+    if (settings.length === 0) {
+      // Return default period list if not yet customized
+      const timeSlots = {
+        1: '7:30–8:15', 2: '8:15–9:00', 3: '9:00–9:45', 4: '10:00–10:45',
+        5: '10:45–11:30', 6: '11:30–12:15', 7: '1:30–2:15', 8: '2:15–3:00', 9: '3:00–3:45'
+      };
+      settings = [];
+      for (const day of ['Sunday', 'Monday']) {
+        for (let p = 1; p <= 9; p++) {
+          settings.push({
+            day,
+            period: p,
+            time_slot: timeSlots[p] || '',
+            is_enabled: true,
+            department_id: departmentId
+          });
+        }
+      }
+    }
+
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1711,22 +1931,21 @@ app.get('/api/teaching/period-settings', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/period-settings/toggle', async (req, res) => {
-  const { day, period, is_enabled, admin_id, admin_name } = req.body;
+  const { department_id, day, period, is_enabled, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
   if (!day || period === undefined || is_enabled === undefined) {
     return res.status(400).json({ error: 'Missing day, period, or is_enabled status' });
   }
   try {
     await db.query(`
-      INSERT INTO teacher_selection_period_settings (day, period, is_enabled, updated_at)
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-      ON CONFLICT (day, period)
+      INSERT INTO teacher_selection_period_settings (department_id, day, period, is_enabled, updated_at)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+      ON CONFLICT (department_id, day, period)
       DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
-    `, [day, parseInt(period), Boolean(is_enabled)]);
+    `, [deptId, day, parseInt(period), Boolean(is_enabled)]);
 
-    invalidateCache('teaching_period_settings');
-    invalidateCache('teaching_slots');
-
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Period ${day} P${period} ${is_enabled ? 'Enabled' : 'Disabled'}`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Dept ${deptId} Period ${day} P${period} ${is_enabled ? 'Enabled' : 'Disabled'}`, {}, deptId);
     res.json({ message: `Period ${day} P${period} is now ${is_enabled ? 'AVAILABLE' : 'DISABLED'}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1734,22 +1953,22 @@ app.post('/api/teaching/admin/period-settings/toggle', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/period-settings/bulk', async (req, res) => {
-  const { settings, admin_id, admin_name } = req.body;
+  const { department_id, settings, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
   if (!Array.isArray(settings)) {
     return res.status(400).json({ error: 'Settings array required' });
   }
   try {
     for (const item of settings) {
       await db.query(`
-        INSERT INTO teacher_selection_period_settings (day, period, is_enabled, updated_at)
-        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-        ON CONFLICT (day, period)
+        INSERT INTO teacher_selection_period_settings (department_id, day, period, is_enabled, updated_at)
+        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+        ON CONFLICT (department_id, day, period)
         DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
-      `, [item.day, parseInt(item.period), Boolean(item.is_enabled)]);
+      `, [deptId, item.day, parseInt(item.period), Boolean(item.is_enabled)]);
     }
-    invalidateCache('teaching_period_settings');
-    invalidateCache('teaching_slots');
-    await logTeacherAction(admin_id, admin_name || 'Admin', 'Bulk updated period settings');
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Bulk updated period settings for Dept ${deptId}`, {}, deptId);
     res.json({ message: 'Period settings updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1757,10 +1976,19 @@ app.post('/api/teaching/admin/period-settings/bulk', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 3. TEACHER MANAGEMENT
+// 3. TEACHER MANAGEMENT (DEPARTMENT-SCOPED)
 // -------------------------------------------------------------
 app.get('/api/teaching/admin/teachers', async (req, res) => {
   try {
+    const departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    let whereClause = `WHERE u.role = 'teacher'`;
+    const params = [];
+
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      whereClause += ` AND u.department_id = $${params.length}`;
+    }
+
     const teachers = await db.all(`
       SELECT 
         u.id, 
@@ -1768,6 +1996,9 @@ app.get('/api/teaching/admin/teachers', async (req, res) => {
         u.full_name, 
         u.email, 
         u.phone,
+        u.department_id,
+        COALESCE(d.name, 'MEDIA') as department_name,
+        COALESCE(d.code, 'MEDIA') as department_code,
         COALESCE(u.is_active, true) as is_active, 
         u.created_at,
         COUNT(ts.id)::int as selected_count,
@@ -1784,11 +2015,12 @@ app.get('/api/teaching/admin/teachers', async (req, res) => {
           ) FILTER (WHERE ts.id IS NOT NULL), '[]'::json
         ) as selections
       FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN teacher_selections ts ON u.id = ts.teacher_id
-      WHERE u.role = 'teacher'
-      GROUP BY u.id
+      ${whereClause}
+      GROUP BY u.id, d.name, d.code
       ORDER BY u.full_name ASC
-    `);
+    `, params);
 
     const result = teachers.map(t => {
       let status = 'Pending';
@@ -1810,7 +2042,9 @@ app.get('/api/teaching/admin/teachers', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/teachers', async (req, res) => {
-  const { username, password, full_name, email, phone, admin_id, admin_name } = req.body;
+  const { department_id, username, password, full_name, email, phone, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+
   if (!username || !password || !full_name) {
     return res.status(400).json({ error: 'Username, password, and full name are required' });
   }
@@ -1822,12 +2056,13 @@ app.post('/api/teaching/admin/teachers', async (req, res) => {
     }
 
     const inserted = await db.run(`
-      INSERT INTO users (username, password, full_name, email, phone, role, is_active)
-      VALUES ($1, $2, $3, $4, $5, 'teacher', true)
+      INSERT INTO users (username, password, full_name, email, phone, role, department_id, is_active)
+      VALUES ($1, $2, $3, $4, $5, 'teacher', $6, true)
       RETURNING id
-    `, [cleanUsername, password.trim(), full_name.trim(), email || `${cleanUsername}@school.com`, phone || '']);
+    `, [cleanUsername, password.trim(), full_name.trim(), email || `${cleanUsername}@school.com`, phone || '', deptId]);
 
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Added Teacher: ${full_name}`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Added Teacher: ${full_name} to Dept ${deptId}`, {}, deptId);
     res.json({ message: 'Teacher added successfully', id: inserted.lastInsertRowid });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1836,10 +2071,15 @@ app.post('/api/teaching/admin/teachers', async (req, res) => {
 
 app.put('/api/teaching/admin/teachers/:id', async (req, res) => {
   const teacherId = req.params.id;
-  const { username, password, full_name, email, phone, is_active, admin_id, admin_name } = req.body;
+  const { department_id, username, password, full_name, email, phone, is_active, admin_id, admin_name } = req.body;
   try {
     let sql = `UPDATE users SET full_name = $1, email = $2, phone = $3, is_active = $4`;
     const params = [full_name.trim(), email || '', phone || '', is_active !== undefined ? Boolean(is_active) : true];
+
+    if (department_id) {
+      params.push(parseInt(department_id));
+      sql += `, department_id = $${params.length}`;
+    }
 
     if (username && username.trim() !== '') {
       sql += `, username = $${params.length + 1}`;
@@ -1854,7 +2094,8 @@ app.put('/api/teaching/admin/teachers/:id', async (req, res) => {
     params.push(teacherId);
 
     await db.run(sql, params);
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Teacher: ${full_name} (ID: ${teacherId})`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Teacher: ${full_name} (ID: ${teacherId})`, {}, department_id ? parseInt(department_id) : null);
     res.json({ message: 'Teacher updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1865,22 +2106,32 @@ app.delete('/api/teaching/admin/teachers/:id', async (req, res) => {
   const teacherId = req.params.id;
   const { admin_id, admin_name } = req.body;
   try {
-    const teacher = await db.get(`SELECT full_name FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    const teacher = await db.get(`SELECT full_name, department_id FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    await db.query(`DELETE FROM teacher_selections WHERE teacher_id = $1`, [teacherId]);
     await db.query(`DELETE FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted Teacher: ${teacher ? teacher.full_name : teacherId}`);
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted Teacher: ${teacher ? teacher.full_name : teacherId}`, {}, teacher ? teacher.department_id : null);
     res.json({ message: 'Teacher deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Bulk Import Teachers from CSV
+// Bulk Import Teachers from CSV (Department-aware)
 app.post('/api/teaching/admin/teachers/import-csv', async (req, res) => {
-  const { teachers, admin_id, admin_name } = req.body;
+  const { teachers, department_id, admin_id, admin_name } = req.body;
   if (!Array.isArray(teachers) || teachers.length === 0) {
     return res.status(400).json({ error: 'No teacher rows provided for import.' });
   }
+
+  const defaultDeptId = department_id ? parseInt(department_id) : 1;
+  const deptMap = {};
+  const allDepts = await db.all(`SELECT id, name, code FROM departments`);
+  allDepts.forEach(d => {
+    deptMap[d.code.toUpperCase()] = d.id;
+    deptMap[d.name.toUpperCase()] = d.id;
+    deptMap[d.id] = d.id;
+  });
 
   let importedCount = 0;
   let updatedCount = 0;
@@ -1895,6 +2146,13 @@ app.post('/api/teaching/admin/teachers/import-csv', async (req, res) => {
       const email = (row.email || (username ? `${username}@school.com` : '')).trim();
       const phone = (row.phone || row.mobile || row.contact || '').trim();
 
+      // Resolve department
+      let rowDept = (row.department || row.Department || row.dept || row.dept_code || '').toString().trim().toUpperCase();
+      let teacherDeptId = defaultDeptId;
+      if (rowDept && deptMap[rowDept]) {
+        teacherDeptId = deptMap[rowDept];
+      }
+
       if (!fullName) {
         errors.push(`Row ${i + 1}: Missing teacher name, skipped.`);
         continue;
@@ -1908,15 +2166,15 @@ app.post('/api/teaching/admin/teachers/import-csv', async (req, res) => {
       const existing = await db.get(`SELECT id FROM users WHERE LOWER(username) = $1`, [username]);
       if (existing) {
         await db.run(`
-          UPDATE users SET full_name = $1, email = $2, phone = $3, role = 'teacher', is_active = true
-          WHERE id = $4
-        `, [fullName, email, phone, existing.id]);
+          UPDATE users SET full_name = $1, email = $2, phone = $3, department_id = $4, role = 'teacher', is_active = true
+          WHERE id = $5
+        `, [fullName, email, phone, teacherDeptId, existing.id]);
         updatedCount++;
       } else {
         await db.run(`
-          INSERT INTO users (username, password, full_name, email, phone, role, is_active)
-          VALUES ($1, $2, $3, $4, $5, 'teacher', true)
-        `, [username, password, fullName, email, phone]);
+          INSERT INTO users (username, password, full_name, email, phone, role, department_id, is_active)
+          VALUES ($1, $2, $3, $4, $5, 'teacher', $6, true)
+        `, [username, password, fullName, email, phone, teacherDeptId]);
         importedCount++;
       }
     }
@@ -1934,26 +2192,48 @@ app.post('/api/teaching/admin/teachers/import-csv', async (req, res) => {
   }
 });
 
-// Clear All Teachers
+// Clear All Teachers (Scoped to department if provided)
 app.delete('/api/teaching/admin/teachers-clear-all', async (req, res) => {
-  const { admin_id, admin_name } = req.body;
+  const { department_id, admin_id, admin_name } = req.body;
   try {
-    await db.query(`DELETE FROM teacher_selections`);
-    const del = await db.query(`DELETE FROM users WHERE role = 'teacher'`);
-    invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Cleared all teachers from the database.`);
-    res.json({ message: `Successfully cleared ${del.rowCount || 0} teacher records.` });
+    if (department_id && department_id !== 'all') {
+      const deptId = parseInt(department_id);
+      await db.query(`DELETE FROM teacher_selections WHERE department_id = $1`, [deptId]);
+      const del = await db.query(`DELETE FROM users WHERE role = 'teacher' AND department_id = $1`, [deptId]);
+      invalidateCache('/api/teaching');
+      await logTeacherAction(admin_id, admin_name || 'Admin', `Cleared teachers for department ID: ${deptId}`, {}, deptId);
+      res.json({ message: `Successfully cleared ${del.rowCount || 0} teacher records for this department.` });
+    } else {
+      await db.query(`DELETE FROM teacher_selections`);
+      const del = await db.query(`DELETE FROM users WHERE role = 'teacher'`);
+      invalidateCache('/api/teaching');
+      await logTeacherAction(admin_id, admin_name || 'Admin', `Cleared all teachers from all departments.`);
+      res.json({ message: `Successfully cleared ${del.rowCount || 0} teacher records across all departments.` });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // -------------------------------------------------------------
-// 4. CLASSES & SUBJECTS MANAGEMENT
+// 4. CLASSES & SUBJECTS MANAGEMENT (DEPARTMENT-SCOPED)
 // -------------------------------------------------------------
 app.get('/api/teaching/admin/classes', async (req, res) => {
   try {
-    const classes = await db.all(`SELECT * FROM teacher_selection_classes ORDER BY sort_order ASC, name ASC`);
+    const departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    let sql = `
+      SELECT c.*, COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selection_classes c
+      LEFT JOIN departments d ON c.department_id = d.id
+    `;
+    const params = [];
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      sql += ` WHERE c.department_id = $1`;
+    }
+    sql += ` ORDER BY c.department_id ASC, c.sort_order ASC, c.name ASC`;
+
+    const classes = await db.all(sql, params);
     res.json(classes);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1961,14 +2241,15 @@ app.get('/api/teaching/admin/classes', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/classes', async (req, res) => {
-  const { name, sort_order } = req.body;
+  const { department_id, name, sort_order } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
   if (!name) return res.status(400).json({ error: 'Class name is required' });
   try {
     await db.query(`
-      INSERT INTO teacher_selection_classes (name, sort_order, status)
-      VALUES ($1, $2, 'active')
-      ON CONFLICT (name) DO NOTHING
-    `, [name.trim(), sort_order || 0]);
+      INSERT INTO teacher_selection_classes (department_id, name, sort_order, status)
+      VALUES ($1, $2, $3, 'active')
+      ON CONFLICT (department_id, name) DO NOTHING
+    `, [deptId, name.trim(), sort_order || 0]);
     res.json({ message: 'Class added successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1986,11 +2267,20 @@ app.delete('/api/teaching/admin/classes/:id', async (req, res) => {
 
 app.get('/api/teaching/admin/subjects', async (req, res) => {
   try {
-    const cached = getCache('teaching_subjects', 60000);
-    if (cached) return res.json(cached);
+    const departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    let sql = `
+      SELECT s.*, COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selection_subjects s
+      LEFT JOIN departments d ON s.department_id = d.id
+    `;
+    const params = [];
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      sql += ` WHERE s.department_id = $1`;
+    }
+    sql += ` ORDER BY s.department_id ASC, s.name ASC`;
 
-    const subjects = await db.all(`SELECT * FROM teacher_selection_subjects ORDER BY name ASC`);
-    setCache('teaching_subjects', subjects);
+    const subjects = await db.all(sql, params);
     res.json(subjects);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1998,15 +2288,15 @@ app.get('/api/teaching/admin/subjects', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/subjects', async (req, res) => {
-  const { name, code } = req.body;
+  const { department_id, name, code } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
   if (!name) return res.status(400).json({ error: 'Subject name is required' });
   try {
     await db.query(`
-      INSERT INTO teacher_selection_subjects (name, code, status)
-      VALUES ($1, $2, 'active')
-      ON CONFLICT (name) DO NOTHING
-    `, [name.trim(), (code || name).trim()]);
-    invalidateCache('teaching_subjects');
+      INSERT INTO teacher_selection_subjects (department_id, name, code, status)
+      VALUES ($1, $2, $3, 'active')
+      ON CONFLICT (department_id, name) DO NOTHING
+    `, [deptId, name.trim(), (code || name).trim()]);
     res.json({ message: 'Subject added successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2016,7 +2306,6 @@ app.post('/api/teaching/admin/subjects', async (req, res) => {
 app.delete('/api/teaching/admin/subjects/:id', async (req, res) => {
   try {
     await db.query(`DELETE FROM teacher_selection_subjects WHERE id = $1`, [req.params.id]);
-    invalidateCache('teaching_subjects');
     res.json({ message: 'Subject deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2024,16 +2313,32 @@ app.delete('/api/teaching/admin/subjects/:id', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 5. TIMETABLE MANAGEMENT & IMPORT
+// 5. TIMETABLE MANAGEMENT & IMPORT (DEPARTMENT-SCOPED)
 // -------------------------------------------------------------
 app.get('/api/teaching/timetable', async (req, res) => {
   try {
+    const departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    let whereClause = `WHERE 1=1`;
+    const params = [];
+
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      whereClause += ` AND t.department_id = $${params.length}`;
+    }
+
     const timetable = await db.all(`
-      SELECT t.*, ps.is_enabled as is_period_enabled
+      SELECT 
+        t.*, 
+        COALESCE(d.name, 'MEDIA') as department_name,
+        COALESCE(d.code, 'MEDIA') as department_code,
+        ps.is_enabled as is_period_enabled
       FROM teacher_selection_timetable t
-      LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
-      ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
-    `);
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
+      ${whereClause}
+      ORDER BY t.department_id ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+    `, params);
+
     res.json(timetable);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2041,10 +2346,19 @@ app.get('/api/teaching/timetable', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
-  const { rows } = req.body;
+  const { rows, department_id } = req.body;
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'No timetable rows provided' });
   }
+
+  const defaultDeptId = department_id ? parseInt(department_id) : 1;
+  const deptMap = {};
+  const allDepts = await db.all(`SELECT id, name, code FROM departments`);
+  allDepts.forEach(d => {
+    deptMap[d.code.toUpperCase()] = d.id;
+    deptMap[d.name.toUpperCase()] = d.id;
+    deptMap[d.id] = d.id;
+  });
 
   const validatedRows = [];
   const errors = [];
@@ -2053,6 +2367,12 @@ app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
   rows.forEach((r, idx) => {
     const rowNum = idx + 1;
     const rowErrors = [];
+
+    const rawDept = (r.department || r.Department || r.dept || r.dept_code || '').toString().trim().toUpperCase();
+    let rowDeptId = defaultDeptId;
+    if (rawDept && deptMap[rawDept]) {
+      rowDeptId = deptMap[rawDept];
+    }
 
     const rawDay = (r.day || r.Day || '').toString().trim();
     const rawPeriod = (r.period || r.Period || '').toString().trim().replace(/^P/i, '');
@@ -2076,11 +2396,11 @@ app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
     if (!rawClass) rowErrors.push('Class is required');
     if (!rawSubject) rowErrors.push('Subject is required');
 
-    // Duplicate key in upload check
-    const key = `${day}_${period}_${rawClass.toLowerCase()}`;
+    // Duplicate slot check scoped to department
+    const key = `${rowDeptId}_${day}_${period}_${rawClass.toLowerCase()}`;
     if (day && period && rawClass) {
       if (seenKeys.has(key)) {
-        rowErrors.push('Duplicate slot in uploaded file');
+        rowErrors.push('Duplicate slot in uploaded file for this department');
       } else {
         seenKeys.add(key);
       }
@@ -2090,8 +2410,12 @@ app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
       errors.push(`Row ${rowNum}: ${rowErrors.join(', ')}`);
     }
 
+    const deptObj = allDepts.find(d => d.id === rowDeptId);
+
     validatedRows.push({
       row_number: rowNum,
+      department_id: rowDeptId,
+      department_name: deptObj ? deptObj.name : 'MEDIA',
       day: day || rawDay,
       period: isNaN(period) ? rawPeriod : period,
       class_name: rawClass,
@@ -2112,14 +2436,20 @@ app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/timetable/confirm-import', async (req, res) => {
-  const { rows, mode, admin_id, admin_name } = req.body;
+  const { rows, mode, department_id, admin_id, admin_name } = req.body;
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'No rows to import' });
   }
 
+  const defaultDeptId = department_id ? parseInt(department_id) : 1;
+
   try {
     if (mode === 'replace') {
-      await db.query(`DELETE FROM teacher_selection_timetable`);
+      if (department_id && department_id !== 'all') {
+        await db.query(`DELETE FROM teacher_selection_timetable WHERE department_id = $1`, [defaultDeptId]);
+      } else {
+        await db.query(`DELETE FROM teacher_selection_timetable`);
+      }
     }
 
     for (const r of rows) {
@@ -2127,29 +2457,32 @@ app.post('/api/teaching/admin/timetable/confirm-import', async (req, res) => {
       const period = parseInt(r.period);
       if (isNaN(period)) continue;
 
+      const rowDeptId = r.department_id ? parseInt(r.department_id) : defaultDeptId;
+
       await db.query(`
-        INSERT INTO teacher_selection_timetable (class_name, day, period, time_slot, subject, status)
-        VALUES ($1, $2, $3, $4, $5, 'active')
-        ON CONFLICT (day, period, class_name)
+        INSERT INTO teacher_selection_timetable (department_id, class_name, day, period, time_slot, subject, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'active')
+        ON CONFLICT (department_id, day, period, class_name)
         DO UPDATE SET subject = EXCLUDED.subject, time_slot = COALESCE(EXCLUDED.time_slot, teacher_selection_timetable.time_slot);
-      `, [r.class_name.trim(), r.day.trim(), period, r.time_slot || '', r.subject.trim()]);
+      `, [rowDeptId, r.class_name.trim(), r.day.trim(), period, r.time_slot || '', r.subject.trim()]);
 
-      // Ensure class exists
+      // Ensure class exists for this department
       await db.query(`
-        INSERT INTO teacher_selection_classes (name, status)
-        VALUES ($1, 'active')
-        ON CONFLICT (name) DO NOTHING;
-      `, [r.class_name.trim()]);
+        INSERT INTO teacher_selection_classes (department_id, name, status)
+        VALUES ($1, $2, 'active')
+        ON CONFLICT (department_id, name) DO NOTHING;
+      `, [rowDeptId, r.class_name.trim()]);
 
-      // Ensure subject exists
+      // Ensure subject exists for this department
       await db.query(`
-        INSERT INTO teacher_selection_subjects (name, code, status)
-        VALUES ($1, $1, 'active')
-        ON CONFLICT (name) DO NOTHING;
-      `, [r.subject.trim()]);
+        INSERT INTO teacher_selection_subjects (department_id, name, code, status)
+        VALUES ($1, $2, $2, 'active')
+        ON CONFLICT (department_id, name) DO NOTHING;
+      `, [rowDeptId, r.subject.trim()]);
     }
 
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Imported Timetable (${rows.length} rows, mode: ${mode || 'merge'})`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Imported Timetable (${rows.length} rows, mode: ${mode || 'merge'}, dept: ${defaultDeptId})`, {}, defaultDeptId);
     res.json({ message: `Successfully imported ${rows.length} timetable entries` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2157,20 +2490,26 @@ app.post('/api/teaching/admin/timetable/confirm-import', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/timetable/entry', async (req, res) => {
-  const { day, period, class_name, subject, time_slot, admin_id, admin_name } = req.body;
+  const { department_id, day, period, class_name, subject, time_slot, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
   if (!day || !period || !class_name || !subject) {
     return res.status(400).json({ error: 'Day, Period, Class, and Subject are required' });
   }
   try {
     const periodNum = parseInt(period);
     await db.query(`
-      INSERT INTO teacher_selection_timetable (class_name, day, period, time_slot, subject, status)
-      VALUES ($1, $2, $3, $4, $5, 'active')
-      ON CONFLICT (day, period, class_name)
+      INSERT INTO teacher_selection_timetable (department_id, class_name, day, period, time_slot, subject, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'active')
+      ON CONFLICT (department_id, day, period, class_name)
       DO UPDATE SET subject = EXCLUDED.subject, time_slot = EXCLUDED.time_slot;
-    `, [class_name.trim(), day.trim(), periodNum, time_slot || '', subject.trim()]);
+    `, [deptId, class_name.trim(), day.trim(), periodNum, time_slot || '', subject.trim()]);
 
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Added/Updated timetable slot: ${day} P${periodNum} ${class_name} - ${subject}`);
+    // Ensure class & subject exist
+    await db.query(`INSERT INTO teacher_selection_classes (department_id, name, status) VALUES ($1, $2, 'active') ON CONFLICT (department_id, name) DO NOTHING`, [deptId, class_name.trim()]);
+    await db.query(`INSERT INTO teacher_selection_subjects (department_id, name, code, status) VALUES ($1, $2, $2, 'active') ON CONFLICT (department_id, name) DO NOTHING`, [deptId, subject.trim()]);
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Added/Updated timetable slot (Dept ${deptId}): ${day} P${periodNum} ${class_name} - ${subject}`, {}, deptId);
     res.json({ message: 'Timetable entry saved successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2180,8 +2519,10 @@ app.post('/api/teaching/admin/timetable/entry', async (req, res) => {
 app.delete('/api/teaching/admin/timetable/entry/:id', async (req, res) => {
   const { admin_id, admin_name } = req.body;
   try {
+    const entry = await db.get(`SELECT * FROM teacher_selection_timetable WHERE id = $1`, [req.params.id]);
     await db.query(`DELETE FROM teacher_selection_timetable WHERE id = $1`, [req.params.id]);
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted timetable slot ID: ${req.params.id}`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Deleted timetable slot ID: ${req.params.id}`, {}, entry ? entry.department_id : null);
     res.json({ message: 'Timetable slot deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2194,10 +2535,30 @@ app.delete('/api/teaching/admin/timetable/entry/:id', async (req, res) => {
 app.get('/api/teaching/slots', async (req, res) => {
   const teacherId = parseInt(req.query.teacher_id);
   try {
-    const [slots, periodSettings, settings] = await Promise.all([
+    let departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    let teacherDeptName = 'MEDIA';
+
+    if (teacherId) {
+      const teacher = await db.get(`
+        SELECT u.id, u.full_name, u.department_id, COALESCE(d.name, 'MEDIA') as department_name
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE u.id = $1
+      `, [teacherId]);
+
+      if (teacher && teacher.department_id) {
+        departmentId = teacher.department_id;
+        teacherDeptName = teacher.department_name;
+      }
+    }
+
+    if (!departmentId) departmentId = 1;
+
+    const [slots, periodSettings, settings, dept] = await Promise.all([
       db.all(`
         SELECT 
           t.id, 
+          t.department_id,
           t.day, 
           t.period, 
           t.time_slot, 
@@ -2208,14 +2569,15 @@ app.get('/api/teaching/slots', async (req, res) => {
           u.full_name as selected_teacher_name,
           ps.is_enabled as is_period_enabled
         FROM teacher_selection_timetable t
-        LEFT JOIN teacher_selections ts ON t.day = ts.day AND t.period = ts.period AND t.class_name = ts.class_name
+        LEFT JOIN teacher_selections ts ON t.department_id = ts.department_id AND t.day = ts.day AND t.period = ts.period AND t.class_name = ts.class_name
         LEFT JOIN users u ON ts.teacher_id = u.id
-        LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
-        WHERE t.status = 'active'
+        LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
+        WHERE t.department_id = $1 AND t.status = 'active'
         ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
-      `),
-      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings`),
-      db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`)
+      `, [departmentId]),
+      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [departmentId]),
+      db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [departmentId]),
+      db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId])
     ]);
 
     const formattedSlots = slots.map(s => {
@@ -2234,6 +2596,7 @@ app.get('/api/teaching/slots', async (req, res) => {
 
       return {
         id: s.id,
+        department_id: s.department_id,
         day: s.day,
         period: s.period,
         time_slot: s.time_slot,
@@ -2247,6 +2610,8 @@ app.get('/api/teaching/slots', async (req, res) => {
     });
 
     res.json({
+      department_id: departmentId,
+      department_name: dept ? dept.name : teacherDeptName,
       slots: formattedSlots,
       period_settings: periodSettings,
       settings: settings || {}
@@ -2256,7 +2621,7 @@ app.get('/api/teaching/slots', async (req, res) => {
   }
 });
 
-// Select Slot with full atomic clash prevention
+// Select Slot with full atomic Department-Isolated clash prevention
 app.post('/api/teaching/select', async (req, res) => {
   const { teacher_id, timetable_id } = req.body;
   if (!teacher_id || !timetable_id) {
@@ -2264,11 +2629,35 @@ app.post('/api/teaching/select', async (req, res) => {
   }
 
   try {
-    // 1. Validate Selection Settings & Window
-    const settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    // 1. Authenticate & validate teacher server-side
+    const teacher = await db.get(`
+      SELECT u.id, u.full_name, u.role, u.is_active, u.department_id, COALESCE(d.name, 'MEDIA') as department_name
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE u.id = $1 AND u.role = 'teacher'
+    `, [teacher_id]);
+
+    if (!teacher || teacher.is_active === false) {
+      return res.status(403).json({ error: 'Teacher account is inactive or not authorized.' });
+    }
+
+    const teacherDeptId = teacher.department_id || 1;
+
+    // 2. Validate Timetable Slot belongs to teacher's department
+    const slot = await db.get(`SELECT * FROM teacher_selection_timetable WHERE id = $1 AND status = 'active'`, [timetable_id]);
+    if (!slot) {
+      return res.status(404).json({ error: 'Timetable slot does not exist or is inactive.' });
+    }
+
+    if (slot.department_id !== teacherDeptId) {
+      return res.status(403).json({ error: 'Forbidden: You can only select timetable slots from your own department.' });
+    }
+
+    // 3. Validate Selection Settings & Window for teacher's department
+    const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [teacherDeptId]);
     if (settings) {
       if (!settings.is_open) {
-        return res.status(400).json({ error: 'Subject selection is currently closed.' });
+        return res.status(400).json({ error: 'Subject selection is currently closed for your department.' });
       }
       const now = new Date();
       if (settings.start_datetime && new Date(settings.start_datetime) > now) {
@@ -2282,27 +2671,15 @@ app.post('/api/teaching/select', async (req, res) => {
       }
     }
 
-    // 2. Validate Teacher
-    const teacher = await db.get(`SELECT id, full_name, role, is_active FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]);
-    if (!teacher || teacher.is_active === false) {
-      return res.status(403).json({ error: 'Teacher account is inactive or not authorized.' });
-    }
-
-    // 3. Validate Timetable Slot
-    const slot = await db.get(`SELECT * FROM teacher_selection_timetable WHERE id = $1 AND status = 'active'`, [timetable_id]);
-    if (!slot) {
-      return res.status(404).json({ error: 'Timetable slot does not exist or is inactive.' });
-    }
-
-    // 4. Validate Period Settings (Admin enable/disable control)
+    // 4. Validate Period Settings for teacher's department
     const periodSetting = await db.get(`
-      SELECT is_enabled FROM teacher_selection_period_settings WHERE day = $1 AND period = $2
-    `, [slot.day, slot.period]);
+      SELECT is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 AND day = $2 AND period = $3
+    `, [teacherDeptId, slot.day, slot.period]);
     if (periodSetting && periodSetting.is_enabled === false) {
       return res.status(400).json({ error: `This period (${slot.day} Period ${slot.period}) has been disabled by the administrator.` });
     }
 
-    // 5. Validate Selection Count Limit (Max 3)
+    // 5. Validate Selection Count Limit (Min/Max periods)
     const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);
     const currentCount = countRes ? countRes.count : 0;
     const maxPeriods = settings ? (settings.max_periods || 3) : 3;
@@ -2320,28 +2697,26 @@ app.post('/api/teaching/select', async (req, res) => {
       return res.status(400).json({ error: `You have already selected a class (${teacherClash.class_name} - ${teacherClash.subject}) for ${slot.day} Period ${slot.period}.` });
     }
 
-    // 7. RULE 2 — CLASS CLASH (Same day, same period, same class already taken by another teacher)
+    // 7. RULE 2 — CLASS CLASH (Same department, same day, same period, same class already taken by another teacher)
     const classClash = await db.get(`
       SELECT s.id, u.full_name as teacher_name
       FROM teacher_selections s
       JOIN users u ON s.teacher_id = u.id
-      WHERE s.day = $1 AND s.period = $2 AND s.class_name = $3
-    `, [slot.day, slot.period, slot.class_name]);
+      WHERE s.department_id = $1 AND s.day = $2 AND s.period = $3 AND s.class_name = $4
+    `, [teacherDeptId, slot.day, slot.period, slot.class_name]);
     if (classClash) {
       return res.status(409).json({ error: `This class has already been selected by ${classClash.teacher_name} for this period.` });
     }
 
     // 8. Atomic Insert into teacher_selections
     const inserted = await db.run(`
-      INSERT INTO teacher_selections (teacher_id, timetable_id, day, period, class_name, subject, status)
-      VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')
+      INSERT INTO teacher_selections (teacher_id, timetable_id, department_id, day, period, class_name, subject, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed')
       RETURNING id
-    `, [teacher_id, slot.id, slot.day, slot.period, slot.class_name, slot.subject]);
+    `, [teacher_id, slot.id, teacherDeptId, slot.day, slot.period, slot.class_name, slot.subject]);
 
-    invalidateCache('teaching_slots');
-    invalidateCache('teaching_stats');
-
-    await logTeacherAction(teacher_id, teacher.full_name, `Selected: ${slot.day} P${slot.period} ${slot.class_name} (${slot.subject})`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(teacher_id, teacher.full_name, `Selected: ${slot.day} P${slot.period} ${slot.class_name} (${slot.subject})`, {}, teacherDeptId);
 
     res.json({
       message: 'Period selected successfully',
@@ -2349,11 +2724,11 @@ app.post('/api/teaching/select', async (req, res) => {
       selected_count: currentCount + 1
     });
   } catch (err) {
-    if (err.message && err.message.includes('uq_ts_teacher_day_period')) {
+    if (err.message && (err.message.includes('uq_ts_teacher_day_period') || err.message.includes('unique_teacher_day_period'))) {
       return res.status(400).json({ error: 'You already selected a class for this period.' });
     }
-    if (err.message && err.message.includes('uq_ts_class_day_period')) {
-      return res.status(409).json({ error: 'This slot was just selected by another teacher.' });
+    if (err.message && (err.message.includes('uq_ts_class_dept_day_period') || err.message.includes('uq_ts_class_day_period'))) {
+      return res.status(409).json({ error: 'This slot was just selected by another teacher in your department.' });
     }
     res.status(500).json({ error: err.message });
   }
@@ -2366,15 +2741,6 @@ app.post('/api/teaching/remove', async (req, res) => {
     return res.status(400).json({ error: 'Teacher ID and Selection ID are required' });
   }
   try {
-    // Check if selection window is open
-    const settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
-    if (settings) {
-      const now = new Date();
-      if (!settings.is_open || (settings.end_datetime && new Date(settings.end_datetime) < now)) {
-        return res.status(400).json({ error: 'Subject selection has closed. Edits are no longer allowed.' });
-      }
-    }
-
     const selection = await db.get(`
       SELECT s.*, u.full_name as teacher_name
       FROM teacher_selections s
@@ -2386,10 +2752,18 @@ app.post('/api/teaching/remove', async (req, res) => {
       return res.status(404).json({ error: 'Selection not found or unauthorized' });
     }
 
+    // Check if selection window is open for this department
+    const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [selection.department_id]);
+    if (settings) {
+      const now = new Date();
+      if (!settings.is_open || (settings.end_datetime && new Date(settings.end_datetime) < now)) {
+        return res.status(400).json({ error: 'Subject selection has closed. Edits are no longer allowed.' });
+      }
+    }
+
     await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
-    invalidateCache('teaching_slots');
-    invalidateCache('teaching_stats');
-    await logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id);
 
     res.json({ message: 'Selection removed successfully' });
   } catch (err) {
@@ -2397,21 +2771,22 @@ app.post('/api/teaching/remove', async (req, res) => {
   }
 });
 
-// Submit Selection (Validate 2 to 3 periods limit)
+// Submit Selection
 app.post('/api/teaching/submit', async (req, res) => {
   const { teacher_id } = req.body;
   if (!teacher_id) return res.status(400).json({ error: 'Teacher ID is required' });
 
   try {
-    const settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`);
+    const teacher = await db.get(`SELECT id, full_name, department_id FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]);
+    if (!teacher) return res.status(404).json({ error: 'Teacher not found' });
+
+    const deptId = teacher.department_id || 1;
+    const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
     const minPeriods = settings ? (settings.min_periods || 2) : 2;
 
-    const [teacher, countRes] = await Promise.all([
-      db.get(`SELECT full_name FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]),
-      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id])
-    ]);
-
+    const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);
     const count = countRes ? countRes.count : 0;
+
     if (count < minPeriods) {
       return res.status(400).json({ error: `Please select at least ${minPeriods} periods before submitting (Current: ${count}).` });
     }
@@ -2422,9 +2797,8 @@ app.post('/api/teaching/submit', async (req, res) => {
       WHERE teacher_id = $1
     `, [teacher_id]);
 
-    invalidateCache('teaching_slots');
-    invalidateCache('teaching_stats');
-    await logTeacherAction(teacher_id, teacher ? teacher.full_name : 'Teacher', `Finalized and submitted ${count} teaching periods.`);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(teacher_id, teacher.full_name, `Finalized and submitted ${count} teaching periods.`, {}, deptId);
 
     res.json({
       message: 'Selections submitted successfully!',
@@ -2440,18 +2814,30 @@ app.get('/api/teaching/my-selections', async (req, res) => {
   const teacherId = parseInt(req.query.teacher_id);
   if (!teacherId) return res.status(400).json({ error: 'Teacher ID required' });
   try {
+    const teacher = await db.get(`
+      SELECT u.id, u.department_id, COALESCE(d.name, 'MEDIA') as department_name
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE u.id = $1
+    `, [teacherId]);
+
+    const deptId = teacher ? (teacher.department_id || 1) : 1;
+
     const [selections, settings] = await Promise.all([
       db.all(`
-        SELECT s.*, t.time_slot
+        SELECT s.*, t.time_slot, COALESCE(d.name, 'MEDIA') as department_name
         FROM teacher_selections s
         LEFT JOIN teacher_selection_timetable t ON s.timetable_id = t.id
+        LEFT JOIN departments d ON s.department_id = d.id
         WHERE s.teacher_id = $1
         ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
       `, [teacherId]),
-      db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`)
+      db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId])
     ]);
 
     res.json({
+      department_id: deptId,
+      department_name: teacher ? teacher.department_name : 'MEDIA',
       selections,
       total_selected: selections.length,
       is_submitted: selections.length >= 2,
@@ -2463,10 +2849,32 @@ app.get('/api/teaching/my-selections', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 7. ADMIN REPORTS & DASHBOARD METRICS
+// 7. ADMIN REPORTS & DASHBOARD METRICS (DEPARTMENT-SCOPED)
 // -------------------------------------------------------------
 app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
   try {
+    const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
+
+    let teacherWhere = `WHERE role = 'teacher' AND COALESCE(is_active, true) = true`;
+    let slotWhere = `WHERE status = 'active'`;
+    let selectWhere = `WHERE 1=1`;
+    let periodWhere = `WHERE is_enabled = false`;
+    let sunWhere = `WHERE day = 'Sunday'`;
+    let monWhere = `WHERE day = 'Monday'`;
+    let settingsWhere = `WHERE 1=1`;
+    const params = [];
+
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      teacherWhere += ` AND department_id = $1`;
+      slotWhere += ` AND department_id = $1`;
+      selectWhere += ` AND department_id = $1`;
+      periodWhere += ` AND department_id = $1`;
+      sunWhere += ` AND department_id = $1`;
+      monWhere += ` AND department_id = $1`;
+      settingsWhere += ` AND department_id = $1`;
+    }
+
     const [
       totalTeachersRes,
       totalTimetableSlotsRes,
@@ -2474,25 +2882,40 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       disabledPeriodsRes,
       sundayAllocRes,
       mondayAllocRes,
-      settings
+      settings,
+      departmentsSummary
     ] = await Promise.all([
-      db.get(`SELECT count(*)::int as count FROM users WHERE role = 'teacher' AND COALESCE(is_active, true) = true`),
-      db.get(`SELECT count(*)::int as count FROM teacher_selection_timetable WHERE status = 'active'`),
-      db.get(`SELECT count(*)::int as count FROM teacher_selections`),
-      db.get(`SELECT count(*)::int as count FROM teacher_selection_period_settings WHERE is_enabled = false`),
-      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE day = 'Sunday'`),
-      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE day = 'Monday'`),
-      db.get(`SELECT * FROM teacher_selection_settings ORDER BY id DESC LIMIT 1`)
+      db.get(`SELECT count(*)::int as count FROM users ${teacherWhere}`, params),
+      db.get(`SELECT count(*)::int as count FROM teacher_selection_timetable ${slotWhere}`, params),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections ${selectWhere}`, params),
+      db.get(`SELECT count(*)::int as count FROM teacher_selection_period_settings ${periodWhere}`, params),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections ${sunWhere}`, params),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections ${monWhere}`, params),
+      db.get(`SELECT * FROM teacher_selection_settings ${settingsWhere} ORDER BY id DESC LIMIT 1`, params),
+      db.all(`
+        SELECT 
+          d.id, d.name, d.code,
+          COUNT(DISTINCT u.id)::int as teacher_count,
+          COUNT(DISTINCT t.id)::int as slot_count,
+          COUNT(DISTINCT s.id)::int as allocation_count
+        FROM departments d
+        LEFT JOIN users u ON d.id = u.department_id AND u.role = 'teacher' AND COALESCE(u.is_active, true) = true
+        LEFT JOIN teacher_selection_timetable t ON d.id = t.department_id AND t.status = 'active'
+        LEFT JOIN teacher_selections s ON d.id = s.department_id
+        GROUP BY d.id
+        ORDER BY d.id ASC
+      `)
     ]);
 
     // Teacher completion breakdown
-    const teacherCounts = await db.all(`
+    let teacherCountSql = `
       SELECT u.id, count(ts.id)::int as count
       FROM users u
       LEFT JOIN teacher_selections ts ON u.id = ts.teacher_id
-      WHERE u.role = 'teacher' AND COALESCE(u.is_active, true) = true
+      ${teacherWhere}
       GROUP BY u.id
-    `);
+    `;
+    const teacherCounts = await db.all(teacherCountSql, params);
 
     let completed = 0;
     let inProgress = 0;
@@ -2511,6 +2934,7 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
     const remainingSlots = Math.max(0, totalSlots - totalAllocations);
 
     res.json({
+      department_id: departmentId || 'all',
       total_teachers: totalTeachers,
       completed_teachers: completed,
       in_progress_teachers: inProgress,
@@ -2522,22 +2946,35 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       sunday_allocations: sundayAllocRes ? sundayAllocRes.count : 0,
       monday_allocations: mondayAllocRes ? mondayAllocRes.count : 0,
       is_open: settings ? settings.is_open : true,
-      settings: settings || {}
+      settings: settings || {},
+      departments_summary: departmentsSummary
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Teacher-Wise Report
+// Teacher-Wise Report (Department-scoped)
 app.get('/api/teaching/admin/reports/teacher-wise', async (req, res) => {
   try {
+    const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
+    let whereClause = `WHERE u.role = 'teacher'`;
+    const params = [];
+
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      whereClause += ` AND u.department_id = $${params.length}`;
+    }
+
     const data = await db.all(`
       SELECT 
         u.id as teacher_id, 
         u.full_name as teacher_name, 
         u.username,
         u.phone,
+        u.department_id,
+        COALESCE(d.name, 'MEDIA') as department_name,
+        COALESCE(d.code, 'MEDIA') as department_code,
         COALESCE(
           json_agg(
             json_build_object(
@@ -2553,12 +2990,13 @@ app.get('/api/teaching/admin/reports/teacher-wise', async (req, res) => {
         ) as periods,
         COUNT(s.id)::int as total_periods
       FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN teacher_selections s ON u.id = s.teacher_id
       LEFT JOIN teacher_selection_timetable t ON s.timetable_id = t.id
-      WHERE u.role = 'teacher'
-      GROUP BY u.id
-      ORDER BY u.full_name ASC
-    `);
+      ${whereClause}
+      GROUP BY u.id, d.name, d.code
+      ORDER BY d.name ASC, u.full_name ASC
+    `, params);
 
     const result = data.map(item => ({
       ...item,
@@ -2571,12 +3009,23 @@ app.get('/api/teaching/admin/reports/teacher-wise', async (req, res) => {
   }
 });
 
-// Class-Wise Report
+// Class-Wise Report (Department-scoped)
 app.get('/api/teaching/admin/reports/class-wise', async (req, res) => {
   try {
+    const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
+    let whereClause = `WHERE 1=1`;
+    const params = [];
+
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      whereClause += ` AND t.department_id = $${params.length}`;
+    }
+
     const data = await db.all(`
       SELECT 
         t.class_name,
+        t.department_id,
+        COALESCE(d.name, 'MEDIA') as department_name,
         t.day,
         t.period,
         t.time_slot,
@@ -2585,19 +3034,22 @@ app.get('/api/teaching/admin/reports/class-wise', async (req, res) => {
         u.full_name as teacher_name,
         ps.is_enabled as is_period_enabled
       FROM teacher_selection_timetable t
-      LEFT JOIN teacher_selections s ON t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN teacher_selections s ON t.department_id = s.department_id AND t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
       LEFT JOIN users u ON s.teacher_id = u.id
-      LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
-      ORDER BY t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC
-    `);
+      LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
+      ${whereClause}
+      ORDER BY d.name ASC, t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC
+    `, params);
 
-    // Group by class_name
+    // Group by class_name or department + class_name
     const classMap = {};
     data.forEach(row => {
-      if (!classMap[row.class_name]) {
-        classMap[row.class_name] = [];
+      const groupKey = departmentId ? row.class_name : `${row.class_name} (${row.department_name})`;
+      if (!classMap[groupKey]) {
+        classMap[groupKey] = [];
       }
-      classMap[row.class_name].push(row);
+      classMap[groupKey].push(row);
     });
 
     res.json(classMap);
@@ -2606,10 +3058,12 @@ app.get('/api/teaching/admin/reports/class-wise', async (req, res) => {
   }
 });
 
-// Timetable Matrix Grid Report (Sunday and Monday tabs)
+// Timetable Matrix Grid Report (Department-scoped)
 app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
   try {
-    const [slots, classes, periodSettings] = await Promise.all([
+    const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : 1;
+
+    const [slots, classes, periodSettings, dept] = await Promise.all([
       db.all(`
         SELECT 
           t.day,
@@ -2617,19 +3071,26 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
           t.class_name,
           t.subject,
           t.time_slot,
+          t.department_id,
+          COALESCE(d.name, 'MEDIA') as department_name,
           u.full_name as teacher_name,
           ps.is_enabled as is_period_enabled
         FROM teacher_selection_timetable t
-        LEFT JOIN teacher_selections s ON t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
+        LEFT JOIN departments d ON t.department_id = d.id
+        LEFT JOIN teacher_selections s ON t.department_id = s.department_id AND t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
         LEFT JOIN users u ON s.teacher_id = u.id
-        LEFT JOIN teacher_selection_period_settings ps ON t.day = ps.day AND t.period = ps.period
+        LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
+        WHERE t.department_id = $1
         ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
-      `),
-      db.all(`SELECT name FROM teacher_selection_classes ORDER BY sort_order ASC, name ASC`),
-      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings ORDER BY period ASC`)
+      `, [departmentId]),
+      db.all(`SELECT name FROM teacher_selection_classes WHERE department_id = $1 ORDER BY sort_order ASC, name ASC`, [departmentId]),
+      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 ORDER BY period ASC`, [departmentId]),
+      db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId])
     ]);
 
     res.json({
+      department_id: departmentId,
+      department_name: dept ? dept.name : 'MEDIA',
       slots,
       classes: classes.map(c => c.name),
       period_settings: periodSettings
@@ -2639,27 +3100,39 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
   }
 });
 
-// Audit Logs
+// Audit Logs (Department-scoped)
 app.get('/api/teaching/admin/audit-logs', async (req, res) => {
   try {
-    const logs = await db.all(`
-      SELECT * FROM teacher_selection_audit_logs
-      ORDER BY created_at DESC
-      LIMIT 100
-    `);
+    const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
+    let sql = `
+      SELECT a.*, COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selection_audit_logs a
+      LEFT JOIN departments d ON a.department_id = d.id
+    `;
+    const params = [];
+    if (departmentId && !isNaN(departmentId)) {
+      params.push(departmentId);
+      sql += ` WHERE a.department_id = $1`;
+    }
+    sql += ` ORDER BY a.created_at DESC LIMIT 100`;
+
+    const logs = await db.all(sql, params);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// CSV Export Endpoint
+// CSV Export Endpoint (Department-aware)
 app.get('/api/teaching/admin/export/:type', async (req, res) => {
   const { type } = req.params;
+  const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
+
   try {
     if (type === 'teacher-wise') {
-      const data = await db.all(`
+      let sql = `
         SELECT 
+          COALESCE(d.name, 'MEDIA') as "Department",
           u.full_name as "Teacher Name",
           u.username as "Username",
           u.phone as "Phone",
@@ -2669,14 +3142,22 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
           s.subject as "Subject",
           s.selected_at as "Selected Time"
         FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
         LEFT JOIN teacher_selections s ON u.id = s.teacher_id
         WHERE u.role = 'teacher'
-        ORDER BY u.full_name ASC, CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
-      `);
+      `;
+      const params = [];
+      if (departmentId) {
+        params.push(departmentId);
+        sql += ` AND u.department_id = $1`;
+      }
+      sql += ` ORDER BY d.name ASC, u.full_name ASC, CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC`;
 
-      let csv = 'Teacher Name,Username,Phone,Day,Period,Class,Subject,Selected Time\n';
+      const data = await db.all(sql, params);
+
+      let csv = 'Department,Teacher Name,Username,Phone,Day,Period,Class,Subject,Selected Time\n';
       data.forEach(r => {
-        csv += `"${r['Teacher Name'] || ''}","${r['Username'] || ''}","${r['Phone'] || ''}","${r['Day'] || '—'}","${r['Period'] || '—'}","${r['Class'] || '—'}","${r['Subject'] || '—'}","${r['Selected Time'] || '—'}"\n`;
+        csv += `"${r['Department'] || ''}","${r['Teacher Name'] || ''}","${r['Username'] || ''}","${r['Phone'] || ''}","${r['Day'] || '—'}","${r['Period'] || '—'}","${r['Class'] || '—'}","${r['Subject'] || '—'}","${r['Selected Time'] || '—'}"\n`;
       });
 
       res.setHeader('Content-Type', 'text/csv');
@@ -2685,8 +3166,9 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
     }
 
     if (type === 'class-wise') {
-      const data = await db.all(`
+      let sql = `
         SELECT 
+          COALESCE(d.name, 'MEDIA') as "Department",
           t.class_name as "Class",
           t.day as "Day",
           t.period as "Period",
@@ -2694,14 +3176,22 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
           t.subject as "Subject",
           COALESCE(u.full_name, 'Unassigned') as "Assigned Teacher"
         FROM teacher_selection_timetable t
-        LEFT JOIN teacher_selections s ON t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
+        LEFT JOIN departments d ON t.department_id = d.id
+        LEFT JOIN teacher_selections s ON t.department_id = s.department_id AND t.day = s.day AND t.period = s.period AND t.class_name = s.class_name
         LEFT JOIN users u ON s.teacher_id = u.id
-        ORDER BY t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC
-      `);
+      `;
+      const params = [];
+      if (departmentId) {
+        params.push(departmentId);
+        sql += ` WHERE t.department_id = $1`;
+      }
+      sql += ` ORDER BY d.name ASC, t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC`;
 
-      let csv = 'Class,Day,Period,Time Slot,Subject,Assigned Teacher\n';
+      const data = await db.all(sql, params);
+
+      let csv = 'Department,Class,Day,Period,Time Slot,Subject,Assigned Teacher\n';
       data.forEach(r => {
-        csv += `"${r['Class']}","${r['Day']}","${r['Period']}","${r['Time Slot']}","${r['Subject']}","${r['Assigned Teacher']}"\n`;
+        csv += `"${r['Department']}","${r['Class']}","${r['Day']}","${r['Period']}","${r['Time Slot']}","${r['Subject']}","${r['Assigned Teacher']}"\n`;
       });
 
       res.setHeader('Content-Type', 'text/csv');
@@ -2710,9 +3200,10 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
     }
 
     if (type === 'all-allocations') {
-      const data = await db.all(`
+      let sql = `
         SELECT 
           s.id as "Allocation ID",
+          COALESCE(d.name, 'MEDIA') as "Department",
           u.full_name as "Teacher",
           s.day as "Day",
           s.period as "Period",
@@ -2720,13 +3211,21 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
           s.subject as "Subject",
           s.selected_at as "Timestamp"
         FROM teacher_selections s
+        LEFT JOIN departments d ON s.department_id = d.id
         JOIN users u ON s.teacher_id = u.id
-        ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC, s.class_name ASC
-      `);
+      `;
+      const params = [];
+      if (departmentId) {
+        params.push(departmentId);
+        sql += ` WHERE s.department_id = $1`;
+      }
+      sql += ` ORDER BY d.name ASC, CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC, s.class_name ASC`;
 
-      let csv = 'Allocation ID,Teacher,Day,Period,Class,Subject,Timestamp\n';
+      const data = await db.all(sql, params);
+
+      let csv = 'Allocation ID,Department,Teacher,Day,Period,Class,Subject,Timestamp\n';
       data.forEach(r => {
-        csv += `"${r['Allocation ID']}","${r['Teacher']}","${r['Day']}","${r['Period']}","${r['Class']}","${r['Subject']}","${r['Timestamp']}"\n`;
+        csv += `"${r['Allocation ID']}","${r['Department']}","${r['Teacher']}","${r['Day']}","${r['Period']}","${r['Class']}","${r['Subject']}","${r['Timestamp']}"\n`;
       });
 
       res.setHeader('Content-Type', 'text/csv');

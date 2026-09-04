@@ -102,6 +102,54 @@ app.post('/api/admin/upload-pdf', (req, res) => {
 });
 
 // -------------------------------------------------------------
+// SAMPLE CSV FILE DOWNLOAD ENDPOINTS
+// -------------------------------------------------------------
+app.get(['/api/sample/teachers.csv', '/api/teaching/sample-teachers-csv'], (req, res) => {
+  const csv = `Full Name,Username,Password,Phone,Email
+Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
+Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
+Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
+Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="sample_teachers_template.csv"');
+  res.send(csv);
+});
+
+app.get(['/api/sample/timetable.csv', '/api/teaching/sample-timetable-csv'], (req, res) => {
+  const csv = `Day,Period,Time,Class,Subject
+Sunday,1,7:30–8:15,Std 1,MTS
+Sunday,2,8:15–9:00,Std 1,TJWD
+Sunday,1,7:30–8:15,Std 2,S S
+Monday,1,7:30–8:15,Std 1,S S
+Monday,2,8:15–9:00,Std 1,ENG`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="sample_timetable_template.csv"');
+  res.send(csv);
+});
+
+app.get('/api/sample/students.csv', (req, res) => {
+  const csv = `Roll Number,Admission No,Name
+1,4049,MOHAMMED SWALIH O
+2,4075,MUHAMMAD AYMAN ABDUSSAMAD
+3,4081,MUZAMMIL N A
+4,4074,ABDURAHEEM. M. P
+5,4062,MUHAMMED FARHAN NV`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="sample_students_template.csv"');
+  res.send(csv);
+});
+
+app.get('/api/sample/questions.csv', (req, res) => {
+  const csv = `question_text,option_a,option_b,option_c,option_d,correct_option,marks
+What is the capital of France?,London,Berlin,Paris,Madrid,C,5
+What is 5 + 7?,10,12,14,15,B,5
+Which HTML tag creates a hyperlink?,<link>,<a>,<href>,<url>,B,5`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="sample_questions_template.csv"');
+  res.send(csv);
+});
+
+// -------------------------------------------------------------
 // AUTH ENDPOINTS
 // -------------------------------------------------------------
 app.post('/api/auth/login', async (req, res) => {

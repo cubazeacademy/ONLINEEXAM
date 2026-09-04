@@ -2785,15 +2785,37 @@ function openImportStudentsModal() {
   openModal('modal-import-students-csv');
 }
 
+function downloadCSVFile(filename, csvContent, fallbackUrl) {
+  try {
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try {
+        if (a.parentNode) a.parentNode.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {}
+    }, 4000);
+  } catch (err) {
+    if (fallbackUrl) {
+      window.location.href = apiUrl(fallbackUrl);
+    }
+  }
+}
+
 function downloadSampleStudentsCSV() {
-  const sample = "Roll Number,Admission No,Name\n1,4049,MOHAMMED SWALIH O\n2,4075,MUHAMMAD AYMAN ABDUSSAMAD\n3,4081,MUZAMMIL N A\n4,4074,ABDURAHEEM. M. P\n5,4062,MUHAMMED FARHAN NV\n";
-  const blob = new Blob([sample], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = "sample_students_template.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  const sample = `Roll Number,Admission No,Name
+1,4049,MOHAMMED SWALIH O
+2,4075,MUHAMMAD AYMAN ABDUSSAMAD
+3,4081,MUZAMMIL N A
+4,4074,ABDURAHEEM. M. P
+5,4062,MUHAMMED FARHAN NV`;
+  downloadCSVFile('sample_students_template.csv', sample, '/api/sample/students.csv');
 }
 
 function previewStudentsCSV(event) {
@@ -2903,14 +2925,11 @@ async function openImportQuestionsModal() {
 }
 
 function downloadSampleQuestionsCSV() {
-  const sample = "question_text,option_a,option_b,option_c,option_d,correct_option,marks\nWhat is the capital of France?,London,Berlin,Paris,Madrid,C,5\nWhat is 5 + 7?,10,12,14,15,B,5\nWhich HTML tag creates a hyperlink?,<link>,<a>,<href>,<url>,B,5\n";
-  const blob = new Blob([sample], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = "sample_questions_template.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  const sample = `question_text,option_a,option_b,option_c,option_d,correct_option,marks
+What is the capital of France?,London,Berlin,Paris,Madrid,C,5
+What is 5 + 7?,10,12,14,15,B,5
+Which HTML tag creates a hyperlink?,<link>,<a>,<href>,<url>,B,5`;
+  downloadCSVFile('sample_questions_template.csv', sample, '/api/sample/questions.csv');
 }
 
 function previewQuestionsCSV(event) {
@@ -4655,16 +4674,7 @@ Sunday,2,8:15–9:00,Std 1,TJWD
 Sunday,1,7:30–8:15,Std 2,S S
 Monday,1,7:30–8:15,Std 1,S S
 Monday,2,8:15–9:00,Std 1,ENG`;
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'sample_timetable_template.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCSVFile('sample_timetable_template.csv', csv, '/api/sample/timetable.csv');
 }
 
 function downloadSampleTeachersCSV() {
@@ -4673,16 +4683,7 @@ Sinan MP,sinanmp,teacher123,+91 9876543210,sinan@school.com
 Rafi K,rafi,teacher123,+91 9876543211,rafi@school.com
 Abdul Majid,abdulmajid,teacher123,+91 9876543212,majid@school.com
 Shahid KT,shahidkt,teacher123,+91 9876543213,shahid@school.com`;
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'sample_teachers_template.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCSVFile('sample_teachers_template.csv', csv, '/api/sample/teachers.csv');
 }
 
 // 8. AUDIT LOGS

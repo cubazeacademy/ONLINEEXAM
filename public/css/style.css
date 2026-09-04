@@ -3421,3 +3421,188 @@ input, button, select, textarea {
     font-size: 0.78rem;
   }
 }
+
+/* ==========================================================================
+   TEACHING ALLOCATION ADMIN & TEACHER PORTAL MODERN CARD REDESIGN
+   ========================================================================== */
+
+/* Modern Period Toggle Card (ON/OFF Settings) */
+.period-toggle-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.period-toggle-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07);
+  border-color: #cbd5e1;
+}
+
+.period-toggle-card.disabled-mode {
+  background: #f8fafc;
+  border-color: #fecaca;
+  opacity: 0.9;
+}
+
+.period-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.toggle-p-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.toggle-p-time {
+  font-size: 0.8rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toggle-p-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+/* Modern iOS Switch Toggle Slider */
+.switch-toggle {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.switch-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e1;
+  transition: .25s ease;
+  border-radius: 34px;
+}
+
+.switch-toggle .slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .25s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+}
+
+.switch-toggle input:checked + .slider {
+  background-color: #10b981;
+}
+
+.switch-toggle input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+/* Modern Timetable Matrix Table */
+.matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.matrix-table th {
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-align: center;
+  border-right: 1px solid #334155;
+}
+
+.matrix-table th:first-child {
+  text-align: left;
+  min-width: 120px;
+}
+
+.matrix-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  border-right: 1px solid #f1f5f9;
+  text-align: center;
+  background: #ffffff;
+  transition: background 0.15s ease;
+}
+
+.matrix-table tr:hover td {
+  background: #f8fafc;
+}
+
+.matrix-cell-period {
+  text-align: left !important;
+  font-weight: 700;
+  color: #0f172a;
+  background: #f8fafc !important;
+  border-right: 2px solid #e2e8f0 !important;
+}
+
+.matrix-cell-disabled {
+  background: #fef2f2 !important;
+  color: #b91c1c;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.matrix-cell-available {
+  background: #ffffff;
+  color: #64748b;
+}
+
+.matrix-cell-allocated {
+  background: #f0fdf4 !important;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.matrix-subject-code {
+  display: block;
+  font-weight: 800;
+  color: #065f46;
+  font-size: 0.88rem;
+}
+
+.matrix-teacher-name {
+  display: block;
+  font-size: 0.74rem;
+  color: #047857;
+  font-weight: 600;
+  margin-top: 2px;
+}

@@ -277,7 +277,7 @@ function switchTab(tabId) {
 
   // Teacher Portal Views
   if (tabId === 'teacher-dashboard') loadTeacherDashboard();
-  if (tabId === 'teacher-subject-selection') startTeacherSelectionWizard();
+  if (tabId === 'teacher-subject-selection') initTeacherSelectionWizard();
   if (tabId === 'teacher-my-selections') loadTeacherMySelectionsSlip();
   if (tabId === 'teacher-profile') loadTeacherProfile();
 
@@ -2979,11 +2979,15 @@ async function loadTeacherDashboard() {
   }
 }
 
-// Start Wizard
-async function startTeacherSelectionWizard() {
+// Start Wizard from Navigation or Dashboard button
+function startTeacherSelectionWizard() {
   switchTab('teacher-subject-selection');
+}
+
+// Initialize Wizard when Tab is opened
+async function initTeacherSelectionWizard() {
   await refreshTeacherSelectionSlots();
-  goToWizardStep(1);
+  goToWizardStep(1, false);
 }
 
 async function refreshTeacherSelectionSlots() {
@@ -3026,7 +3030,7 @@ function updateWizardCounters() {
   }
 }
 
-function goToWizardStep(step) {
+function goToWizardStep(step, doScroll = true) {
   teacherSelectionState.currentStep = step;
 
   // Toggle step containers
@@ -3047,7 +3051,9 @@ function goToWizardStep(step) {
     }
   }
 
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (doScroll) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }
 
 // Render Period Cards (Period 1 to 9) for a given Day

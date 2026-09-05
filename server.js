@@ -1902,9 +1902,9 @@ app.get('/api/teaching/period-settings', async (req, res) => {
         departmentId = teacher.department_id;
       }
     }
-    if (!departmentId) departmentId = 1;
+    if (!departmentId || isNaN(departmentId)) departmentId = 1;
 
-    let settings = await db.all(`
+    const dbSettings = await db.all(`
       SELECT day, period, time_slot, is_enabled, department_id
       FROM teacher_selection_period_settings
       WHERE department_id = $1
@@ -1921,17 +1921,26 @@ app.get('/api/teaching/period-settings', async (req, res) => {
         END, period ASC
     `, [departmentId]);
 
-    if (settings.length === 0) {
-      // Return default period list if not yet customized
-      const timeSlots = {
-        1: '7:30–8:15', 2: '8:15–9:00', 3: '9:00–9:45', 4: '10:00–10:45',
-        5: '10:45–11:30', 6: '11:30–12:15', 7: '1:30–2:15', 8: '2:15–3:00', 9: '3:00–3:45'
-      };
-      settings = [];
-      const allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      for (const day of allDays) {
-        for (let p = 1; p <= 9; p++) {
-          settings.push({
+    const timeSlots = {
+      1: '7:30–8:15', 2: '8:15–9:00', 3: '9:00–9:45', 4: '10:30–11:15',
+      5: '11:25–12:10', 6: '12:10–12:55', 7: '2:00–2:40', 8: '2:40–3:20', 9: '3:30–4:10'
+    };
+    const allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const fullSettings = [];
+
+    for (const day of allDays) {
+      for (let p = 1; p <= 9; p++) {
+        const existing = (dbSettings || []).find(s => s.day === day && s.period === p);
+        if (existing) {
+          fullSettings.push({
+            day,
+            period: p,
+            time_slot: existing.time_slot || timeSlots[p] || '',
+            is_enabled: existing.is_enabled !== false,
+            department_id: departmentId
+          });
+        } else {
+          fullSettings.push({
             day,
             period: p,
             time_slot: timeSlots[p] || '',
@@ -1942,7 +1951,7 @@ app.get('/api/teaching/period-settings', async (req, res) => {
       }
     }
 
-    res.json(settings);
+    res.json(fullSettings);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1950,17 +1959,27 @@ app.get('/api/teaching/period-settings', async (req, res) => {
 
 app.post('/api/teaching/admin/period-settings/toggle', async (req, res) => {
   const { department_id, day, period, is_enabled, admin_id, admin_name } = req.body;
-  const deptId = department_id ? parseInt(department_id) : 1;
+  const deptId = (department_id && department_id !== 'all') ? parseInt(department_id) : 1;
   if (!day || period === undefined || is_enabled === undefined) {
     return res.status(400).json({ error: 'Missing day, period, or is_enabled status' });
   }
   try {
-    await db.query(`
-      INSERT INTO teacher_selection_period_settings (department_id, day, period, is_enabled, updated_at)
-      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-      ON CONFLICT (department_id, day, period)
-      DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
-    `, [deptId, day, parseInt(period), Boolean(is_enabled)]);
+    const periodNum = parseInt(period);
+    const existing = await db.get(
+      `SELECT id FROM teacher_selection_period_settings WHERE department_id = $1 AND day = $2 AND period = $3`,
+      [deptId, day, periodNum]
+    );
+    if (existing) {
+      await db.query(
+        `UPDATE teacher_selection_period_settings SET is_enabled = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [Boolean(is_enabled), existing.id]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO teacher_selection_period_settings (department_id, day, period, is_enabled) VALUES ($1, $2, $3, $4)`,
+        [deptId, day, periodNum, Boolean(is_enabled)]
+      );
+    }
 
     invalidateCache('/api/teaching');
     await logTeacherAction(admin_id, admin_name || 'Admin', `Dept ${deptId} Period ${day} P${period} ${is_enabled ? 'Enabled' : 'Disabled'}`, {}, deptId);
@@ -1972,18 +1991,28 @@ app.post('/api/teaching/admin/period-settings/toggle', async (req, res) => {
 
 app.post('/api/teaching/admin/period-settings/bulk', async (req, res) => {
   const { department_id, settings, admin_id, admin_name } = req.body;
-  const deptId = department_id ? parseInt(department_id) : 1;
+  const deptId = (department_id && department_id !== 'all') ? parseInt(department_id) : 1;
   if (!Array.isArray(settings)) {
     return res.status(400).json({ error: 'Settings array required' });
   }
   try {
     for (const item of settings) {
-      await db.query(`
-        INSERT INTO teacher_selection_period_settings (department_id, day, period, is_enabled, updated_at)
-        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-        ON CONFLICT (department_id, day, period)
-        DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = CURRENT_TIMESTAMP
-      `, [deptId, item.day, parseInt(item.period), Boolean(item.is_enabled)]);
+      const periodNum = parseInt(item.period);
+      const existing = await db.get(
+        `SELECT id FROM teacher_selection_period_settings WHERE department_id = $1 AND day = $2 AND period = $3`,
+        [deptId, item.day, periodNum]
+      );
+      if (existing) {
+        await db.query(
+          `UPDATE teacher_selection_period_settings SET is_enabled = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [Boolean(item.is_enabled), existing.id]
+        );
+      } else {
+        await db.query(
+          `INSERT INTO teacher_selection_period_settings (department_id, day, period, is_enabled) VALUES ($1, $2, $3, $4)`,
+          [deptId, item.day, periodNum, Boolean(item.is_enabled)]
+        );
+      }
     }
     invalidateCache('/api/teaching');
     await logTeacherAction(admin_id, admin_name || 'Admin', `Bulk updated period settings for Dept ${deptId}`, {}, deptId);

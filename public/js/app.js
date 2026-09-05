@@ -4505,26 +4505,40 @@ async function deleteTeachingSlot(id) {
 }
 
 // 4. PERIOD ON/OFF SETTINGS (DEPARTMENT-SCOPED)
-teacherSelectionState.periodSettingsSelectedDay = teacherSelectionState.periodSettingsSelectedDay || 'Sunday';
+teacherSelectionState.periodSettingsSelectedDay = 'Sunday';
 
 async function loadAdminTeachingPeriods() {
+  const container = document.getElementById('container-period-settings-content');
+  if (container && (!teacherSelectionState.periodSettings || teacherSelectionState.periodSettings.length === 0)) {
+    container.innerHTML = '<div class="text-center p-6 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading period availability controls...</div>';
+  }
+
   try {
-    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+    const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
     const res = await fetch(apiUrl(`/api/teaching/period-settings?department_id=${deptId}`));
     const settings = await res.json();
-    teacherSelectionState.periodSettings = settings;
+    teacherSelectionState.periodSettings = Array.isArray(settings) ? settings : [];
 
-    renderPeriodSettingsView(teacherSelectionState.periodSettingsSelectedDay || 'Sunday', settings);
+    switchPeriodSettingsDay(teacherSelectionState.periodSettingsSelectedDay || 'Sunday');
   } catch (err) {
     console.error('Error loading period settings:', err);
+    if (container) {
+      container.innerHTML = '<div class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> Error loading period settings.</div>';
+    }
   }
 }
 
 function switchPeriodSettingsDay(day, btnEl) {
   teacherSelectionState.periodSettingsSelectedDay = day;
-  const buttons = document.querySelectorAll('.day-setting-tab');
-  buttons.forEach(b => b.className = 'btn btn-sm btn-outline day-setting-tab');
-  if (btnEl) btnEl.className = 'btn btn-sm btn-primary day-setting-tab';
+  const tabsContainer = document.getElementById('period-settings-day-tabs');
+  if (tabsContainer) {
+    const buttons = tabsContainer.querySelectorAll('.day-setting-tab');
+    buttons.forEach(b => {
+      const bText = b.textContent.trim();
+      const isMatch = (day === 'all' && bText.includes('All')) || (bText === day);
+      b.className = `btn btn-sm ${isMatch ? 'btn-primary' : 'btn-outline'} day-setting-tab`;
+    });
+  }
   
   renderPeriodSettingsView(day, teacherSelectionState.periodSettings || []);
 }
@@ -4614,7 +4628,7 @@ function disableCurrentPeriodSettingDay() {
 }
 
 async function setAll7DaysPeriodsStatus(isEnabled) {
-  const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
   const updates = [];
   TEACHING_DAYS.forEach(day => {
     for (let p = 1; p <= 9; p++) {
@@ -4633,7 +4647,7 @@ async function setAll7DaysPeriodsStatus(isEnabled) {
         admin_name: currentUser ? currentUser.full_name : 'Admin'
       })
     });
-    loadAdminTeachingPeriods();
+    await loadAdminTeachingPeriods();
     loadAdminTeachingDashboard();
   } catch (e) {
     alert('Error in bulk update');
@@ -4642,7 +4656,7 @@ async function setAll7DaysPeriodsStatus(isEnabled) {
 
 async function togglePeriodSetting(day, period, isEnabled) {
   try {
-    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+    const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
     const res = await fetch(apiUrl('/api/teaching/admin/period-settings/toggle'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4662,7 +4676,7 @@ async function togglePeriodSetting(day, period, isEnabled) {
       return;
     }
 
-    loadAdminTeachingPeriods();
+    await loadAdminTeachingPeriods();
     loadAdminTeachingDashboard();
   } catch (err) {
     alert('Error updating period setting.');
@@ -4670,7 +4684,7 @@ async function togglePeriodSetting(day, period, isEnabled) {
 }
 
 async function setAllPeriodsStatus(day, isEnabled) {
-  const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
   const updates = [];
   for (let p = 1; p <= 9; p++) {
     updates.push({ day, period: p, is_enabled: isEnabled });
@@ -4687,7 +4701,7 @@ async function setAllPeriodsStatus(day, isEnabled) {
         admin_name: currentUser ? currentUser.full_name : 'Admin'
       })
     });
-    loadAdminTeachingPeriods();
+    await loadAdminTeachingPeriods();
     loadAdminTeachingDashboard();
   } catch (e) {
     alert('Error in bulk update');

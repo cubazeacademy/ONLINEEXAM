@@ -1612,6 +1612,10 @@ async function logTeacherAction(userId, userName, action, details = {}, departme
   }
 }
 
+function invalidateCache(prefix = '') {
+  // Server-side cache invalidation helper
+}
+
 // -------------------------------------------------------------
 // 0. DEPARTMENT MANAGEMENT ENDPOINTS
 // -------------------------------------------------------------

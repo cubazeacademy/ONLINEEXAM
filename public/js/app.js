@@ -13,10 +13,12 @@ function apiUrl(path) {
 // ==========================================================================
 // CLIENT-SIDE SWR CACHE & REQUEST DEDUPLICATION (0ms Tab Navigation)
 // ==========================================================================
+// CLIENT-SIDE SWR CACHE & REQUEST DEDUPLICATION (Real-Time Synchronized)
+// ==========================================================================
 const clientCache = new Map();
 const inFlightRequests = new Map();
 
-async function fetchJsonWithCache(path, ttlMs = 15000, forceFresh = false) {
+async function fetchJsonWithCache(path, ttlMs = 800, forceFresh = false) {
   const now = Date.now();
   const cached = clientCache.get(path);
 
@@ -137,7 +139,51 @@ let examState = {
 document.addEventListener('DOMContentLoaded', () => {
   initClock();
   checkPersistedSession();
+  initLiveSync();
 });
+
+// REAL-TIME AUTO-SYNC (No Manual Page Refresh Needed)
+let liveSyncInterval = null;
+let isSyncing = false;
+
+function initLiveSync() {
+  if (liveSyncInterval) clearInterval(liveSyncInterval);
+  liveSyncInterval = setInterval(async () => {
+    if (!currentUser || isSyncing) return;
+    
+    // Do not disrupt user if a modal or input is actively being edited
+    const openModal = document.querySelector('.modal-overlay:not(.hidden)');
+    if (openModal) return;
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
+      return;
+    }
+
+    const activeView = document.querySelector('.tab-view:not(.hidden)');
+    if (!activeView) return;
+    const viewId = activeView.id ? activeView.id.replace('view-', '') : '';
+
+    try {
+      isSyncing = true;
+      if (currentUser.role === 'admin') {
+        if (viewId === 'admin-teaching-dashboard') await loadAdminTeachingDashboard();
+        else if (viewId === 'admin-teaching-teachers') await loadAdminTeachingTeachers();
+        else if (viewId === 'admin-teaching-reports') await loadAdminTeachingReports();
+        else if (viewId === 'admin-teaching-timetable') await loadAdminTeachingTimetable();
+        else if (viewId === 'admin-teaching-departments') await loadTeachingDepartments();
+        else if (viewId === 'admin-teaching-periods') await loadAdminTeachingPeriods();
+      } else if (currentUser.role === 'teacher') {
+        if (viewId === 'teacher-dashboard') await loadTeacherDashboard();
+        else if (viewId === 'teacher-subject-selection') await refreshTeacherSelectionSlots();
+        else if (viewId === 'teacher-my-selections') await loadTeacherMySelectionsSlip();
+      }
+    } catch (e) {
+      // Silent sync fallback
+    } finally {
+      isSyncing = false;
+    }
+  }, 2500);
+}
 
 // LIVE CLOCK IN HEADER
 function initClock() {
@@ -4637,6 +4683,15 @@ function disableCurrentPeriodSettingDay() {
 
 async function setAll7DaysPeriodsStatus(isEnabled) {
   const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
+  
+  // Optimistic immediate UI update
+  if (Array.isArray(teacherSelectionState.periodSettings)) {
+    teacherSelectionState.periodSettings.forEach(s => {
+      s.is_enabled = isEnabled;
+    });
+    renderPeriodSettingsView(teacherSelectionState.periodSettingsSelectedDay || 'Sunday', teacherSelectionState.periodSettings);
+  }
+
   const updates = [];
   TEACHING_DAYS.forEach(day => {
     for (let p = 1; p <= 9; p++) {
@@ -4645,6 +4700,7 @@ async function setAll7DaysPeriodsStatus(isEnabled) {
   });
 
   try {
+    clearClientCache('/api/teaching');
     await fetch(apiUrl('/api/teaching/admin/period-settings/bulk'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4663,8 +4719,17 @@ async function setAll7DaysPeriodsStatus(isEnabled) {
 }
 
 async function togglePeriodSetting(day, period, isEnabled) {
+  const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
+  
+  // Optimistic immediate UI update
+  if (Array.isArray(teacherSelectionState.periodSettings)) {
+    const target = teacherSelectionState.periodSettings.find(s => s.day === day && s.period === period);
+    if (target) target.is_enabled = isEnabled;
+    renderPeriodSettingsView(teacherSelectionState.periodSettingsSelectedDay || 'Sunday', teacherSelectionState.periodSettings);
+  }
+
   try {
-    const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
+    clearClientCache('/api/teaching');
     const res = await fetch(apiUrl('/api/teaching/admin/period-settings/toggle'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4681,6 +4746,7 @@ async function togglePeriodSetting(day, period, isEnabled) {
     const data = await res.json();
     if (!res.ok) {
       alert(data.error || 'Failed to toggle period');
+      await loadAdminTeachingPeriods();
       return;
     }
 
@@ -4688,17 +4754,28 @@ async function togglePeriodSetting(day, period, isEnabled) {
     loadAdminTeachingDashboard();
   } catch (err) {
     alert('Error updating period setting.');
+    await loadAdminTeachingPeriods();
   }
 }
 
 async function setAllPeriodsStatus(day, isEnabled) {
   const deptId = (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') ? teacherSelectionState.currentDepartmentId : 1;
+  
+  // Optimistic immediate UI update
+  if (Array.isArray(teacherSelectionState.periodSettings)) {
+    teacherSelectionState.periodSettings.forEach(s => {
+      if (s.day === day) s.is_enabled = isEnabled;
+    });
+    renderPeriodSettingsView(teacherSelectionState.periodSettingsSelectedDay || 'Sunday', teacherSelectionState.periodSettings);
+  }
+
   const updates = [];
   for (let p = 1; p <= 9; p++) {
     updates.push({ day, period: p, is_enabled: isEnabled });
   }
 
   try {
+    clearClientCache('/api/teaching');
     await fetch(apiUrl('/api/teaching/admin/period-settings/bulk'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

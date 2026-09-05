@@ -3215,12 +3215,13 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
       `, [departmentId]),
       db.all(`SELECT name FROM teacher_selection_classes WHERE department_id = $1 ORDER BY sort_order ASC, name ASC`, [departmentId]),
       db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 ORDER BY period ASC`, [departmentId]),
-      db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId])
+      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId])
     ]);
 
     res.json({
       department_id: departmentId,
       department_name: dept ? dept.name : 'MEDIA',
+      active_days: dept ? dept.active_days : 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
       slots,
       classes: classes.map(c => c.name),
       period_settings: periodSettings

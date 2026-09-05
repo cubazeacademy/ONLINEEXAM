@@ -99,8 +99,28 @@ let teacherSelectionState = {
   allTimetable: [],
   gridData: null,
   currentGridDay: 'Sunday',
-  parsedImportData: []
+  parsedImportData: [],
+  wizardSelectedDay: 'Sunday',
+  periodSettingsSelectedDay: 'Sunday'
 };
+
+const TEACHING_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function getDayBadgeHtml(day) {
+  const d = day || 'Sunday';
+  const icons = {
+    Sunday: 'fa-sun',
+    Monday: 'fa-calendar-day',
+    Tuesday: 'fa-calendar-day',
+    Wednesday: 'fa-calendar-day',
+    Thursday: 'fa-calendar-day',
+    Friday: 'fa-calendar-day',
+    Saturday: 'fa-calendar-day'
+  };
+  const icon = icons[d] || 'fa-calendar-day';
+  const cls = `day-badge day-badge-${d.toLowerCase()}`;
+  return `<span class="${cls}"><i class="fa-solid ${icon}"></i> ${escapeHtml(d)}</span>`;
+}
 
 // EXAM TAKING STATE
 let examState = {
@@ -3067,24 +3087,6 @@ async function loadTeacherDashboard() {
       }
     }
 
-const TEACHING_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-function getDayBadgeHtml(day) {
-  const d = day || 'Sunday';
-  const icons = {
-    Sunday: 'fa-sun',
-    Monday: 'fa-calendar-day',
-    Tuesday: 'fa-calendar-day',
-    Wednesday: 'fa-calendar-day',
-    Thursday: 'fa-calendar-day',
-    Friday: 'fa-calendar-day',
-    Saturday: 'fa-calendar-day'
-  };
-  const icon = icons[d] || 'fa-calendar-day';
-  const cls = `day-badge day-badge-${d.toLowerCase()}`;
-  return `<span class="${cls}"><i class="fa-solid ${icon}"></i> ${escapeHtml(d)}</span>`;
-}
-
     // Render Recent Selections on Dashboard
     const tbody = document.getElementById('table-teacher-dash-selections');
     if (tbody) {
@@ -4368,25 +4370,31 @@ async function adminRemoveAllocation(selectionId) {
 
 // 3. MASTER TIMETABLE (DEPARTMENT-SCOPED)
 async function loadAdminTeachingTimetable() {
+  const tbody = document.getElementById('table-admin-teaching-timetable');
   try {
     const deptId = teacherSelectionState.currentDepartmentId || 'all';
     const res = await fetch(apiUrl(`/api/teaching/timetable?department_id=${deptId}`));
     const timetable = await res.json();
-    teacherSelectionState.allTimetable = timetable;
+    teacherSelectionState.allTimetable = Array.isArray(timetable) ? timetable : [];
     renderTimetableTable();
   } catch (err) {
     console.error('Error loading timetable:', err);
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> Error loading master timetable. Please try again.</td></tr>`;
+    }
   }
 }
 
 function renderTimetableTable() {
-  const dayFilter = document.getElementById('filter-tt-day').value;
-  const classFilter = document.getElementById('filter-tt-class').value;
+  const dayFilterEl = document.getElementById('filter-tt-day');
+  const classFilterEl = document.getElementById('filter-tt-class');
+  const dayFilter = dayFilterEl ? dayFilterEl.value : 'all';
+  const classFilter = classFilterEl ? classFilterEl.value : 'all';
   const tbody = document.getElementById('table-admin-teaching-timetable');
 
   if (!tbody) return;
 
-  let list = teacherSelectionState.allTimetable;
+  let list = Array.isArray(teacherSelectionState.allTimetable) ? teacherSelectionState.allTimetable : [];
   if (dayFilter !== 'all') list = list.filter(t => t.day === dayFilter);
   if (classFilter !== 'all') list = list.filter(t => t.class_name === classFilter);
 

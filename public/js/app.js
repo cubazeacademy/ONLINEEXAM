@@ -3067,16 +3067,6 @@ async function loadTeacherDashboard() {
       }
     }
 
-    // Render Recent Selections on Dashboard
-    const tbody = document.getElementById('table-teacher-dash-selections');
-    if (tbody) {
-      if (teacherSelectionState.mySelections.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="6" class="p-0">
-              <div class="table-empty-state">
-                <div class="empty-state-icon-wrapper">
-                  <div class="empty-state-icon-glow"></div>
 const TEACHING_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function getDayBadgeHtml(day) {
@@ -3095,6 +3085,16 @@ function getDayBadgeHtml(day) {
   return `<span class="${cls}"><i class="fa-solid ${icon}"></i> ${escapeHtml(d)}</span>`;
 }
 
+    // Render Recent Selections on Dashboard
+    const tbody = document.getElementById('table-teacher-dash-selections');
+    if (tbody) {
+      if (teacherSelectionState.mySelections.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="p-0">
+              <div class="table-empty-state">
+                <div class="empty-state-icon-wrapper">
+                  <div class="empty-state-icon-glow"></div>
                   <div class="empty-state-icon">
                     <i class="fa-regular fa-calendar-plus"></i>
                   </div>
@@ -3390,15 +3390,6 @@ function renderWizardPeriodCards(day, containerId) {
         `;
       });
     }
-
-    html += `
-        </div>
-      </div>
-    `;
-  }
-
-  container.innerHTML = html;
-}
 
     html += `
         </div>

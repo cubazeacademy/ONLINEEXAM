@@ -1649,139 +1649,196 @@
           </div>
         </section>
 
-        <!-- TEACHER 2: 7-DAY SUBJECT SELECTION WIZARD -->
+        <!-- TEACHER 2: 7-DAY SUBJECT SELECTION WIZARD & CLOSED STATE -->
         <section id="view-teacher-subject-selection" class="tab-view hidden">
-          <!-- WIZARD STICKY HEADER -->
-          <div class="wizard-header-card">
-            <div class="wizard-steps-indicator">
-              <div class="wizard-step active" id="wiz-step-indicator-1" onclick="goToWizardStep(1)">
-                <span class="step-num">1</span>
-                <span class="step-title">Select Teaching Periods</span>
-              </div>
-              <div class="wizard-step-line"></div>
-              <div class="wizard-step" id="wiz-step-indicator-2" onclick="goToWizardStep(2)">
-                <span class="step-num">2</span>
-                <span class="step-title">Review & Submit</span>
-              </div>
-            </div>
 
-            <div class="wizard-counter-box">
-              <div class="counter-label">Selected Periods</div>
-              <div class="counter-number" id="wizard-live-counter">0 / 3</div>
-              <div class="counter-sub text-muted" id="wizard-live-counter-sub">Min: 2, Max: 3</div>
+          <!-- DEDICATED CLOSED SCREEN (SHOWN WHEN SELECTION IS CLOSED) -->
+          <div id="teacher-selection-closed-view" class="selection-closed-wrapper hidden">
+            <div class="selection-closed-card">
+              <div class="selection-closed-icon-badge">
+                <div class="selection-closed-icon-glow"></div>
+                <div class="selection-closed-icon">
+                  <i class="fa-solid fa-calendar-xmark"></i>
+                </div>
+              </div>
+
+              <div class="selection-closed-dept-pill">
+                <i class="fa-solid fa-building-columns"></i>
+                <span id="closed-screen-dept-name">Department: MEDIA</span>
+              </div>
+
+              <h2 class="selection-closed-title">Subject Selection Closed</h2>
+
+              <p class="selection-closed-subtitle">
+                <strong>Subject selection is currently closed.</strong>
+              </p>
+
+              <p class="selection-closed-desc">
+                The subject selection session has not been opened yet or is temporarily closed by the administrator.
+              </p>
+
+              <!-- OPTIONAL OPENING TIME (SHOWN IF CONFIGURED IN FUTURE) -->
+              <div id="closed-screen-opening-container" class="selection-closed-opening-box hidden">
+                <div class="opening-box-icon">
+                  <i class="fa-regular fa-clock"></i>
+                </div>
+                <div class="opening-box-content">
+                  <div class="opening-box-label">The subject selection session will open soon.</div>
+                  <div class="opening-box-time" id="closed-screen-opening-time">
+                    Opening Time: Active
+                  </div>
+                </div>
+              </div>
+
+              <p class="selection-closed-footnote" id="closed-screen-footnote">
+                The selection session will be opened soon. <strong>Please check back later.</strong>
+              </p>
+
+              <div class="selection-closed-actions">
+                <button type="button" class="btn btn-primary" onclick="refreshTeacherSelectionSlots(false)">
+                  <i class="fa-solid fa-arrows-rotate"></i> Check / Refresh Status
+                </button>
+                <button type="button" class="btn btn-outline" onclick="switchTab('teacher-my-selections')">
+                  <i class="fa-solid fa-clipboard-check"></i> View My Selected Periods
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- STEP 1: 7-DAY PERIOD SELECTION CONTAINER -->
-          <div id="wizard-container-step-1" class="wizard-container">
-            <!-- 7-DAY SELECTOR TABS -->
-            <div style="background:#fff; border-radius:14px; padding:14px 18px; margin-bottom:16px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
-              <div style="font-size:0.8rem; font-weight:700; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
-                <i class="fa-solid fa-calendar-week" style="color:var(--primary);"></i> Select Timetable Day
-              </div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;" id="teacher-wizard-day-tabs">
-                <button type="button" class="btn btn-sm btn-primary wiz-day-tab" id="btn-wiz-day-Sunday" onclick="switchWizardDay('Sunday')">
-                  <i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday <span class="badge" id="wiz-day-count-Sunday" style="background:#fff; color:#0f172a; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Monday" onclick="switchWizardDay('Monday')">
-                  <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Monday <span class="badge" id="wiz-day-count-Monday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Tuesday" onclick="switchWizardDay('Tuesday')">
-                  <i class="fa-solid fa-calendar-day" style="color:#10b981;"></i> Tuesday <span class="badge" id="wiz-day-count-Tuesday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Wednesday" onclick="switchWizardDay('Wednesday')">
-                  <i class="fa-solid fa-calendar-day" style="color:#8b5cf6;"></i> Wednesday <span class="badge" id="wiz-day-count-Wednesday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Thursday" onclick="switchWizardDay('Thursday')">
-                  <i class="fa-solid fa-calendar-day" style="color:#f43f5e;"></i> Thursday <span class="badge" id="wiz-day-count-Thursday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Friday" onclick="switchWizardDay('Friday')">
-                  <i class="fa-solid fa-calendar-day" style="color:#14b8a6;"></i> Friday <span class="badge" id="wiz-day-count-Friday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Saturday" onclick="switchWizardDay('Saturday')">
-                  <i class="fa-solid fa-calendar-day" style="color:#6366f1;"></i> Saturday <span class="badge" id="wiz-day-count-Saturday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- ACTIVE DAY BANNER -->
-            <div class="wizard-section-banner" id="wizard-day-banner" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1.5px solid #fde68a;">
-              <div>
-                <h3 id="wizard-day-banner-title" style="color: #92400e; margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 800;">
-                  <i class="fa-solid fa-sun" style="color: #f59e0b;"></i> Sunday Teaching Periods
-                </h3>
-                <p id="wizard-day-banner-desc" style="color: #b45309; margin: 0; font-size: 0.88rem;">Select your classes for Sunday. You can choose at most 1 class per period.</p>
-              </div>
-              <div style="display:flex; gap:8px;">
-                <button type="button" class="btn btn-primary" onclick="goToWizardStep(2)">
-                  Review Selections <i class="fa-solid fa-arrow-right"></i>
-                </button>
-              </div>
-            </div>
-
-            <!-- DYNAMIC RULE 4 SELECTION GUIDANCE BANNER -->
-            <div id="wizard-rule4-guidance-container" style="display:none; margin-bottom: 16px;"></div>
-
-            <!-- ACTIVE DAY PERIOD CARDS CONTAINER -->
-            <div id="teacher-periods-grid-active" class="period-cards-flow mt-4">
-              <!-- Dynamically rendered Period 1 to 9 cards for active day -->
-            </div>
-
-            <div class="wizard-footer-bar mt-6" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-              <div style="display:flex; gap:8px;">
-                <button type="button" class="btn btn-outline" id="btn-wiz-prev-day" onclick="navigateWizardDay(-1)">
-                  <i class="fa-solid fa-chevron-left"></i> Previous Day
-                </button>
-                <button type="button" class="btn btn-outline" id="btn-wiz-next-day" onclick="navigateWizardDay(1)">
-                  Next Day <i class="fa-solid fa-chevron-right"></i>
-                </button>
-              </div>
-              <button type="button" class="btn btn-primary btn-lg" onclick="goToWizardStep(2)">
-                Proceed to Review & Confirm <i class="fa-solid fa-arrow-right"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- STEP 2: REVIEW & CONFIRM CONTAINER -->
-          <div id="wizard-container-step-2" class="wizard-container hidden">
-            <div class="panel-card max-w-3xl" style="margin: 0 auto;">
-              <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
-                <h3 style="color: #fff; margin:0;"><i class="fa-solid fa-clipboard-check" style="color: #38bdf8;"></i> Review Your Teaching Period Selections</h3>
-              </div>
-              <div class="panel-body" style="padding: 24px;">
-                <p class="text-muted" style="margin-top: 0; font-size: 0.9rem;">
-                  Please double-check your allocated teaching slots below. Each educator must select between <strong>2 and 3 periods</strong>.
-                </p>
-
-                <div class="table-responsive" style="margin-bottom: 20px;">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th>Day</th>
-                        <th>Period</th>
-                        <th>Time</th>
-                        <th>Class</th>
-                        <th>Subject</th>
-                        <th class="text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody id="table-teacher-review-selections">
-                      <tr><td colspan="6" class="text-center">Loading selections...</td></tr>
-                    </tbody>
-                  </table>
+          <!-- NORMAL SUBJECT SELECTION WIZARD (SHOWN ONLY WHEN SELECTION IS OPEN) -->
+          <div id="teacher-selection-open-view" class="selection-open-wrapper">
+            <!-- WIZARD STICKY HEADER -->
+            <div class="wizard-header-card">
+              <div class="wizard-steps-indicator">
+                <div class="wizard-step active" id="wiz-step-indicator-1" onclick="goToWizardStep(1)">
+                  <span class="step-num">1</span>
+                  <span class="step-title">Select Teaching Periods</span>
                 </div>
-
-                <div id="review-validation-box" class="alert-box alert-warning mt-4 mb-4">
-                  <!-- Dynamic validation warning if < 2 selected -->
+                <div class="wizard-step-line"></div>
+                <div class="wizard-step" id="wiz-step-indicator-2" onclick="goToWizardStep(2)">
+                  <span class="step-num">2</span>
+                  <span class="step-title">Review & Submit</span>
                 </div>
+              </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                  <button type="button" class="btn btn-outline" onclick="goToWizardStep(1)">
-                    <i class="fa-solid fa-arrow-left"></i> Back & Edit Selections
+              <div class="wizard-counter-box">
+                <div class="counter-label">Selected Periods</div>
+                <div class="counter-number" id="wizard-live-counter">0 / 3</div>
+                <div class="counter-sub text-muted" id="wizard-live-counter-sub">Min: 2, Max: 3</div>
+              </div>
+            </div>
+
+            <!-- STEP 1: 7-DAY PERIOD SELECTION CONTAINER -->
+            <div id="wizard-container-step-1" class="wizard-container">
+              <!-- 7-DAY SELECTOR TABS -->
+              <div style="background:#fff; border-radius:14px; padding:14px 18px; margin-bottom:16px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="font-size:0.8rem; font-weight:700; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+                  <i class="fa-solid fa-calendar-week" style="color:var(--primary);"></i> Select Timetable Day
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;" id="teacher-wizard-day-tabs">
+                  <button type="button" class="btn btn-sm btn-primary wiz-day-tab" id="btn-wiz-day-Sunday" onclick="switchWizardDay('Sunday')">
+                    <i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday <span class="badge" id="wiz-day-count-Sunday" style="background:#fff; color:#0f172a; margin-left:4px; font-size:0.75rem;">0</span>
                   </button>
-                  <button type="button" class="btn btn-success btn-lg" id="btn-confirm-submit-selections" onclick="confirmFinalTeacherSelections()">
-                    <i class="fa-solid fa-circle-check"></i> Confirm & Submit Final Selection
+                  <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Monday" onclick="switchWizardDay('Monday')">
+                    <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Monday <span class="badge" id="wiz-day-count-Monday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
                   </button>
+                  <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Tuesday" onclick="switchWizardDay('Tuesday')">
+                    <i class="fa-solid fa-calendar-day" style="color:#10b981;"></i> Tuesday <span class="badge" id="wiz-day-count-Tuesday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Wednesday" onclick="switchWizardDay('Wednesday')">
+                    <i class="fa-solid fa-calendar-day" style="color:#8b5cf6;"></i> Wednesday <span class="badge" id="wiz-day-count-Wednesday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Thursday" onclick="switchWizardDay('Thursday')">
+                    <i class="fa-solid fa-calendar-day" style="color:#f43f5e;"></i> Thursday <span class="badge" id="wiz-day-count-Thursday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Friday" onclick="switchWizardDay('Friday')">
+                    <i class="fa-solid fa-calendar-day" style="color:#14b8a6;"></i> Friday <span class="badge" id="wiz-day-count-Friday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Saturday" onclick="switchWizardDay('Saturday')">
+                    <i class="fa-solid fa-calendar-day" style="color:#6366f1;"></i> Saturday <span class="badge" id="wiz-day-count-Saturday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- ACTIVE DAY BANNER -->
+              <div class="wizard-section-banner" id="wizard-day-banner" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1.5px solid #fde68a;">
+                <div>
+                  <h3 id="wizard-day-banner-title" style="color: #92400e; margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 800;">
+                    <i class="fa-solid fa-sun" style="color: #f59e0b;"></i> Sunday Teaching Periods
+                  </h3>
+                  <p id="wizard-day-banner-desc" style="color: #b45309; margin: 0; font-size: 0.88rem;">Select your classes for Sunday. You can choose at most 1 class per period.</p>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button type="button" class="btn btn-primary" onclick="goToWizardStep(2)">
+                    Review Selections <i class="fa-solid fa-arrow-right"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- DYNAMIC RULE 4 SELECTION GUIDANCE BANNER -->
+              <div id="wizard-rule4-guidance-container" style="display:none; margin-bottom: 16px;"></div>
+
+              <!-- ACTIVE DAY PERIOD CARDS CONTAINER -->
+              <div id="teacher-periods-grid-active" class="period-cards-flow mt-4">
+                <!-- Dynamically rendered Period 1 to 9 cards for active day -->
+              </div>
+
+              <div class="wizard-footer-bar mt-6" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; gap:8px;">
+                  <button type="button" class="btn btn-outline" id="btn-wiz-prev-day" onclick="navigateWizardDay(-1)">
+                    <i class="fa-solid fa-chevron-left"></i> Previous Day
+                  </button>
+                  <button type="button" class="btn btn-outline" id="btn-wiz-next-day" onclick="navigateWizardDay(1)">
+                    Next Day <i class="fa-solid fa-chevron-right"></i>
+                  </button>
+                </div>
+                <button type="button" class="btn btn-primary btn-lg" onclick="goToWizardStep(2)">
+                  Proceed to Review & Confirm <i class="fa-solid fa-arrow-right"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- STEP 2: REVIEW & CONFIRM CONTAINER -->
+            <div id="wizard-container-step-2" class="wizard-container hidden">
+              <div class="panel-card max-w-3xl" style="margin: 0 auto;">
+                <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
+                  <h3 style="color: #fff; margin:0;"><i class="fa-solid fa-clipboard-check" style="color: #38bdf8;"></i> Review Your Teaching Period Selections</h3>
+                </div>
+                <div class="panel-body" style="padding: 24px;">
+                  <p class="text-muted" style="margin-top: 0; font-size: 0.9rem;">
+                    Please double-check your allocated teaching slots below. Each educator must select between <strong>2 and 3 periods</strong>.
+                  </p>
+
+                  <div class="table-responsive" style="margin-bottom: 20px;">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Day</th>
+                          <th>Period</th>
+                          <th>Time</th>
+                          <th>Class</th>
+                          <th>Subject</th>
+                          <th class="text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody id="table-teacher-review-selections">
+                        <tr><td colspan="6" class="text-center">Loading selections...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div id="review-validation-box" class="alert-box alert-warning mt-4 mb-4">
+                    <!-- Dynamic validation warning if < 2 selected -->
+                  </div>
+
+                  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <button type="button" class="btn btn-outline" onclick="goToWizardStep(1)">
+                      <i class="fa-solid fa-arrow-left"></i> Back & Edit Selections
+                    </button>
+                    <button type="button" class="btn btn-success btn-lg" id="btn-confirm-submit-selections" onclick="confirmFinalTeacherSelections()">
+                      <i class="fa-solid fa-circle-check"></i> Confirm & Submit Final Selection
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

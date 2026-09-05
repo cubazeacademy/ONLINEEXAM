@@ -1872,6 +1872,97 @@ async function getDepartmentRule4Settings(departmentId) {
   };
 }
 
+async function getDepartmentSelectionStatus(departmentId) {
+  const deptId = departmentId ? parseInt(departmentId) : 1;
+  const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
+  const now = new Date();
+
+  if (!settings) {
+    return {
+      isOpen: true,
+      isClosed: false,
+      code: 'SELECTION_OPEN',
+      reason: 'OPEN',
+      message: 'Subject selection is currently open.',
+      startDatetime: null,
+      endDatetime: null,
+      settings: {
+        department_id: deptId,
+        is_open: true,
+        is_timetable_published: true,
+        allow_edit: true,
+        min_periods: 2,
+        max_periods: 3,
+        start_datetime: null,
+        end_datetime: null
+      }
+    };
+  }
+
+  if (settings.is_open === false) {
+    return {
+      isOpen: false,
+      isClosed: true,
+      code: 'SELECTION_CLOSED',
+      reason: 'MANUALLY_CLOSED',
+      message: 'Subject selection is currently closed by the administrator.',
+      startDatetime: settings.start_datetime,
+      endDatetime: settings.end_datetime,
+      settings
+    };
+  }
+
+  if (settings.start_datetime && new Date(settings.start_datetime) > now) {
+    return {
+      isOpen: false,
+      isClosed: true,
+      code: 'SELECTION_CLOSED',
+      reason: 'NOT_STARTED',
+      message: 'Subject selection has not opened yet.',
+      startDatetime: settings.start_datetime,
+      endDatetime: settings.end_datetime,
+      settings
+    };
+  }
+
+  if (settings.end_datetime && new Date(settings.end_datetime) < now) {
+    return {
+      isOpen: false,
+      isClosed: true,
+      code: 'SELECTION_CLOSED',
+      reason: 'DEADLINE_PASSED',
+      message: 'Subject selection deadline has passed.',
+      startDatetime: settings.start_datetime,
+      endDatetime: settings.end_datetime,
+      settings
+    };
+  }
+
+  if (settings.is_timetable_published === false) {
+    return {
+      isOpen: false,
+      isClosed: true,
+      code: 'SELECTION_CLOSED',
+      reason: 'TIMETABLE_NOT_PUBLISHED',
+      message: 'Timetable has not been published yet.',
+      startDatetime: settings.start_datetime,
+      endDatetime: settings.end_datetime,
+      settings
+    };
+  }
+
+  return {
+    isOpen: true,
+    isClosed: false,
+    code: 'SELECTION_OPEN',
+    reason: 'OPEN',
+    message: 'Subject selection is currently open.',
+    startDatetime: settings.start_datetime,
+    endDatetime: settings.end_datetime,
+    settings
+  };
+}
+
 app.get('/api/teaching/settings', async (req, res) => {
   try {
     let departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
@@ -1885,36 +1976,23 @@ app.get('/api/teaching/settings', async (req, res) => {
     }
     if (!departmentId) departmentId = 1;
 
-    let settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [departmentId]);
-    if (!settings) {
-      settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id ASC LIMIT 1`);
-    }
+    const status = await getDepartmentSelectionStatus(departmentId);
+    let settings = status.settings;
     const dept = await db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId]);
     const rule4 = await getDepartmentRule4Settings(departmentId);
 
     const activeDays = (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
 
-    if (!settings) {
-      settings = {
-        department_id: departmentId,
-        is_open: true,
-        is_timetable_published: true,
-        allow_edit: true,
-        min_periods: 2,
-        max_periods: 3,
-        start_datetime: null,
-        end_datetime: null,
-        active_days: activeDays,
-        rule_4_enabled: false,
-        group_a_start_class_id: null,
-        group_a_end_class_id: null,
-        group_b_start_class_id: null,
-        group_b_end_class_id: null
-      };
-    }
-
     res.json({
       ...settings,
+      is_open: status.isOpen,
+      is_closed: status.isClosed,
+      selection_status: status.isOpen ? 'OPEN' : 'CLOSED',
+      status_code: status.code,
+      status_reason: status.reason,
+      status_message: status.message,
+      start_datetime: status.startDatetime,
+      end_datetime: status.endDatetime,
       rule_4: rule4,
       active_days: activeDays,
       department_name: dept ? dept.name : 'MEDIA',
@@ -2903,6 +2981,32 @@ app.get('/api/teaching/slots', async (req, res) => {
 
     if (!departmentId) departmentId = 1;
 
+    // Check Department Selection Status First (Closed State Protection & Data Privacy)
+    const selectionStatus = await getDepartmentSelectionStatus(departmentId);
+    if (!selectionStatus.isOpen) {
+      const dept = await db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId]);
+      return res.json({
+        is_open: false,
+        is_closed: true,
+        code: 'SELECTION_CLOSED',
+        reason: selectionStatus.reason,
+        message: selectionStatus.message || 'Subject selection is currently closed.',
+        department_id: departmentId,
+        department_name: dept ? dept.name : teacherDeptName,
+        start_datetime: selectionStatus.startDatetime,
+        end_datetime: selectionStatus.endDatetime,
+        server_time: new Date(),
+        slots: [],
+        period_settings: [],
+        settings: {
+          ...(selectionStatus.settings || {}),
+          is_open: false,
+          is_closed: true,
+          selection_status: 'CLOSED'
+        }
+      });
+    }
+
     const [slots, periodSettings, settings, dept, rule4] = await Promise.all([
       db.all(`
         SELECT 
@@ -2973,6 +3077,9 @@ app.get('/api/teaching/slots', async (req, res) => {
     const activeDays = (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
 
     res.json({
+      is_open: true,
+      is_closed: false,
+      code: 'SELECTION_OPEN',
       department_id: departmentId,
       department_name: dept ? dept.name : teacherDeptName,
       active_days: activeDays,
@@ -2981,6 +3088,8 @@ app.get('/api/teaching/slots', async (req, res) => {
       rule_4: rule4,
       settings: {
         ...(settings || {}),
+        is_open: true,
+        is_closed: false,
         active_days: activeDays,
         rule_4_enabled: rule4 ? rule4.rule_4_enabled : false,
         group_a_start_class_id: rule4 ? rule4.group_a_start_class_id : null,
@@ -3027,21 +3136,14 @@ app.post('/api/teaching/select', async (req, res) => {
     }
 
     // 3. Validate Selection Settings & Window for teacher's department
-    const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [teacherDeptId]);
-    if (settings) {
-      if (!settings.is_open) {
-        return res.status(400).json({ error: 'Subject selection is currently closed for your department.' });
-      }
-      const now = new Date();
-      if (settings.start_datetime && new Date(settings.start_datetime) > now) {
-        return res.status(400).json({ error: 'Subject selection has not started yet.' });
-      }
-      if (settings.end_datetime && new Date(settings.end_datetime) < now) {
-        return res.status(400).json({ error: 'Subject selection deadline has passed.' });
-      }
-      if (!settings.is_timetable_published) {
-        return res.status(400).json({ error: 'Subject selection is unavailable because the timetable has not been published by Admin.' });
-      }
+    const selectionStatus = await getDepartmentSelectionStatus(teacherDeptId);
+    if (!selectionStatus.isOpen) {
+      return res.status(400).json({
+        success: false,
+        code: 'SELECTION_CLOSED',
+        error: selectionStatus.message || 'Subject selection is currently closed for your department.',
+        message: selectionStatus.message || 'Subject selection is currently closed for your department.'
+      });
     }
 
     // 4. Validate Period Settings for teacher's department
@@ -3055,6 +3157,7 @@ app.post('/api/teaching/select', async (req, res) => {
     // 5. Validate Selection Count Limit (Min/Max periods)
     const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);
     const currentCount = countRes ? countRes.count : 0;
+    const settings = selectionStatus.settings;
     const maxPeriods = settings ? (settings.max_periods || 3) : 3;
     if (currentCount >= maxPeriods) {
       return res.status(400).json({ error: `You have reached the maximum limit of ${maxPeriods} periods.` });
@@ -3178,12 +3281,14 @@ app.post('/api/teaching/remove', async (req, res) => {
     }
 
     // Check if selection window is open for this department
-    const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [selection.department_id]);
-    if (settings) {
-      const now = new Date();
-      if (!settings.is_open || (settings.end_datetime && new Date(settings.end_datetime) < now)) {
-        return res.status(400).json({ error: 'Subject selection has closed. Edits are no longer allowed.' });
-      }
+    const selectionStatus = await getDepartmentSelectionStatus(selection.department_id);
+    if (!selectionStatus.isOpen) {
+      return res.status(400).json({
+        success: false,
+        code: 'SELECTION_CLOSED',
+        error: 'Subject selection is currently closed. Edits are no longer allowed.',
+        message: 'Subject selection is currently closed. Edits are no longer allowed.'
+      });
     }
 
     await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
@@ -3206,7 +3311,17 @@ app.post('/api/teaching/submit', async (req, res) => {
     if (!teacher) return res.status(404).json({ error: 'Teacher not found' });
 
     const deptId = teacher.department_id || 1;
-    const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
+    const selectionStatus = await getDepartmentSelectionStatus(deptId);
+    if (!selectionStatus.isOpen) {
+      return res.status(400).json({
+        success: false,
+        code: 'SELECTION_CLOSED',
+        error: 'Subject selection is currently closed. Submissions are not accepted.',
+        message: 'Subject selection is currently closed. Submissions are not accepted.'
+      });
+    }
+
+    const settings = selectionStatus.settings;
     const minPeriods = settings ? (settings.min_periods || 2) : 2;
 
     const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);

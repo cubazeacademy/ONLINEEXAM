@@ -4669,3 +4669,193 @@ canvas {
     width: 100%;
   }
 }
+
+/* ========================================================================== */
+/* TEACHER SUBJECT SELECTION CLOSED STATE SCREEN                              */
+/* ========================================================================== */
+.selection-closed-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 480px;
+  padding: 30px 16px;
+}
+
+.selection-closed-card {
+  max-width: 640px;
+  width: 100%;
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.06), 0 4px 6px -2px rgba(15, 23, 42, 0.03);
+  padding: 44px 36px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  animation: fadeInClosedCard 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInClosedCard {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.selection-closed-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #64748b 0%, #94a3b8 50%, #cbd5e1 100%);
+}
+
+.selection-closed-icon-badge {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selection-closed-icon-glow {
+  position: absolute;
+  inset: -6px;
+  background: radial-gradient(circle, rgba(148, 163, 184, 0.25) 0%, rgba(255, 255, 255, 0) 70%);
+  border-radius: 50%;
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.15); opacity: 0.9; }
+}
+
+.selection-closed-icon {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.selection-closed-dept-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 20px;
+  margin-bottom: 16px;
+  letter-spacing: 0.3px;
+}
+
+.selection-closed-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.5px;
+}
+
+.selection-closed-subtitle {
+  font-size: 1.05rem;
+  color: #334155;
+  margin: 0 0 10px 0;
+}
+
+.selection-closed-desc {
+  font-size: 0.92rem;
+  color: #64748b;
+  margin: 0 auto 20px auto;
+  max-width: 480px;
+  line-height: 1.55;
+}
+
+.selection-closed-opening-box {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1.5px solid #a7f3d0;
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin: 0 auto 22px auto;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+}
+
+.opening-box-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #10b981;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.opening-box-label {
+  font-size: 0.8rem;
+  color: #065f46;
+  font-weight: 600;
+}
+
+.opening-box-time {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #047857;
+  margin-top: 2px;
+}
+
+.selection-closed-footnote {
+  font-size: 0.88rem;
+  color: #64748b;
+  margin: 0 0 24px 0;
+}
+
+.selection-closed-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .selection-closed-card {
+    padding: 32px 20px;
+  }
+  .selection-closed-title {
+    font-size: 1.35rem;
+  }
+  .selection-closed-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .selection-closed-actions .btn {
+    width: 100%;
+  }
+}

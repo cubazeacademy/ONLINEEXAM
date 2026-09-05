@@ -1,3 +1,4 @@
+const app = require('../server');
 const http = require('http');
 
 // Helper to make API requests

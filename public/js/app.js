@@ -3147,7 +3147,8 @@ async function loadTeacherDashboard(isSilent = false) {
     }
 
     if (statusPill) {
-      const isOpen = teacherSelectionState.settings.is_open !== false;
+      const isClosed = slotsData.is_closed || slotsData.is_open === false || slotsData.code === 'SELECTION_CLOSED';
+      const isOpen = !isClosed && (teacherSelectionState.settings.is_open !== false);
       const pillHtml = isOpen ? '<span class="pulse-beacon"></span> Selection Portal Open' : '<i class="fa-solid fa-circle-xmark"></i> Selection Portal Closed';
       const pillCls = isOpen ? 'teacher-status-pill-glowing' : 'teacher-status-pill-closed';
       if (statusPill.innerHTML !== pillHtml) statusPill.innerHTML = pillHtml;
@@ -3239,6 +3240,45 @@ function startTeacherSelectionWizard() {
   switchTab('teacher-subject-selection');
 }
 
+// Render Teacher Subject Selection Closed Screen
+function renderTeacherSelectionClosedScreen(slotsData) {
+  const closedView = document.getElementById('teacher-selection-closed-view');
+  const openView = document.getElementById('teacher-selection-open-view');
+  if (closedView) closedView.classList.remove('hidden');
+  if (openView) openView.classList.add('hidden');
+
+  const deptName = (slotsData && slotsData.department_name) || (currentUser && currentUser.department_name) || 'MEDIA';
+  const deptEl = document.getElementById('closed-screen-dept-name');
+  if (deptEl) deptEl.textContent = `Department: ${deptName}`;
+
+  const openingBox = document.getElementById('closed-screen-opening-container');
+  const openingTimeEl = document.getElementById('closed-screen-opening-time');
+  const footnoteEl = document.getElementById('closed-screen-footnote');
+
+  const startDatetime = (slotsData && slotsData.start_datetime) || (teacherSelectionState.settings && teacherSelectionState.settings.start_datetime);
+  const now = new Date();
+
+  if (startDatetime && new Date(startDatetime) > now) {
+    const d = new Date(startDatetime);
+    const dateFormatted = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    const timeFormatted = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (openingTimeEl) openingTimeEl.textContent = `Opening Time: ${dateFormatted} at ${timeFormatted}`;
+    if (openingBox) openingBox.classList.remove('hidden');
+    if (footnoteEl) footnoteEl.innerHTML = `Please check back at the scheduled opening time.`;
+  } else {
+    if (openingBox) openingBox.classList.add('hidden');
+    if (footnoteEl) footnoteEl.innerHTML = `The selection session will be opened soon. <strong>Please check back later.</strong>`;
+  }
+}
+
+// Render Teacher Subject Selection Open Screen
+function renderTeacherSelectionOpenScreen() {
+  const closedView = document.getElementById('teacher-selection-closed-view');
+  const openView = document.getElementById('teacher-selection-open-view');
+  if (closedView) closedView.classList.add('hidden');
+  if (openView) openView.classList.remove('hidden');
+}
+
 // Initialize Wizard when Tab is opened
 async function initTeacherSelectionWizard() {
   teacherSelectionState.wizardSelectedDay = teacherSelectionState.wizardSelectedDay || 'Sunday';
@@ -3254,6 +3294,20 @@ async function refreshTeacherSelectionSlots(isSilent = false) {
       fetchJsonWithCache(`/api/teaching/my-selections?teacher_id=${currentUser.id}`, 3000, !isSilent)
     ]);
 
+    const isClosed = slotsData.is_closed || slotsData.is_open === false || slotsData.code === 'SELECTION_CLOSED';
+
+    teacherSelectionState.slots = slotsData.slots || [];
+    teacherSelectionState.periodSettings = slotsData.period_settings || [];
+    teacherSelectionState.settings = slotsData.settings || {};
+    teacherSelectionState.mySelections = mySelData.selections || [];
+
+    if (isClosed) {
+      renderTeacherSelectionClosedScreen(slotsData);
+      return;
+    } else {
+      renderTeacherSelectionOpenScreen();
+    }
+
     const oldJson = JSON.stringify({
       slots: teacherSelectionState.slots,
       periodSettings: teacherSelectionState.periodSettings,
@@ -3267,11 +3321,6 @@ async function refreshTeacherSelectionSlots(isSilent = false) {
       settings: slotsData.settings || {},
       mySelections: mySelData.selections || []
     });
-
-    teacherSelectionState.slots = slotsData.slots || [];
-    teacherSelectionState.periodSettings = slotsData.period_settings || [];
-    teacherSelectionState.settings = slotsData.settings || {};
-    teacherSelectionState.mySelections = mySelData.selections || [];
 
     updateWizardCounters();
     updateWizardDayCounters();
@@ -3632,7 +3681,11 @@ async function handleTeacherPickSlot(timetableId) {
     const data = await res.json();
 
     if (!res.ok) {
-      alert(`⚠️ Selection Blocked:\n\n${data.error || 'Failed to select slot'}`);
+      if (data.code === 'SELECTION_CLOSED') {
+        alert(`Subject Selection Closed\n\n${data.error || 'Subject selection is currently closed. Please check back later.'}`);
+      } else {
+        alert(`⚠️ Selection Blocked:\n\n${data.error || 'Failed to select slot'}`);
+      }
       clearClientCache('/api/teaching');
       await refreshTeacherSelectionSlots(false);
       return;
@@ -3663,7 +3716,13 @@ async function removeTeacherSelection(selectionId) {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || 'Failed to remove selection');
+      if (data.code === 'SELECTION_CLOSED') {
+        alert(`Subject Selection Closed\n\n${data.error || 'Subject selection is currently closed. Edits are no longer allowed.'}`);
+      } else {
+        alert(data.error || 'Failed to remove selection');
+      }
+      clearClientCache('/api/teaching');
+      await refreshTeacherSelectionSlots(false);
       return;
     }
 
@@ -3751,7 +3810,13 @@ async function confirmFinalTeacherSelections() {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(`⚠️ Submission Error:\n\n${data.error || 'Failed to submit'}`);
+      if (data.code === 'SELECTION_CLOSED') {
+        alert(`Subject Selection Closed\n\n${data.error || 'Subject selection is currently closed. Submissions are not accepted.'}`);
+        clearClientCache('/api/teaching');
+        await refreshTeacherSelectionSlots(false);
+      } else {
+        alert(`⚠️ Submission Error:\n\n${data.error || 'Failed to submit'}`);
+      }
       return;
     }
 

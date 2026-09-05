@@ -34,18 +34,6 @@
         <p>Online Examination & Assessment Management System</p>
       </div>
 
-      <div class="role-selector">
-        <button type="button" class="role-tab active" id="tab-btn-student" onclick="setLoginRole('student')">
-          <i class="fa-solid fa-user-graduate"></i> Student Login
-        </button>
-        <button type="button" class="role-tab" id="tab-btn-teacher" onclick="setLoginRole('teacher')">
-          <i class="fa-solid fa-chalkboard-user"></i> Teacher Login
-        </button>
-        <button type="button" class="role-tab" id="tab-btn-admin" onclick="setLoginRole('admin')">
-          <i class="fa-solid fa-user-shield"></i> Admin Login
-        </button>
-      </div>
-
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
           <label for="login-username" id="login-username-label"><i class="fa-solid fa-user"></i> Username / Admission No / Roll No</label>
@@ -65,25 +53,8 @@
         <div id="login-error" class="alert-box alert-error hidden"></div>
 
         <button type="submit" class="btn btn-primary btn-block btn-lg">
-          <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
+          <i class="fa-solid fa-right-to-bracket"></i> Sign In
         </button>
-
-        <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center;">
-          <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-            Quick 1-Click Demo Auto-Fill
-          </div>
-          <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm btn-outline" onclick="fillDemoCredentials('admin')" title="Fill Admin Credentials">
-              <i class="fa-solid fa-user-shield" style="color:#4f46e5;"></i> Admin
-            </button>
-            <button type="button" class="btn btn-sm btn-outline" onclick="fillDemoCredentials('teacher')" title="Fill Teacher Credentials">
-              <i class="fa-solid fa-chalkboard-user" style="color:#059669;"></i> Teacher
-            </button>
-            <button type="button" class="btn btn-sm btn-outline" onclick="fillDemoCredentials('student')" title="Fill Student Credentials">
-              <i class="fa-solid fa-user-graduate" style="color:#d97706;"></i> Student
-            </button>
-          </div>
-        </div>
       </form>
     </div>
   </div>

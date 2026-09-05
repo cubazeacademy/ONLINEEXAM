@@ -142,33 +142,6 @@ function checkPersistedSession() {
   }
 }
 
-// ROLE TOGGLE ON LOGIN SCREEN
-function setLoginRole(role) {
-  currentRole = role;
-  const studentBtn = document.getElementById('tab-btn-student');
-  const teacherBtn = document.getElementById('tab-btn-teacher');
-  const adminBtn = document.getElementById('tab-btn-admin');
-  const usernameInput = document.getElementById('login-username');
-  const usernameLabel = document.getElementById('login-username-label');
-
-  if (studentBtn) studentBtn.classList.toggle('active', role === 'student');
-  if (teacherBtn) teacherBtn.classList.toggle('active', role === 'teacher');
-  if (adminBtn) adminBtn.classList.toggle('active', role === 'admin');
-
-  if (usernameInput) {
-    if (role === 'admin') {
-      usernameInput.placeholder = 'Enter admin username (e.g. admin)';
-      if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-user-shield"></i> Admin Username';
-    } else if (role === 'teacher') {
-      usernameInput.placeholder = 'Enter teacher username';
-      if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-chalkboard-user"></i> Teacher Username';
-    } else {
-      usernameInput.placeholder = 'Enter Username, Admission No, or Roll No';
-      if (usernameLabel) usernameLabel.innerHTML = '<i class="fa-solid fa-user"></i> Username / Admission No / Roll No';
-    }
-  }
-}
-
 function toggleLoginPasswordVisibility() {
   const pwdInput = document.getElementById('login-password');
   const icon = document.getElementById('toggle-pwd-icon');
@@ -179,29 +152,6 @@ function toggleLoginPasswordVisibility() {
   } else {
     pwdInput.type = 'password';
     if (icon) icon.className = 'fa-solid fa-eye';
-  }
-}
-
-function fillDemoCredentials(role) {
-  setLoginRole(role);
-  if (role === 'admin') {
-    document.getElementById('login-username').value = 'admin';
-    document.getElementById('login-password').value = 'admin123';
-  } else if (role === 'teacher') {
-    document.getElementById('login-username').value = '';
-    document.getElementById('login-password').value = 'teacher123';
-  } else {
-    document.getElementById('login-username').value = '4049';
-    document.getElementById('login-password').value = '40492026';
-  }
-  // Auto-submit login immediately on 1-click
-  const form = document.getElementById('login-form');
-  if (form) {
-    if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit();
-    } else {
-      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-    }
   }
 }
 

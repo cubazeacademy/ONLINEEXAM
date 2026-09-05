@@ -241,7 +241,7 @@ async function runMigration() {
     } catch (e) { console.log('Period settings constraint note:', e.message); }
     console.log('✅ teacher_selection_period_settings migrated.');
 
-    // 3.5 Teacher Selection Settings
+    // 3.5 Teacher & Student Selection Settings
     await client.query(`
       CREATE TABLE IF NOT EXISTS teacher_selection_settings (
         id SERIAL PRIMARY KEY,
@@ -253,17 +253,44 @@ async function runMigration() {
         allow_edit BOOLEAN DEFAULT true,
         min_periods INTEGER DEFAULT 2,
         max_periods INTEGER DEFAULT 3,
+        active_days TEXT,
+        rule_4_enabled BOOLEAN DEFAULT false,
+        group_a_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_a_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_b_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_b_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id) ON DELETE CASCADE;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS active_days TEXT;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS rule_4_enabled BOOLEAN DEFAULT false;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
     await client.query(`UPDATE teacher_selection_settings SET department_id = $1 WHERE department_id IS NULL`, [mediaDeptId]);
     await client.query(`ALTER TABLE teacher_selection_settings ALTER COLUMN department_id SET DEFAULT 1;`);
     try {
       await client.query(`ALTER TABLE teacher_selection_settings DROP CONSTRAINT IF EXISTS uq_ts_settings_dept;`);
       await client.query(`ALTER TABLE teacher_selection_settings ADD CONSTRAINT uq_ts_settings_dept UNIQUE (department_id);`);
     } catch (e) { console.log('Selection settings constraint note:', e.message); }
-    console.log('✅ teacher_selection_settings migrated.');
+
+    // Dedicated student_selection_rule_settings table for extensibility
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_selection_rule_settings (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER UNIQUE REFERENCES departments(id) ON DELETE CASCADE,
+        rule_4_enabled BOOLEAN DEFAULT false,
+        group_a_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_a_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_b_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_b_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✅ teacher_selection_settings & student_selection_rule_settings migrated.');
 
     // 3.6 Teacher Selections
     await client.query(`

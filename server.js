@@ -1783,8 +1783,95 @@ app.delete('/api/teaching/admin/departments/:id', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 1. SETTINGS & STATUS (DEPARTMENT-SCOPED)
+// 1. SETTINGS, RULES & STATUS (DEPARTMENT-SCOPED)
 // -------------------------------------------------------------
+
+// Helper to retrieve and evaluate Department Rule 4 (Class Group Selection Restriction)
+async function getDepartmentRule4Settings(departmentId) {
+  const deptId = departmentId ? parseInt(departmentId) : 1;
+  const [settings, classes, dept] = await Promise.all([
+    db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]),
+    db.all(`SELECT id, name, sort_order, department_id FROM teacher_selection_classes WHERE department_id = $1 ORDER BY sort_order ASC, id ASC`, [deptId]),
+    db.get(`SELECT id, name, code FROM departments WHERE id = $1`, [deptId])
+  ]);
+
+  const rule_4_enabled = settings ? Boolean(settings.rule_4_enabled) : false;
+  const group_a_start_class_id = settings ? settings.group_a_start_class_id : null;
+  const group_a_end_class_id = settings ? settings.group_a_end_class_id : null;
+  const group_b_start_class_id = settings ? settings.group_b_start_class_id : null;
+  const group_b_end_class_id = settings ? settings.group_b_end_class_id : null;
+
+  const classMap = new Map();
+  classes.forEach((c, index) => {
+    const classData = { ...c, rank: index + 1 };
+    classMap.set(c.id, classData);
+    classMap.set(c.name, classData);
+  });
+
+  const startA = group_a_start_class_id ? classMap.get(group_a_start_class_id) : null;
+  const endA = group_a_end_class_id ? classMap.get(group_a_end_class_id) : null;
+  const startB = group_b_start_class_id ? classMap.get(group_b_start_class_id) : null;
+  const endB = group_b_end_class_id ? classMap.get(group_b_end_class_id) : null;
+
+  const groupAClassIds = [];
+  const groupAClassNames = [];
+  const groupBClassIds = [];
+  const groupBClassNames = [];
+
+  if (startA && endA) {
+    const minRank = Math.min(startA.rank, endA.rank);
+    const maxRank = Math.max(startA.rank, endA.rank);
+    classes.forEach((c, idx) => {
+      const rank = idx + 1;
+      if (rank >= minRank && rank <= maxRank) {
+        groupAClassIds.push(c.id);
+        groupAClassNames.push(c.name);
+      }
+    });
+  }
+
+  if (startB && endB) {
+    const minRank = Math.min(startB.rank, endB.rank);
+    const maxRank = Math.max(startB.rank, endB.rank);
+    classes.forEach((c, idx) => {
+      const rank = idx + 1;
+      if (rank >= minRank && rank <= maxRank) {
+        groupBClassIds.push(c.id);
+        groupBClassNames.push(c.name);
+      }
+    });
+  }
+
+  function getClassGroup(classIdOrName) {
+    if (!rule_4_enabled) return null;
+    const c = classMap.get(classIdOrName);
+    if (!c) return null;
+    if (groupAClassIds.includes(c.id)) return 'A';
+    if (groupBClassIds.includes(c.id)) return 'B';
+    return null;
+  }
+
+  return {
+    department_id: deptId,
+    department_name: dept ? dept.name : 'MEDIA',
+    rule_4_enabled,
+    group_a_start_class_id,
+    group_a_end_class_id,
+    group_b_start_class_id,
+    group_b_end_class_id,
+    group_a_start_class_name: startA ? startA.name : null,
+    group_a_end_class_name: endA ? endA.name : null,
+    group_b_start_class_name: startB ? startB.name : null,
+    group_b_end_class_name: endB ? endB.name : null,
+    group_a_class_ids: groupAClassIds,
+    group_a_class_names: groupAClassNames,
+    group_b_class_ids: groupBClassIds,
+    group_b_class_names: groupBClassNames,
+    classes,
+    getClassGroup
+  };
+}
+
 app.get('/api/teaching/settings', async (req, res) => {
   try {
     let departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
@@ -1803,6 +1890,7 @@ app.get('/api/teaching/settings', async (req, res) => {
       settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id ASC LIMIT 1`);
     }
     const dept = await db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId]);
+    const rule4 = await getDepartmentRule4Settings(departmentId);
 
     const activeDays = (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
 
@@ -1816,12 +1904,18 @@ app.get('/api/teaching/settings', async (req, res) => {
         max_periods: 3,
         start_datetime: null,
         end_datetime: null,
-        active_days: activeDays
+        active_days: activeDays,
+        rule_4_enabled: false,
+        group_a_start_class_id: null,
+        group_a_end_class_id: null,
+        group_b_start_class_id: null,
+        group_b_end_class_id: null
       };
     }
 
     res.json({
       ...settings,
+      rule_4: rule4,
       active_days: activeDays,
       department_name: dept ? dept.name : 'MEDIA',
       department_code: dept ? dept.code : 'MEDIA',
@@ -1832,19 +1926,180 @@ app.get('/api/teaching/settings', async (req, res) => {
   }
 });
 
-app.post('/api/teaching/admin/settings', async (req, res) => {
-  const { department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days, admin_name, admin_id } = req.body;
+// Dedicated GET Endpoint for Selection Rules (Rule 1, 2, 3, 4)
+app.get('/api/teaching/rules', async (req, res) => {
+  try {
+    const departmentId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const rule4 = await getDepartmentRule4Settings(departmentId);
+    res.json(rule4);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dedicated POST Endpoint for Selection Rules (Rule 4 Configuration)
+app.post('/api/teaching/admin/rules', async (req, res) => {
+  const {
+    department_id,
+    rule_4_enabled,
+    group_a_start_class_id,
+    group_a_end_class_id,
+    group_b_start_class_id,
+    group_b_end_class_id,
+    admin_id,
+    admin_name
+  } = req.body;
+
   const deptId = department_id ? parseInt(department_id) : 1;
-  const cleanActiveDays = active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+  const isEnabled = Boolean(rule_4_enabled);
 
   try {
+    const dept = await db.get(`SELECT id, name FROM departments WHERE id = $1`, [deptId]);
+    if (!dept) {
+      return res.status(404).json({ error: 'Department not found.' });
+    }
+
+    const gAStart = group_a_start_class_id ? parseInt(group_a_start_class_id) : null;
+    const gAEnd = group_a_end_class_id ? parseInt(group_a_end_class_id) : null;
+    const gBStart = group_b_start_class_id ? parseInt(group_b_start_class_id) : null;
+    const gBEnd = group_b_end_class_id ? parseInt(group_b_end_class_id) : null;
+
+    if (isEnabled) {
+      if (!gAStart || !gAEnd || !gBStart || !gBEnd) {
+        return res.status(400).json({ error: 'Please select valid start and end classes for both Group A and Group B.' });
+      }
+
+      const classes = await db.all(`
+        SELECT id, name, sort_order 
+        FROM teacher_selection_classes 
+        WHERE department_id = $1 
+        ORDER BY sort_order ASC, id ASC
+      `, [deptId]);
+
+      if (classes.length === 0) {
+        return res.status(400).json({ error: 'No classes found for this department. Please create classes first.' });
+      }
+
+      const classIndexMap = new Map();
+      classes.forEach((c, idx) => classIndexMap.set(c.id, idx));
+
+      const idxAStart = classIndexMap.get(gAStart);
+      const idxAEnd = classIndexMap.get(gAEnd);
+      const idxBStart = classIndexMap.get(gBStart);
+      const idxBEnd = classIndexMap.get(gBEnd);
+
+      if (idxAStart === undefined || idxAEnd === undefined) {
+        return res.status(400).json({ error: 'Selected Group A classes do not belong to this department.' });
+      }
+      if (idxBStart === undefined || idxBEnd === undefined) {
+        return res.status(400).json({ error: 'Selected Group B classes do not belong to this department.' });
+      }
+
+      if (idxAStart > idxAEnd) {
+        return res.status(400).json({ error: 'Group A Start class must not come after Group A End class.' });
+      }
+      if (idxBStart > idxBEnd) {
+        return res.status(400).json({ error: 'Group B Start class must not come after Group B End class.' });
+      }
+
+      // Overlap check
+      const minA = Math.min(idxAStart, idxAEnd);
+      const maxA = Math.max(idxAStart, idxAEnd);
+      const minB = Math.min(idxBStart, idxBEnd);
+      const maxB = Math.max(idxBStart, idxBEnd);
+
+      if (maxA >= minB && maxB >= minA) {
+        return res.status(400).json({ error: 'Group A and Group B class ranges cannot overlap.' });
+      }
+    }
+
     const existing = await db.get(`SELECT id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
     if (existing) {
       await db.run(`
         UPDATE teacher_selection_settings
+        SET rule_4_enabled = $1,
+            group_a_start_class_id = $2,
+            group_a_end_class_id = $3,
+            group_b_start_class_id = $4,
+            group_b_end_class_id = $5,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $6
+      `, [isEnabled, gAStart, gAEnd, gBStart, gBEnd, existing.id]);
+    } else {
+      await db.run(`
+        INSERT INTO teacher_selection_settings (department_id, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [deptId, isEnabled, gAStart, gAEnd, gBStart, gBEnd]);
+    }
+
+    await db.query(`
+      INSERT INTO student_selection_rule_settings (department_id, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+      ON CONFLICT (department_id)
+      DO UPDATE SET
+        rule_4_enabled = EXCLUDED.rule_4_enabled,
+        group_a_start_class_id = EXCLUDED.group_a_start_class_id,
+        group_a_end_class_id = EXCLUDED.group_a_end_class_id,
+        group_b_start_class_id = EXCLUDED.group_b_start_class_id,
+        group_b_end_class_id = EXCLUDED.group_b_end_class_id,
+        updated_at = CURRENT_TIMESTAMP
+    `, [deptId, isEnabled, gAStart, gAEnd, gBStart, gBEnd]);
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Selection Rules for Dept ${dept.name} (Rule 4: ${isEnabled ? 'ON' : 'OFF'})`, {
+      department_id: deptId,
+      rule_4_enabled: isEnabled,
+      group_a_start_class_id: gAStart,
+      group_a_end_class_id: gAEnd,
+      group_b_start_class_id: gBStart,
+      group_b_end_class_id: gBEnd
+    }, deptId);
+
+    const updatedRule4 = await getDepartmentRule4Settings(deptId);
+    res.json({ message: 'Selection rules saved successfully', rule_4: updatedRule4 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/settings', async (req, res) => {
+  const {
+    department_id,
+    start_datetime,
+    end_datetime,
+    is_open,
+    is_timetable_published,
+    allow_edit,
+    min_periods,
+    max_periods,
+    active_days,
+    rule_4_enabled,
+    group_a_start_class_id,
+    group_a_end_class_id,
+    group_b_start_class_id,
+    group_b_end_class_id,
+    admin_name,
+    admin_id
+  } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+  const cleanActiveDays = active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+
+  try {
+    const existing = await db.get(`SELECT id, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
+    const r4Enabled = rule_4_enabled !== undefined ? Boolean(rule_4_enabled) : (existing ? existing.rule_4_enabled : false);
+    const gAStart = group_a_start_class_id !== undefined ? (group_a_start_class_id ? parseInt(group_a_start_class_id) : null) : (existing ? existing.group_a_start_class_id : null);
+    const gAEnd = group_a_end_class_id !== undefined ? (group_a_end_class_id ? parseInt(group_a_end_class_id) : null) : (existing ? existing.group_a_end_class_id : null);
+    const gBStart = group_b_start_class_id !== undefined ? (group_b_start_class_id ? parseInt(group_b_start_class_id) : null) : (existing ? existing.group_b_start_class_id : null);
+    const gBEnd = group_b_end_class_id !== undefined ? (group_b_end_class_id ? parseInt(group_b_end_class_id) : null) : (existing ? existing.group_b_end_class_id : null);
+
+    if (existing) {
+      await db.run(`
+        UPDATE teacher_selection_settings
         SET start_datetime = $1, end_datetime = $2, is_open = $3, is_timetable_published = $4,
-            allow_edit = $5, min_periods = $6, max_periods = $7, active_days = $8, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $9
+            allow_edit = $5, min_periods = $6, max_periods = $7, active_days = $8,
+            rule_4_enabled = $9, group_a_start_class_id = $10, group_a_end_class_id = $11, group_b_start_class_id = $12, group_b_end_class_id = $13,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $14
       `, [
         start_datetime || null,
         end_datetime || null,
@@ -1854,12 +2109,17 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         min_periods || 2,
         max_periods || 3,
         cleanActiveDays,
+        r4Enabled,
+        gAStart,
+        gAEnd,
+        gBStart,
+        gBEnd,
         existing.id
       ]);
     } else {
       await db.run(`
-        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       `, [
         deptId,
         start_datetime || null,
@@ -1869,7 +2129,12 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         allow_edit !== undefined ? allow_edit : true,
         min_periods || 2,
         max_periods || 3,
-        cleanActiveDays
+        cleanActiveDays,
+        r4Enabled,
+        gAStart,
+        gAEnd,
+        gBStart,
+        gBEnd
       ]);
     }
 
@@ -2638,7 +2903,7 @@ app.get('/api/teaching/slots', async (req, res) => {
 
     if (!departmentId) departmentId = 1;
 
-    const [slots, periodSettings, settings, dept] = await Promise.all([
+    const [slots, periodSettings, settings, dept, rule4] = await Promise.all([
       db.all(`
         SELECT 
           t.id, 
@@ -2671,7 +2936,8 @@ app.get('/api/teaching/slots', async (req, res) => {
       `, [departmentId]),
       db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [departmentId]),
       db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [departmentId]),
-      db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId])
+      db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId]),
+      getDepartmentRule4Settings(departmentId)
     ]);
 
     const formattedSlots = slots.map(s => {
@@ -2697,6 +2963,7 @@ app.get('/api/teaching/slots', async (req, res) => {
         class_name: s.class_name,
         subject: s.subject,
         status,
+        class_group: rule4 ? rule4.getClassGroup(s.class_name) : null,
         is_period_enabled: isPeriodEnabled,
         selected_by_name: status === 'locked_by_other' ? s.selected_teacher_name : null,
         my_selection_id: status === 'selected_by_me' ? s.selection_id : null
@@ -2711,9 +2978,15 @@ app.get('/api/teaching/slots', async (req, res) => {
       active_days: activeDays,
       slots: formattedSlots,
       period_settings: periodSettings,
+      rule_4: rule4,
       settings: {
         ...(settings || {}),
-        active_days: activeDays
+        active_days: activeDays,
+        rule_4_enabled: rule4 ? rule4.rule_4_enabled : false,
+        group_a_start_class_id: rule4 ? rule4.group_a_start_class_id : null,
+        group_a_end_class_id: rule4 ? rule4.group_a_end_class_id : null,
+        group_b_start_class_id: rule4 ? rule4.group_b_start_class_id : null,
+        group_b_end_class_id: rule4 ? rule4.group_b_end_class_id : null
       }
     });
   } catch (err) {
@@ -2808,7 +3081,59 @@ app.post('/api/teaching/select', async (req, res) => {
       return res.status(409).json({ error: `This class has already been selected by ${classClash.teacher_name} for this period.` });
     }
 
-    // 8. Atomic Insert into teacher_selections
+    // 8. RULE 4 — CLASS GROUP RESTRICTION (Department-Specific)
+    // Applied ONLY to the 1st and 2nd selections. Must belong to opposite class groups.
+    // Does NOT apply to the 3rd selection.
+    const rule4 = await getDepartmentRule4Settings(teacherDeptId);
+    if (rule4 && rule4.rule_4_enabled) {
+      const existingSelections = await db.all(`
+        SELECT id, class_name, subject, day, period, selected_at
+        FROM teacher_selections
+        WHERE teacher_id = $1 AND department_id = $2
+        ORDER BY selected_at ASC, id ASC
+      `, [teacher_id, teacherDeptId]);
+
+      const selectionIndex = existingSelections.length; // 0 for 1st selection, 1 for 2nd selection, 2 for 3rd selection
+      const candidateGroup = rule4.getClassGroup(slot.class_name);
+
+      if (selectionIndex === 0) {
+        // First selection:
+        // Valid for any class belonging to a valid group (or any class in dept)
+      } else if (selectionIndex === 1) {
+        // Second selection — CORE RULE:
+        const firstSelection = existingSelections[0];
+        const firstGroup = rule4.getClassGroup(firstSelection.class_name);
+
+        if (firstGroup === 'A' && candidateGroup === 'A') {
+          return res.status(400).json({
+            error: 'You cannot select another subject from this class group.\n\nYour first selection is from Group A.\nFor your second selection, please choose a subject from Group B.'
+          });
+        }
+
+        if (firstGroup === 'B' && candidateGroup === 'B') {
+          return res.status(400).json({
+            error: 'You cannot select another subject from this class group.\n\nYour first selection is from Group B.\nFor your second selection, please choose a subject from Group A.'
+          });
+        }
+
+        if (firstGroup === 'A' && candidateGroup !== 'B') {
+          return res.status(400).json({
+            error: 'Your first selection is from Group A.\nFor your second selection, please choose a subject from Group B.'
+          });
+        }
+
+        if (firstGroup === 'B' && candidateGroup !== 'A') {
+          return res.status(400).json({
+            error: 'Your first selection is from Group B.\nFor your second selection, please choose a subject from Group A.'
+          });
+        }
+      } else {
+        // Third selection (selectionIndex >= 2):
+        // Rule 4 does NOT apply to the third selection!
+      }
+    }
+
+    // 9. Atomic Insert into teacher_selections
     const inserted = await db.run(`
       INSERT INTO teacher_selections (teacher_id, timetable_id, department_id, day, period, class_name, subject, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed')

@@ -116,6 +116,9 @@
         <a href="#admin-teaching-periods" class="nav-item" onclick="switchTab('admin-teaching-periods')">
           <i class="fa-solid fa-toggle-on"></i> <span>Period Settings</span>
         </a>
+        <a href="#admin-teaching-rules" class="nav-item" onclick="switchTab('admin-teaching-rules')">
+          <i class="fa-solid fa-scale-balanced"></i> <span>Selection Rules</span>
+        </a>
         <a href="#admin-teaching-settings" class="nav-item" onclick="switchTab('admin-teaching-settings')">
           <i class="fa-solid fa-clock"></i> <span>Deadline & Settings</span>
         </a>
@@ -1220,6 +1223,166 @@
           </div>
         </section>
 
+        <!-- ADMIN: STUDENT & TEACHER SELECTION RULES (RULES 1, 2, 3, 4) -->
+        <section id="view-admin-teaching-rules" class="tab-view hidden">
+          <div class="panel-card max-w-4xl" style="margin: 0 auto;">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-scale-balanced" style="color:var(--primary);"></i> Student & Teacher Selection Rules</h3>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.85rem;">Manage and configure timetable selection validation rules per department.</p>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.85rem; font-weight:700; color:#475569; margin:0;">Department:</label>
+                <select id="rules-department-select" class="form-control" style="min-width:180px; padding:6px 12px; font-weight:600;" onchange="onRulesDepartmentSelectChanged(this.value)">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+            </div>
+
+            <div class="panel-body" style="padding: 24px;">
+              <!-- RULES OVERVIEW CARDS (RULES 1, 2, 3) -->
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:24px;">
+                <!-- RULE 1 -->
+                <div class="modern-section-card" style="margin:0; border-left:4px solid #3b82f6; background:#f8fafc;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:#2563eb; letter-spacing:0.5px;">Rule 1</span>
+                    <span class="badge badge-success" style="font-size:0.7rem;"><i class="fa-solid fa-circle-check"></i> System Active</span>
+                  </div>
+                  <h4 style="margin:0 0 4px 0; font-size:0.95rem; color:#0f172a; font-weight:700;">Teacher Period Clash</h4>
+                  <p style="margin:0; font-size:0.8rem; color:#64748b; line-height:1.4;">Prevents an educator from selecting more than 1 class on the same day and period slot.</p>
+                </div>
+
+                <!-- RULE 2 -->
+                <div class="modern-section-card" style="margin:0; border-left:4px solid #10b981; background:#f8fafc;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:#059669; letter-spacing:0.5px;">Rule 2</span>
+                    <span class="badge badge-success" style="font-size:0.7rem;"><i class="fa-solid fa-circle-check"></i> System Active</span>
+                  </div>
+                  <h4 style="margin:0 0 4px 0; font-size:0.95rem; color:#0f172a; font-weight:700;">Department Class Clash</h4>
+                  <p style="margin:0; font-size:0.8rem; color:#64748b; line-height:1.4;">Guarantees that a specific class is never allocated to multiple educators at the same time.</p>
+                </div>
+
+                <!-- RULE 3 -->
+                <div class="modern-section-card" style="margin:0; border-left:4px solid #8b5cf6; background:#f8fafc;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:#7c3aed; letter-spacing:0.5px;">Rule 3</span>
+                    <span class="badge badge-success" style="font-size:0.7rem;"><i class="fa-solid fa-circle-check"></i> System Active</span>
+                  </div>
+                  <h4 style="margin:0 0 4px 0; font-size:0.95rem; color:#0f172a; font-weight:700;">Allocation Limits</h4>
+                  <p style="margin:0; font-size:0.8rem; color:#64748b; line-height:1.4;">Enforces minimum (2) and maximum (3) period selection bounds before submission.</p>
+                </div>
+              </div>
+
+              <!-- RULE 4 CONFIGURATION CARD -->
+              <div class="modern-section-card" style="border: 2px solid #e0e7ff; background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.05);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; border-bottom:1.5px solid #f1f5f9; padding-bottom:16px; margin-bottom:18px;">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                      <span class="badge badge-primary" style="font-size:0.75rem; font-weight:800; padding:3px 8px;">RULE 4</span>
+                      <h4 style="margin:0; font-size:1.15rem; color:#1e1b4b; font-weight:800;">Class Group Restriction</h4>
+                    </div>
+                    <p style="margin:0; font-size:0.85rem; color:#64748b;">
+                      When enabled, the student/teacher's <strong>1st and 2nd selections</strong> must belong to opposite class groups. The rule does <strong>not</strong> apply to the 3rd selection.
+                    </p>
+                  </div>
+
+                  <!-- ON/OFF TOGGLE SWITCH -->
+                  <div style="display:flex; align-items:center; gap:10px; background:#f8fafc; padding:6px 14px; border-radius:30px; border:1px solid #e2e8f0;">
+                    <span id="rule4-toggle-label" style="font-size:0.85rem; font-weight:700; color:#64748b;">Disabled</span>
+                    <label class="switch-toggle" style="margin:0;">
+                      <input type="checkbox" id="rule4-enabled-toggle" onchange="onRule4ToggleChanged(this.checked)">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <form id="form-rule4-settings" onsubmit="saveRule4SettingsForm(event)">
+                  <input type="hidden" id="rule4-dept-id" value="1">
+
+                  <!-- CLASS RANGE CONFIGURATION GRID -->
+                  <div id="rule4-ranges-container" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:18px; margin-bottom:20px;">
+                    <!-- GROUP A CONFIG -->
+                    <div style="background:linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); border:1.5px solid #ddd6fe; border-radius:14px; padding:16px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                        <h5 style="margin:0; color:#5b21b6; font-size:0.95rem; font-weight:800;">
+                          <i class="fa-solid fa-layer-group" style="color:#7c3aed;"></i> Class Group A
+                        </h5>
+                        <span class="badge" style="background:#7c3aed; color:#fff; font-size:0.72rem; font-weight:700;">Group A</span>
+                      </div>
+                      
+                      <div class="grid-2-cols" style="gap:10px;">
+                        <div class="form-group" style="margin:0;">
+                          <label style="font-size:0.8rem; font-weight:700; color:#4c1d95; margin-bottom:4px;">From Class</label>
+                          <select id="rule4-group-a-start" class="form-control" style="background:#fff; font-size:0.85rem;" onchange="updateRule4LivePreview()" required>
+                            <!-- Options from DB -->
+                          </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                          <label style="font-size:0.8rem; font-weight:700; color:#4c1d95; margin-bottom:4px;">To Class</label>
+                          <select id="rule4-group-a-end" class="form-control" style="background:#fff; font-size:0.85rem;" onchange="updateRule4LivePreview()" required>
+                            <!-- Options from DB -->
+                          </select>
+                        </div>
+                      </div>
+                      <small id="rule4-group-a-classes-hint" class="text-muted" style="display:block; margin-top:8px; font-size:0.78rem; color:#6d28d9; font-weight:600;">
+                        Contains: Std 1, Std 2, Std 3
+                      </small>
+                    </div>
+
+                    <!-- GROUP B CONFIG -->
+                    <div style="background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border:1.5px solid #a7f3d0; border-radius:14px; padding:16px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                        <h5 style="margin:0; color:#065f46; font-size:0.95rem; font-weight:800;">
+                          <i class="fa-solid fa-layer-group" style="color:#059669;"></i> Class Group B
+                        </h5>
+                        <span class="badge" style="background:#059669; color:#fff; font-size:0.72rem; font-weight:700;">Group B</span>
+                      </div>
+                      
+                      <div class="grid-2-cols" style="gap:10px;">
+                        <div class="form-group" style="margin:0;">
+                          <label style="font-size:0.8rem; font-weight:700; color:#064e3b; margin-bottom:4px;">From Class</label>
+                          <select id="rule4-group-b-start" class="form-control" style="background:#fff; font-size:0.85rem;" onchange="updateRule4LivePreview()" required>
+                            <!-- Options from DB -->
+                          </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                          <label style="font-size:0.8rem; font-weight:700; color:#064e3b; margin-bottom:4px;">To Class</label>
+                          <select id="rule4-group-b-end" class="form-control" style="background:#fff; font-size:0.85rem;" onchange="updateRule4LivePreview()" required>
+                            <!-- Options from DB -->
+                          </select>
+                        </div>
+                      </div>
+                      <small id="rule4-group-b-classes-hint" class="text-muted" style="display:block; margin-top:8px; font-size:0.78rem; color:#047857; font-weight:600;">
+                        Contains: Std 4, Std 5, Std 6, Std 7
+                      </small>
+                    </div>
+                  </div>
+
+                  <!-- DYNAMIC RULE 4 PREVIEW BOX -->
+                  <div id="rule4-preview-card" style="background:#0f172a; color:#f8fafc; border-radius:12px; padding:18px; margin-bottom:20px; box-shadow:0 4px 12px rgba(15, 23, 42, 0.15);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #334155; padding-bottom:8px;">
+                      <div style="font-size:0.82rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">
+                        <i class="fa-solid fa-wand-magic-sparkles" style="color:#38bdf8;"></i> Dynamic Rule Execution Preview
+                      </div>
+                      <span id="preview-rule4-status-badge" class="badge" style="background:#10b981; color:#fff; font-size:0.75rem;">ENABLED</span>
+                    </div>
+
+                    <div id="rule4-preview-content" style="font-family:monospace; font-size:0.88rem; line-height:1.6;">
+                      <!-- Dynamically rendered preview text -->
+                    </div>
+                  </div>
+
+                  <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="submit" class="btn btn-primary" id="btn-save-rule4">
+                      <i class="fa-solid fa-floppy-disk"></i> Save Rule 4 Configuration
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- ADMIN 6: REPORTS & EXPORTS -->
         <section id="view-admin-teaching-reports" class="tab-view hidden">
           <div class="panel-card">
@@ -1555,6 +1718,9 @@
                 </button>
               </div>
             </div>
+
+            <!-- DYNAMIC RULE 4 SELECTION GUIDANCE BANNER -->
+            <div id="wizard-rule4-guidance-container" style="display:none; margin-bottom: 16px;"></div>
 
             <!-- ACTIVE DAY PERIOD CARDS CONTAINER -->
             <div id="teacher-periods-grid-active" class="period-cards-flow mt-4">

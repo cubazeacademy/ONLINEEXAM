@@ -396,6 +396,7 @@ function switchTab(tabId) {
     'admin-teaching-teachers': 'Teachers Management',
     'admin-teaching-timetable': 'Master Academic Timetable',
     'admin-teaching-periods': 'Period Availability Settings (ON/OFF)',
+    'admin-teaching-rules': 'Student Selection Rules & Class Groups',
     'admin-teaching-settings': 'Selection Window & Deadline Settings',
     'admin-teaching-reports': 'Teaching Allocation Reports & Exports',
     'admin-teaching-logs': 'Subject Selection Audit Logs',
@@ -428,6 +429,7 @@ function switchTab(tabId) {
   if (tabId === 'admin-teaching-teachers') loadAdminTeachingTeachers();
   if (tabId === 'admin-teaching-timetable') loadAdminTeachingTimetable();
   if (tabId === 'admin-teaching-periods') loadAdminTeachingPeriods();
+  if (tabId === 'admin-teaching-rules') loadAdminTeachingRules();
   if (tabId === 'admin-teaching-settings') loadAdminTeachingSettings();
   if (tabId === 'admin-teaching-reports') loadAdminTeachingReports();
   if (tabId === 'admin-teaching-logs') loadAdminTeachingLogs();
@@ -3424,6 +3426,78 @@ function renderWizardPeriodCards(day, containerId) {
   const daySlots = teacherSelectionState.slots.filter(s => s.day === day);
   const maxPeriods = teacherSelectionState.settings.max_periods || 3;
   const currentTotal = teacherSelectionState.mySelections.length;
+  const rule4 = teacherSelectionState.rule_4 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_4);
+  const isRule4Enabled = rule4 && rule4.rule_4_enabled;
+
+  // Render Dynamic Proactive Guidance Banner
+  const guidanceContainer = document.getElementById('wizard-rule4-guidance-container');
+  if (guidanceContainer) {
+    if (!isRule4Enabled) {
+      guidanceContainer.style.display = 'none';
+      guidanceContainer.innerHTML = '';
+    } else {
+      guidanceContainer.style.display = 'block';
+      if (currentTotal === 0) {
+        guidanceContainer.innerHTML = `
+          <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #bfdbfe; border-radius: 12px; padding: 14px 18px; color: #1e40af; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 50%; background: #2563eb; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.95rem;">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+              <div>
+                <strong style="font-size: 0.92rem; display: block;">Class Group Selection Rule Active (${escapeHtml(rule4.department_name || 'Department')})</strong>
+                <span style="font-size: 0.82rem; color: #3b82f6;">
+                  Your <strong>first two selections</strong> must come from different class groups: 
+                  <span class="badge" style="background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; margin:0 4px;">Group A: ${escapeHtml(rule4.group_a_start_class_name || 'Std 1')}–${escapeHtml(rule4.group_a_end_class_name || 'Std 3')}</span> and 
+                  <span class="badge" style="background:#d1fae5; color:#047857; border:1px solid #a7f3d0; margin:0 4px;">Group B: ${escapeHtml(rule4.group_b_start_class_name || 'Std 4')}–${escapeHtml(rule4.group_b_end_class_name || 'Std 7')}</span>.
+                </span>
+              </div>
+            </div>
+            <span class="badge badge-primary" style="font-size: 0.75rem; font-weight: 700;">Selection 1 of 3</span>
+          </div>
+        `;
+      } else if (currentTotal === 1) {
+        const firstSelection = teacherSelectionState.mySelections[0];
+        const firstGroup = (firstSelection && rule4.getClassGroup) ? rule4.getClassGroup(firstSelection.class_name) : (rule4.group_a_class_names && rule4.group_a_class_names.includes(firstSelection.class_name) ? 'A' : 'B');
+        const requiredGroup = firstGroup === 'A' ? 'B' : 'A';
+        const requiredRange = requiredGroup === 'A' ? `${rule4.group_a_start_class_name || 'Std 1'}–${rule4.group_a_end_class_name || 'Std 3'}` : `${rule4.group_b_start_class_name || 'Std 4'}–${rule4.group_b_end_class_name || 'Std 7'}`;
+
+        guidanceContainer.innerHTML = `
+          <div style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1.5px solid #fde68a; border-radius: 12px; padding: 14px 18px; color: #92400e; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 50%; background: #f59e0b; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.95rem;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+              </div>
+              <div>
+                <strong style="font-size: 0.92rem; display: block;">Your first selection (${escapeHtml(firstSelection.class_name)}) is from Group ${firstGroup}.</strong>
+                <span style="font-size: 0.84rem; color: #b45309;">
+                  For your second selection, please choose a subject from <strong>Group ${requiredGroup} (${escapeHtml(requiredRange)})</strong>. Same-group classes are locked for Selection 2.
+                </span>
+              </div>
+            </div>
+            <span class="badge" style="background:#f59e0b; color:#fff; font-size: 0.75rem; font-weight: 700;">Choose Group ${requiredGroup}</span>
+          </div>
+        `;
+      } else {
+        guidanceContainer.innerHTML = `
+          <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1.5px solid #a7f3d0; border-radius: 12px; padding: 14px 18px; color: #065f46; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 50%; background: #10b981; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.95rem;">
+                <i class="fa-solid fa-circle-check"></i>
+              </div>
+              <div>
+                <strong style="font-size: 0.92rem; display: block;">You have completed your first two selections from opposite groups!</strong>
+                <span style="font-size: 0.84rem; color: #047857;">
+                  Class Group Rule does not apply to your third selection. You may choose from any available class across Group A and Group B.
+                </span>
+              </div>
+            </div>
+            <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700;">All Classes Open</span>
+          </div>
+        `;
+      }
+    }
+  }
 
   let html = '';
 
@@ -3466,6 +3540,15 @@ function renderWizardPeriodCards(day, containerId) {
         let statusBadge = '';
         let clickHandler = '';
 
+        // Determine class group
+        let slotGroup = slot.class_group;
+        if (!slotGroup && isRule4Enabled && rule4.group_a_class_names && rule4.group_a_class_names.includes(slot.class_name)) slotGroup = 'A';
+        if (!slotGroup && isRule4Enabled && rule4.group_b_class_names && rule4.group_b_class_names.includes(slot.class_name)) slotGroup = 'B';
+
+        const groupBadgeHtml = slotGroup === 'A'
+          ? `<span class="badge" style="background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; font-size:0.68rem; font-weight:800; margin-left:4px;">Group A</span>`
+          : (slotGroup === 'B' ? `<span class="badge" style="background:#d1fae5; color:#047857; border:1px solid #a7f3d0; font-size:0.68rem; font-weight:800; margin-left:4px;">Group B</span>` : '');
+
         if (slot.status === 'selected_by_me') {
           chipClass += ' selected-me';
           statusBadge = `
@@ -3486,6 +3569,22 @@ function renderWizardPeriodCards(day, containerId) {
             statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Already picked P${p}</span>`;
           } else if (currentTotal >= maxPeriods) {
             statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Limit reached (${maxPeriods}/${maxPeriods})</span>`;
+          } else if (currentTotal === 1 && isRule4Enabled) {
+            // Check Rule 4 restriction for second selection
+            const firstSelection = teacherSelectionState.mySelections[0];
+            let firstGroup = (firstSelection && rule4.getClassGroup) ? rule4.getClassGroup(firstSelection.class_name) : null;
+            if (!firstGroup && rule4.group_a_class_names && rule4.group_a_class_names.includes(firstSelection.class_name)) firstGroup = 'A';
+            if (!firstGroup && rule4.group_b_class_names && rule4.group_b_class_names.includes(firstSelection.class_name)) firstGroup = 'B';
+
+            const oppositeGroup = firstGroup === 'A' ? 'B' : 'A';
+
+            if (slotGroup && slotGroup === firstGroup) {
+              chipClass += ' locked';
+              statusBadge = `<span class="slot-chip-status" style="color:#ef4444; font-weight:700;"><i class="fa-solid fa-ban"></i> Not Available for Selection 2 (Choose from Group ${oppositeGroup})</span>`;
+            } else {
+              statusBadge = `<span class="slot-chip-status"><i class="fa-solid fa-circle-plus"></i> Available (Group ${slotGroup || oppositeGroup})</span>`;
+              clickHandler = `onclick="handleTeacherPickSlot(${slot.id})"`;
+            }
           } else {
             statusBadge = `<span class="slot-chip-status"><i class="fa-solid fa-circle-plus"></i> Available (Click to Pick)</span>`;
             clickHandler = `onclick="handleTeacherPickSlot(${slot.id})"`;
@@ -3494,7 +3593,10 @@ function renderWizardPeriodCards(day, containerId) {
 
         html += `
           <div class="${chipClass}" ${clickHandler}>
-            <div class="slot-chip-class">${escapeHtml(slot.class_name)}</div>
+            <div class="slot-chip-class" style="display:flex; align-items:center; justify-content:space-between;">
+              <span>${escapeHtml(slot.class_name)}</span>
+              ${groupBadgeHtml}
+            </div>
             <div class="slot-chip-subject">${escapeHtml(slot.subject)}</div>
             ${statusBadge}
           </div>
@@ -3811,6 +3913,7 @@ function onTeachingDepartmentChanged(deptId) {
   else if (activeTab === 'admin-teaching-teachers') loadAdminTeachingTeachers();
   else if (activeTab === 'admin-teaching-timetable') loadAdminTeachingTimetable();
   else if (activeTab === 'admin-teaching-periods') loadAdminTeachingPeriods();
+  else if (activeTab === 'admin-teaching-rules') loadAdminTeachingRules();
   else if (activeTab === 'admin-teaching-settings') loadAdminTeachingSettings();
   else if (activeTab === 'admin-teaching-reports') loadAdminTeachingReports();
   else if (activeTab === 'admin-teaching-logs') loadAdminTeachingLogs();
@@ -5000,6 +5103,245 @@ async function saveTeachingSettingsForm(e) {
     loadAdminTeachingDashboard();
   } catch (err) {
     alert('Error saving settings.');
+  }
+}
+
+// 5.1 SELECTION RULES & CLASS GROUPS (RULE 4 CONFIGURATION)
+let currentRule4DepartmentClasses = [];
+
+async function loadAdminTeachingRules(isSilent = false) {
+  try {
+    const departments = await fetchJsonWithCache('/api/teaching/admin/departments', 5000, !isSilent);
+    teacherSelectionState.departments = departments || [];
+
+    const deptSelect = document.getElementById('rules-department-select');
+    let deptId = teacherSelectionState.currentDepartmentId;
+    if (!deptId || deptId === 'all') {
+      deptId = (departments[0] ? departments[0].id : 1);
+    } else {
+      deptId = parseInt(deptId);
+    }
+
+    if (deptSelect) {
+      deptSelect.innerHTML = departments.map(d => `<option value="${d.id}" ${deptId == d.id ? 'selected' : ''}>${escapeHtml(d.name)} (${escapeHtml(d.code)})</option>`).join('');
+      deptSelect.value = deptId;
+    }
+
+    document.getElementById('rule4-dept-id').value = deptId;
+
+    // Fetch rules and classes for this department
+    const [rulesData, classesData] = await Promise.all([
+      fetchJsonWithCache(`/api/teaching/rules?department_id=${deptId}`, 3000, !isSilent),
+      fetchJsonWithCache(`/api/teaching/admin/classes?department_id=${deptId}`, 3000, !isSilent)
+    ]);
+
+    currentRule4DepartmentClasses = Array.isArray(classesData) ? classesData : [];
+    
+    // Populate Group A and Group B select options
+    const selectAStart = document.getElementById('rule4-group-a-start');
+    const selectAEnd = document.getElementById('rule4-group-a-end');
+    const selectBStart = document.getElementById('rule4-group-b-start');
+    const selectBEnd = document.getElementById('rule4-group-b-end');
+
+    if (currentRule4DepartmentClasses.length === 0) {
+      const noClassesOpt = '<option value="">No classes found in department</option>';
+      if (selectAStart) selectAStart.innerHTML = noClassesOpt;
+      if (selectAEnd) selectAEnd.innerHTML = noClassesOpt;
+      if (selectBStart) selectBStart.innerHTML = noClassesOpt;
+      if (selectBEnd) selectBEnd.innerHTML = noClassesOpt;
+    } else {
+      const classOptions = currentRule4DepartmentClasses.map((c, idx) => `<option value="${c.id}">Class ${idx + 1}: ${escapeHtml(c.name)}</option>`).join('');
+      if (selectAStart) selectAStart.innerHTML = classOptions;
+      if (selectAEnd) selectAEnd.innerHTML = classOptions;
+      if (selectBStart) selectBStart.innerHTML = classOptions;
+      if (selectBEnd) selectBEnd.innerHTML = classOptions;
+
+      // Set values from rulesData or intelligent defaults
+      if (rulesData && rulesData.group_a_start_class_id) {
+        if (selectAStart) selectAStart.value = rulesData.group_a_start_class_id;
+        if (selectAEnd) selectAEnd.value = rulesData.group_a_end_class_id;
+        if (selectBStart) selectBStart.value = rulesData.group_b_start_class_id;
+        if (selectBEnd) selectBEnd.value = rulesData.group_b_end_class_id;
+      } else {
+        // Defaults: Group A = 1st half, Group B = 2nd half
+        const mid = Math.max(1, Math.floor(currentRule4DepartmentClasses.length / 2));
+        if (selectAStart) selectAStart.value = currentRule4DepartmentClasses[0].id;
+        if (selectAEnd) selectAEnd.value = currentRule4DepartmentClasses[mid - 1].id;
+        if (selectBStart) selectBStart.value = currentRule4DepartmentClasses[mid] ? currentRule4DepartmentClasses[mid].id : currentRule4DepartmentClasses[0].id;
+        if (selectBEnd) selectBEnd.value = currentRule4DepartmentClasses[currentRule4DepartmentClasses.length - 1].id;
+      }
+    }
+
+    const isEnabled = rulesData ? Boolean(rulesData.rule_4_enabled) : false;
+    const toggleEl = document.getElementById('rule4-enabled-toggle');
+    if (toggleEl) toggleEl.checked = isEnabled;
+    onRule4ToggleChanged(isEnabled);
+
+    updateRule4LivePreview();
+  } catch (err) {
+    console.error('Error loading selection rules view:', err);
+  }
+}
+
+function onRulesDepartmentSelectChanged(deptId) {
+  teacherSelectionState.currentDepartmentId = parseInt(deptId);
+  updateActiveDeptBadge();
+  const globalSelect = document.getElementById('global-teaching-department-select');
+  if (globalSelect) globalSelect.value = deptId;
+  clearClientCache('/api/teaching');
+  loadAdminTeachingRules();
+}
+
+function onRule4ToggleChanged(isChecked) {
+  const labelEl = document.getElementById('rule4-toggle-label');
+  const badgeEl = document.getElementById('preview-rule4-status-badge');
+  const rangesContainer = document.getElementById('rule4-ranges-container');
+
+  if (labelEl) {
+    labelEl.textContent = isChecked ? 'ENABLED' : 'DISABLED';
+    labelEl.style.color = isChecked ? '#059669' : '#64748b';
+  }
+
+  if (badgeEl) {
+    badgeEl.textContent = isChecked ? 'ENABLED' : 'DISABLED';
+    badgeEl.style.background = isChecked ? '#10b981' : '#ef4444';
+  }
+
+  if (rangesContainer) {
+    rangesContainer.style.opacity = isChecked ? '1' : '0.65';
+  }
+
+  updateRule4LivePreview();
+}
+
+function updateRule4LivePreview() {
+  const isEnabled = document.getElementById('rule4-enabled-toggle')?.checked || false;
+  const deptSelect = document.getElementById('rules-department-select');
+  const deptName = deptSelect ? deptSelect.options[deptSelect.selectedIndex]?.text || 'MEDIA' : 'MEDIA';
+
+  const selectAStart = document.getElementById('rule4-group-a-start');
+  const selectAEnd = document.getElementById('rule4-group-a-end');
+  const selectBStart = document.getElementById('rule4-group-b-start');
+  const selectBEnd = document.getElementById('rule4-group-b-end');
+
+  const idAStart = selectAStart ? parseInt(selectAStart.value) : null;
+  const idAEnd = selectAEnd ? parseInt(selectAEnd.value) : null;
+  const idBStart = selectBStart ? parseInt(selectBStart.value) : null;
+  const idBEnd = selectBEnd ? parseInt(selectBEnd.value) : null;
+
+  const classMap = new Map();
+  currentRule4DepartmentClasses.forEach((c, idx) => classMap.set(c.id, { ...c, rank: idx + 1 }));
+
+  const startA = classMap.get(idAStart);
+  const endA = classMap.get(idAEnd);
+  const startB = classMap.get(idBStart);
+  const endB = classMap.get(idBEnd);
+
+  const groupAClasses = [];
+  const groupBClasses = [];
+
+  if (startA && endA) {
+    const minRank = Math.min(startA.rank, endA.rank);
+    const maxRank = Math.max(startA.rank, endA.rank);
+    currentRule4DepartmentClasses.forEach((c, idx) => {
+      const rank = idx + 1;
+      if (rank >= minRank && rank <= maxRank) groupAClasses.push(c.name);
+    });
+  }
+
+  if (startB && endB) {
+    const minRank = Math.min(startB.rank, endB.rank);
+    const maxRank = Math.max(startB.rank, endB.rank);
+    currentRule4DepartmentClasses.forEach((c, idx) => {
+      const rank = idx + 1;
+      if (rank >= minRank && rank <= maxRank) groupBClasses.push(c.name);
+    });
+  }
+
+  // Update hint text
+  const hintA = document.getElementById('rule4-group-a-classes-hint');
+  const hintB = document.getElementById('rule4-group-b-classes-hint');
+  if (hintA) hintA.textContent = groupAClasses.length > 0 ? `Contains (${groupAClasses.length} classes): ${groupAClasses.join(', ')}` : 'No classes selected';
+  if (hintB) hintB.textContent = groupBClasses.length > 0 ? `Contains (${groupBClasses.length} classes): ${groupBClasses.join(', ')}` : 'No classes selected';
+
+  const previewEl = document.getElementById('rule4-preview-content');
+  if (!previewEl) return;
+
+  if (!isEnabled) {
+    previewEl.innerHTML = `
+      <div style="color: #94a3b8;">
+        <span style="color: #ef4444; font-weight: 700;">● RULE 4 IS CURRENTLY DISABLED FOR ${escapeHtml(deptName.toUpperCase())}</span><br>
+        Students/teachers can select subjects freely across all available classes according to Rules 1, 2, and 3 without any class-group restrictions.
+      </div>
+    `;
+    return;
+  }
+
+  const nameAStart = startA ? startA.name : '—';
+  const nameAEnd = endA ? endA.name : '—';
+  const nameBStart = startB ? startB.name : '—';
+  const nameBEnd = endB ? endB.name : '—';
+
+  previewEl.innerHTML = `
+    <div style="color: #38bdf8; font-weight: 700; margin-bottom: 6px;">
+      DEPARTMENT: ${escapeHtml(deptName)} | RULE 4: ENABLED
+    </div>
+    <div style="color: #cbd5e1; margin-bottom: 10px;">
+      <span style="color: #c084fc; font-weight: 700;">Group A:</span> ${escapeHtml(nameAStart)} – ${escapeHtml(nameAEnd)} (${groupAClasses.length} classes: ${escapeHtml(groupAClasses.join(', '))})<br>
+      <span style="color: #34d399; font-weight: 700;">Group B:</span> ${escapeHtml(nameBStart)} – ${escapeHtml(nameBEnd)} (${groupBClasses.length} classes: ${escapeHtml(groupBClasses.join(', '))})
+    </div>
+    <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border-left: 3px solid #38bdf8;">
+      <strong style="color: #f1f5f9;">Enforced Selection Flow:</strong><br>
+      <span style="color: #a5f3fc;">• First selection from Group A → Second selection MUST be from Group B</span><br>
+      <span style="color: #a5f3fc;">• First selection from Group B → Second selection MUST be from Group A</span><br>
+      <span style="color: #86efac;">• Third selection → No group restriction (Both Group A & Group B permitted)</span>
+    </div>
+  `;
+}
+
+async function saveRule4SettingsForm(e) {
+  e.preventDefault();
+  const deptId = parseInt(document.getElementById('rule4-dept-id').value || 1);
+  const rule_4_enabled = document.getElementById('rule4-enabled-toggle').checked;
+  const group_a_start_class_id = document.getElementById('rule4-group-a-start').value;
+  const group_a_end_class_id = document.getElementById('rule4-group-a-end').value;
+  const group_b_start_class_id = document.getElementById('rule4-group-b-start').value;
+  const group_b_end_class_id = document.getElementById('rule4-group-b-end').value;
+
+  const btn = document.getElementById('btn-save-rule4');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/rules'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        rule_4_enabled,
+        group_a_start_class_id,
+        group_a_end_class_id,
+        group_b_start_class_id,
+        group_b_end_class_id,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(`⚠️ Validation Error:\n\n${data.error || 'Failed to save rules'}`);
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(`✓ Selection Rules Saved Successfully!\n\nRule 4 is now ${rule_4_enabled ? 'ENABLED' : 'DISABLED'} for this department.`);
+    if (btn) btn.disabled = false;
+    loadAdminTeachingRules(true);
+    loadAdminTeachingDashboard(true);
+  } catch (err) {
+    alert('Error saving selection rules.');
+    if (btn) btn.disabled = false;
   }
 }
 

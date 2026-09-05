@@ -108,6 +108,28 @@ let teacherSelectionState = {
 
 const TEACHING_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+function getActiveDepartmentDays() {
+  const settings = teacherSelectionState.settings || {};
+  let activeStr = settings.active_days;
+  if (!activeStr && teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') {
+    const d = (teacherSelectionState.departments || []).find(dept => dept.id == teacherSelectionState.currentDepartmentId);
+    if (d && d.active_days) activeStr = d.active_days;
+  }
+  if (activeStr && typeof activeStr === 'string') {
+    const list = activeStr.split(',').map(d => d.trim()).filter(d => TEACHING_DAYS.includes(d));
+    if (list.length > 0) return list;
+  }
+  return TEACHING_DAYS;
+}
+
+function setDeptModalDays(checked) {
+  document.querySelectorAll('input[name="dept-active-day"]').forEach(cb => cb.checked = checked);
+}
+
+function setSettingsDays(checked) {
+  document.querySelectorAll('input[name="ts-active-day"]').forEach(cb => cb.checked = checked);
+}
+
 function getDayBadgeHtml(day) {
   const d = day || 'Sunday';
   const icons = {
@@ -3252,10 +3274,18 @@ function updateWizardCounters() {
 }
 
 function updateWizardDayCounters() {
+  const activeDays = getActiveDepartmentDays();
+  
   TEACHING_DAYS.forEach(day => {
-    const count = teacherSelectionState.mySelections.filter(s => s.day === day).length;
+    const btn = document.getElementById(`btn-wiz-day-${day}`);
     const badgeEl = document.getElementById(`wiz-day-count-${day}`);
-    if (badgeEl) {
+    const isActiveDay = activeDays.includes(day);
+
+    if (btn) {
+      btn.style.display = isActiveDay ? 'inline-flex' : 'none';
+    }
+    if (badgeEl && isActiveDay) {
+      const count = teacherSelectionState.mySelections.filter(s => s.day === day).length;
       badgeEl.textContent = count;
       badgeEl.style.background = count > 0 ? '#10b981' : '#f1f5f9';
       badgeEl.style.color = count > 0 ? '#fff' : '#475569';
@@ -3264,13 +3294,17 @@ function updateWizardDayCounters() {
 }
 
 function switchWizardDay(day, doScroll = false) {
-  teacherSelectionState.wizardSelectedDay = day;
+  const activeDays = getActiveDepartmentDays();
+  const validDay = activeDays.includes(day) ? day : (activeDays[0] || 'Sunday');
+  teacherSelectionState.wizardSelectedDay = validDay;
 
-  // Update day buttons in tab bar
+  // Update day buttons in tab bar (hide inactive days)
   TEACHING_DAYS.forEach(d => {
     const btn = document.getElementById(`btn-wiz-day-${d}`);
     if (btn) {
-      if (d === day) {
+      const isDayActive = activeDays.includes(d);
+      btn.style.display = isDayActive ? 'inline-flex' : 'none';
+      if (d === validDay) {
         btn.className = 'btn btn-sm btn-primary wiz-day-tab';
       } else {
         btn.className = 'btn btn-sm btn-outline wiz-day-tab';
@@ -3289,7 +3323,7 @@ function switchWizardDay(day, doScroll = false) {
     Saturday: { bg: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)', border: '#c7d2fe', color: '#3730a3', icon: 'fa-calendar-day', iconColor: '#6366f1' }
   };
 
-  const style = dayStyles[day] || dayStyles.Sunday;
+  const style = dayStyles[validDay] || dayStyles.Sunday;
   const banner = document.getElementById('wizard-day-banner');
   const title = document.getElementById('wizard-day-banner-title');
   const desc = document.getElementById('wizard-day-banner-desc');
@@ -3300,15 +3334,15 @@ function switchWizardDay(day, doScroll = false) {
   }
   if (title) {
     title.style.color = style.color;
-    title.innerHTML = `<i class="fa-solid ${style.icon}" style="color: ${style.iconColor};"></i> ${day} Teaching Periods`;
+    title.innerHTML = `<i class="fa-solid ${style.icon}" style="color: ${style.iconColor};"></i> ${validDay} Teaching Periods`;
   }
   if (desc) {
     desc.style.color = style.color;
-    desc.textContent = `Select your classes for ${day}. You can choose at most 1 class per period.`;
+    desc.textContent = `Select your classes for ${validDay}. You can choose at most 1 class per period.`;
   }
 
   // Render period cards for this day
-  renderWizardPeriodCards(day, 'teacher-periods-grid-active');
+  renderWizardPeriodCards(validDay, 'teacher-periods-grid-active');
 
   if (doScroll) {
     const gridEl = document.getElementById('teacher-periods-grid-active');
@@ -3317,10 +3351,11 @@ function switchWizardDay(day, doScroll = false) {
 }
 
 function navigateWizardDay(direction) {
-  const current = teacherSelectionState.wizardSelectedDay || 'Sunday';
-  const idx = TEACHING_DAYS.indexOf(current);
-  const nextIdx = (idx + direction + TEACHING_DAYS.length) % TEACHING_DAYS.length;
-  switchWizardDay(TEACHING_DAYS[nextIdx], true);
+  const activeDays = getActiveDepartmentDays();
+  const current = teacherSelectionState.wizardSelectedDay || activeDays[0] || 'Sunday';
+  const idx = activeDays.indexOf(current);
+  const nextIdx = (idx + direction + activeDays.length) % activeDays.length;
+  switchWizardDay(activeDays[nextIdx], true);
 }
 
 function goToWizardStep(step, doScroll = true) {
@@ -3829,6 +3864,7 @@ function openModalAddDepartment() {
   document.getElementById('teaching-dept-name').value = '';
   document.getElementById('teaching-dept-code').value = '';
   document.getElementById('teaching-dept-status').value = 'active';
+  setDeptModalDays(true);
   openModal('modal-teaching-department');
 }
 
@@ -3841,6 +3877,12 @@ function openModalEditDepartment(id) {
   document.getElementById('teaching-dept-name').value = dept.name || '';
   document.getElementById('teaching-dept-code').value = dept.code || '';
   document.getElementById('teaching-dept-status').value = dept.status || 'active';
+  
+  const activeDays = (dept.active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday').split(',').map(s => s.trim());
+  document.querySelectorAll('input[name="dept-active-day"]').forEach(cb => {
+    cb.checked = activeDays.includes(cb.value);
+  });
+  
   openModal('modal-teaching-department');
 }
 
@@ -3850,6 +3892,14 @@ async function saveTeachingDepartmentForm(e) {
   const name = document.getElementById('teaching-dept-name').value.trim();
   const code = document.getElementById('teaching-dept-code').value.trim().toUpperCase();
   const status = document.getElementById('teaching-dept-status').value;
+
+  const activeDayCheckboxes = document.querySelectorAll('input[name="dept-active-day"]:checked');
+  const activeDaysArray = Array.from(activeDayCheckboxes).map(cb => cb.value);
+  if (activeDaysArray.length === 0) {
+    alert('Please select at least 1 operating day for this department.');
+    return;
+  }
+  const active_days = activeDaysArray.join(',');
 
   try {
     let url = apiUrl('/api/teaching/admin/departments');
@@ -3867,6 +3917,7 @@ async function saveTeachingDepartmentForm(e) {
         name,
         code,
         status,
+        active_days,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
       })
@@ -3880,8 +3931,9 @@ async function saveTeachingDepartmentForm(e) {
 
     clearClientCache('/api/teaching');
     closeModal('modal-teaching-department');
-    await loadTeachingDepartmentsDropdown();
+    loadTeachingDepartmentsDropdown();
     loadTeachingDepartments();
+    loadAdminTeachingDashboard();
   } catch (err) {
     alert('Error saving department.');
   }
@@ -4815,6 +4867,11 @@ async function loadAdminTeachingSettings() {
     document.getElementById('ts-setting-max').value = data.max_periods || 3;
     document.getElementById('ts-setting-is-open').checked = data.is_open !== false;
     document.getElementById('ts-setting-allow-edit').checked = data.allow_edit !== false;
+
+    const activeDays = (data.active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday').split(',').map(s => s.trim());
+    document.querySelectorAll('input[name="ts-active-day"]').forEach(cb => {
+      cb.checked = activeDays.includes(cb.value);
+    });
   } catch (err) {
     console.error('Error loading settings:', err);
   }
@@ -4830,6 +4887,14 @@ async function saveTeachingSettingsForm(e) {
   const is_open = document.getElementById('ts-setting-is-open').checked;
   const allow_edit = document.getElementById('ts-setting-allow-edit').checked;
 
+  const activeDayCheckboxes = document.querySelectorAll('input[name="ts-active-day"]:checked');
+  const activeDaysArray = Array.from(activeDayCheckboxes).map(cb => cb.value);
+  if (activeDaysArray.length === 0) {
+    alert('Please select at least 1 operating day for this department.');
+    return;
+  }
+  const active_days = activeDaysArray.join(',');
+
   try {
     const res = await fetch(apiUrl('/api/teaching/admin/settings'), {
       method: 'POST',
@@ -4842,12 +4907,14 @@ async function saveTeachingSettingsForm(e) {
         max_periods,
         is_open,
         allow_edit,
+        active_days,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
       })
     });
 
     const data = await res.json();
+    clearClientCache('/api/teaching');
     alert(data.message || 'Settings saved successfully!');
     loadAdminTeachingDashboard();
   } catch (err) {

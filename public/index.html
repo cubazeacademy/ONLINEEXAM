@@ -16,7 +16,7 @@
   <link rel="dns-prefetch" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=4.4">
+  <link rel="stylesheet" href="css/style.css?v=4.5">
 </head>
 
 <body>
@@ -1181,7 +1181,7 @@
                     <input type="checkbox" id="ts-setting-is-open" style="width:22px; height:22px; accent-color:#059669;" checked>
                   </label>
 
-                  <label class="modern-toggle-card" for="ts-setting-allow-edit" style="margin:0;">
+                  <label class="modern-toggle-card" for="ts-setting-allow-edit" style="margin-bottom:12px;">
                     <div class="modern-toggle-info">
                       <div class="toggle-icon" style="background:#eff6ff; color:#2563eb;"><i class="fa-solid fa-pen-to-square"></i></div>
                       <div>
@@ -1191,6 +1191,27 @@
                     </div>
                     <input type="checkbox" id="ts-setting-allow-edit" style="width:22px; height:22px; accent-color:#2563eb;" checked>
                   </label>
+
+                  <!-- OPERATING DAYS SELECTOR IN SETTINGS -->
+                  <div style="border-top: 1.5px solid #f1f5f9; padding-top: 14px; margin-top: 12px;">
+                    <label style="font-weight:700; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                      <span><i class="fa-solid fa-calendar-week" style="color:var(--primary);"></i> Operating Days for this Department</span>
+                      <span style="font-size:0.75rem; font-weight:normal;">
+                        <a href="javascript:void(0)" onclick="setSettingsDays(true)" style="color:var(--primary); font-weight:600;">Select All (7 Days)</a> | 
+                        <a href="javascript:void(0)" onclick="setSettingsDays(false)" style="color:#64748b;">Clear All</a>
+                      </span>
+                    </label>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap:6px; background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" id="container-settings-active-days">
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Sunday" checked> Sunday</label>
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Monday" checked> Monday</label>
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Tuesday" checked> Tuesday</label>
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Wednesday" checked> Wednesday</label>
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Thursday" checked> Thursday</label>
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Friday" checked> Friday</label>
+                      <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="ts-active-day" value="Saturday" checked> Saturday</label>
+                    </div>
+                    <small class="text-muted" style="display:block; margin-top:4px; font-size:0.75rem;">Only selected days will be available for teachers in this department.</small>
+                  </div>
                 </div>
 
                 <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Selection Settings</button>
@@ -2397,12 +2418,33 @@
             <input type="text" id="teaching-dept-code" class="form-control" placeholder="e.g. MEDIA, SCI, COMM" style="text-transform: uppercase;" required>
             <small class="text-muted">Used in CSV imports and short labels</small>
           </div>
-          <div class="form-group mb-0">
+          <div class="form-group mb-3">
             <label>Department Status</label>
             <select id="teaching-dept-status" class="form-control">
               <option value="active" selected>Active</option>
               <option value="inactive">Inactive</option>
             </select>
+          </div>
+
+          <!-- OPERATING DAYS SELECTOR IN DEPT MODAL -->
+          <div class="form-group mb-0">
+            <label style="font-weight:600; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span><i class="fa-solid fa-calendar-week" style="color:var(--primary);"></i> Operating Days (Schedule)</span>
+              <span style="font-size:0.75rem; font-weight:normal;">
+                <a href="javascript:void(0)" onclick="setDeptModalDays(true)" style="color:var(--primary); font-weight:600;">All (7 Days)</a> | 
+                <a href="javascript:void(0)" onclick="setDeptModalDays(false)" style="color:#64748b;">Clear</a>
+              </span>
+            </label>
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap:6px; background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" id="container-dept-modal-active-days">
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Sunday" checked> Sunday</label>
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Monday" checked> Monday</label>
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Tuesday" checked> Tuesday</label>
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Wednesday" checked> Wednesday</label>
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Thursday" checked> Thursday</label>
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Friday" checked> Friday</label>
+              <label style="font-size:0.82rem; margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" name="dept-active-day" value="Saturday" checked> Saturday</label>
+            </div>
+            <small class="text-muted" style="display:block; margin-top:4px; font-size:0.75rem;">Only checked days will appear in the Teacher Selection Wizard & Schedule for this department.</small>
           </div>
         </div>
         <div class="modal-footer" style="padding: 12px 22px;">
@@ -2719,7 +2761,7 @@
   </div>
 
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=4.4"></script>
+  <script src="js/app.js?v=4.5"></script>
 </body>
 
 </html>

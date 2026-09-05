@@ -1627,6 +1627,7 @@ app.get('/api/teaching/admin/departments', async (req, res) => {
         d.name, 
         d.code, 
         COALESCE(d.status, 'active') as status, 
+        COALESCE(d.active_days, st.active_days, 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday') as active_days,
         d.created_at,
         COUNT(DISTINCT u.id)::int as teacher_count,
         COUNT(DISTINCT t.id)::int as slot_count,
@@ -1638,7 +1639,7 @@ app.get('/api/teaching/admin/departments', async (req, res) => {
       LEFT JOIN teacher_selection_timetable t ON d.id = t.department_id AND t.status = 'active'
       LEFT JOIN teacher_selections s ON d.id = s.department_id
       LEFT JOIN teacher_selection_settings st ON d.id = st.department_id
-      GROUP BY d.id, d.name, d.code, d.status, d.created_at, st.is_open, st.is_timetable_published
+      GROUP BY d.id, d.name, d.code, d.status, d.active_days, st.active_days, d.created_at, st.is_open, st.is_timetable_published
       ORDER BY d.id ASC
     `);
     res.json(departments);
@@ -1648,13 +1649,14 @@ app.get('/api/teaching/admin/departments', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/departments', async (req, res) => {
-  const { name, code, status, admin_id, admin_name } = req.body;
+  const { name, code, status, active_days, admin_id, admin_name } = req.body;
   if (!name || !code) {
     return res.status(400).json({ error: 'Department name and code are required' });
   }
   try {
     const cleanName = name.trim();
     const cleanCode = code.trim().toUpperCase();
+    const cleanActiveDays = active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
 
     const existing = await db.get(`SELECT id FROM departments WHERE UPPER(code) = $1 OR LOWER(name) = LOWER($2)`, [cleanCode, cleanName]);
     if (existing) {
@@ -1662,19 +1664,19 @@ app.post('/api/teaching/admin/departments', async (req, res) => {
     }
 
     const inserted = await db.run(`
-      INSERT INTO departments (name, code, status, created_at, updated_at)
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO departments (name, code, status, active_days, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING id
-    `, [cleanName, cleanCode, status || 'active']);
+    `, [cleanName, cleanCode, status || 'active', cleanActiveDays]);
 
     const newDeptId = inserted.lastInsertRowid;
 
     // Seed default settings for the new department
     await db.query(`
-      INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
-      VALUES ($1, true, true, true, 2, 3)
+      INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days)
+      VALUES ($1, true, true, true, 2, 3, $2)
       ON CONFLICT (department_id) DO NOTHING
-    `, [newDeptId]);
+    `, [newDeptId, cleanActiveDays]);
 
     // Seed default period settings for the new department (Sunday - Saturday 1-9)
     const timeSlots = {
@@ -1694,7 +1696,7 @@ app.post('/api/teaching/admin/departments', async (req, res) => {
     }
 
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Created Department: ${cleanName} (${cleanCode})`, { id: newDeptId }, newDeptId);
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Created Department: ${cleanName} (${cleanCode}) with Active Days: ${cleanActiveDays}`, { id: newDeptId }, newDeptId);
     res.json({ message: 'Department created successfully', id: newDeptId });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1703,7 +1705,7 @@ app.post('/api/teaching/admin/departments', async (req, res) => {
 
 app.put('/api/teaching/admin/departments/:id', async (req, res) => {
   const deptId = parseInt(req.params.id);
-  const { name, code, status, admin_id, admin_name } = req.body;
+  const { name, code, status, active_days, admin_id, admin_name } = req.body;
   if (!deptId) return res.status(400).json({ error: 'Valid department ID required' });
 
   try {
@@ -1728,13 +1730,18 @@ app.put('/api/teaching/admin/departments/:id', async (req, res) => {
       params.push(status);
       sql += `, status = $${params.length}`;
     }
+    if (active_days) {
+      params.push(active_days);
+      sql += `, active_days = $${params.length}`;
+      await db.query(`UPDATE teacher_selection_settings SET active_days = $1, updated_at = CURRENT_TIMESTAMP WHERE department_id = $2`, [active_days, deptId]);
+    }
 
     params.push(deptId);
     sql += ` WHERE id = $${params.length}`;
 
     await db.run(sql, params);
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Department ID: ${deptId}`, { name: cleanName, code: cleanCode, status }, deptId);
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Department ID: ${deptId}`, { name: cleanName, code: cleanCode, status, active_days }, deptId);
     res.json({ message: 'Department updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1795,6 +1802,10 @@ app.get('/api/teaching/settings', async (req, res) => {
     if (!settings) {
       settings = await db.get(`SELECT * FROM teacher_selection_settings ORDER BY id ASC LIMIT 1`);
     }
+    const dept = await db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId]);
+
+    const activeDays = (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+
     if (!settings) {
       settings = {
         department_id: departmentId,
@@ -1804,14 +1815,14 @@ app.get('/api/teaching/settings', async (req, res) => {
         min_periods: 2,
         max_periods: 3,
         start_datetime: null,
-        end_datetime: null
+        end_datetime: null,
+        active_days: activeDays
       };
     }
 
-    const dept = await db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId]);
-
     res.json({
       ...settings,
+      active_days: activeDays,
       department_name: dept ? dept.name : 'MEDIA',
       department_code: dept ? dept.code : 'MEDIA',
       server_time: new Date()
@@ -1822,16 +1833,18 @@ app.get('/api/teaching/settings', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/settings', async (req, res) => {
-  const { department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, admin_name, admin_id } = req.body;
+  const { department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days, admin_name, admin_id } = req.body;
   const deptId = department_id ? parseInt(department_id) : 1;
+  const cleanActiveDays = active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+
   try {
     const existing = await db.get(`SELECT id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
     if (existing) {
       await db.run(`
         UPDATE teacher_selection_settings
         SET start_datetime = $1, end_datetime = $2, is_open = $3, is_timetable_published = $4,
-            allow_edit = $5, min_periods = $6, max_periods = $7, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $8
+            allow_edit = $5, min_periods = $6, max_periods = $7, active_days = $8, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $9
       `, [
         start_datetime || null,
         end_datetime || null,
@@ -1840,12 +1853,13 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         allow_edit !== undefined ? allow_edit : true,
         min_periods || 2,
         max_periods || 3,
+        cleanActiveDays,
         existing.id
       ]);
     } else {
       await db.run(`
-        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `, [
         deptId,
         start_datetime || null,
@@ -1854,13 +1868,17 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         is_timetable_published !== undefined ? is_timetable_published : true,
         allow_edit !== undefined ? allow_edit : true,
         min_periods || 2,
-        max_periods || 3
+        max_periods || 3,
+        cleanActiveDays
       ]);
     }
 
+    // Sync to departments table as well
+    await db.query(`UPDATE departments SET active_days = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [cleanActiveDays, deptId]);
+
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Selection Settings for Dept ${deptId}`, {
-      department_id: deptId, start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Selection Settings for Dept ${deptId} (Active Days: ${cleanActiveDays})`, {
+      department_id: deptId, start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods, active_days: cleanActiveDays
     }, deptId);
 
     res.json({ message: 'Settings saved successfully' });
@@ -2685,12 +2703,18 @@ app.get('/api/teaching/slots', async (req, res) => {
       };
     });
 
+    const activeDays = (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+
     res.json({
       department_id: departmentId,
       department_name: dept ? dept.name : teacherDeptName,
+      active_days: activeDays,
       slots: formattedSlots,
       period_settings: periodSettings,
-      settings: settings || {}
+      settings: {
+        ...(settings || {}),
+        active_days: activeDays
+      }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

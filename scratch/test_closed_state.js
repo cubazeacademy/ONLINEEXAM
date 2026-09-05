@@ -1,5 +1,4 @@
 const db = require('../db');
-const app = require('../server');
 const http = require('http');
 
 function request(options, data) {

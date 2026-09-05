@@ -4228,10 +4228,14 @@ async function loadAdminTeachingDashboard(isSilent = false) {
       const bText = isOpen ? 'Close Selection' : 'Reopen Selection';
       if (toggleBtnText.textContent !== bText) toggleBtnText.textContent = bText;
     }
-    if (deadlineText && data.settings && data.settings.end_datetime) {
-      const d = new Date(data.settings.end_datetime);
-      const dlText = `Deadline: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}`;
-      if (deadlineText.textContent !== dlText) deadlineText.textContent = dlText;
+    if (deadlineText) {
+      if (data.settings && data.settings.end_datetime) {
+        const d = new Date(data.settings.end_datetime);
+        const dlText = `Deadline: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}`;
+        if (deadlineText.textContent !== dlText) deadlineText.textContent = dlText;
+      } else {
+        deadlineText.textContent = '';
+      }
     }
   } catch (err) {
     console.error('Error loading admin teaching dashboard:', err);
@@ -4239,11 +4243,40 @@ async function loadAdminTeachingDashboard(isSilent = false) {
 }
 
 async function toggleAdminSelectionStatus() {
-  try {
-    const deptId = teacherSelectionState.currentDepartmentId || 'all';
-    const currentSettings = await fetchJsonWithCache(`/api/teaching/settings?department_id=${deptId === 'all' ? 1 : deptId}`, 1000, true);
-    const newStatus = !currentSettings.is_open;
+  const statusBadge = document.getElementById('admin-teaching-status-badge');
+  const toggleBtnText = document.getElementById('btn-toggle-status-text');
 
+  // Determine current status directly from badge or state
+  const isCurrentlyOpen = statusBadge ? !statusBadge.textContent.includes('CLOSED') : true;
+  const newStatus = !isCurrentlyOpen;
+
+  // 1. Optimistic immediate UI update without requiring any page reload
+  if (statusBadge) {
+    statusBadge.innerHTML = newStatus 
+      ? '<i class="fa-solid fa-circle-dot"></i> Selection OPEN' 
+      : '<i class="fa-solid fa-circle-xmark"></i> Selection CLOSED';
+    statusBadge.style.background = newStatus ? '#10b981' : '#ef4444';
+  }
+  if (toggleBtnText) {
+    toggleBtnText.textContent = newStatus ? 'Close Selection' : 'Reopen Selection';
+  }
+
+  // Determine active department
+  let deptId = teacherSelectionState.currentDepartmentId;
+  if (!deptId || deptId === 'all') {
+    const globalSelect = document.getElementById('global-teaching-department-select');
+    if (globalSelect && globalSelect.value && globalSelect.value !== 'all') {
+      deptId = globalSelect.value;
+    } else {
+      deptId = 'all';
+    }
+  }
+
+  try {
+    // 2. Clear client-side cache so future calls get fresh data
+    clearClientCache('/api/teaching');
+
+    // 3. Send toggle request to backend
     const res = await fetch(apiUrl('/api/teaching/admin/toggle-status'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4256,11 +4289,29 @@ async function toggleAdminSelectionStatus() {
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to update selection status');
+    }
+
+    // 4. Invalidate cache again & silently refresh dashboard and departments views
     clearClientCache('/api/teaching');
-    alert(data.message || 'Status updated');
-    loadAdminTeachingDashboard();
+    await Promise.all([
+      loadAdminTeachingDashboard(false),
+      loadTeachingDepartments(true)
+    ]);
   } catch (err) {
-    alert('Error toggling status.');
+    console.error('Error toggling status:', err);
+    // Revert optimistic update on failure
+    if (statusBadge) {
+      statusBadge.innerHTML = isCurrentlyOpen 
+        ? '<i class="fa-solid fa-circle-dot"></i> Selection OPEN' 
+        : '<i class="fa-solid fa-circle-xmark"></i> Selection CLOSED';
+      statusBadge.style.background = isCurrentlyOpen ? '#10b981' : '#ef4444';
+    }
+    if (toggleBtnText) {
+      toggleBtnText.textContent = isCurrentlyOpen ? 'Close Selection' : 'Reopen Selection';
+    }
+    alert(err.message || 'Error updating status. Please try again.');
   }
 }
 

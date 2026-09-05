@@ -2233,21 +2233,35 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
 app.post('/api/teaching/admin/toggle-status', async (req, res) => {
   const { department_id, is_open, admin_id, admin_name } = req.body;
   try {
-    if (department_id && department_id !== 'all') {
-      const deptId = parseInt(department_id);
+    const isOpenBool = Boolean(is_open);
+    const targetDeptId = (department_id && department_id !== 'all') ? parseInt(department_id) : null;
+
+    if (targetDeptId && !isNaN(targetDeptId)) {
       await db.query(`
         INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
         VALUES ($1, $2, true, true, 2, 3, CURRENT_TIMESTAMP)
         ON CONFLICT (department_id)
         DO UPDATE SET is_open = EXCLUDED.is_open, updated_at = CURRENT_TIMESTAMP
-      `, [deptId, Boolean(is_open)]);
+      `, [targetDeptId, isOpenBool]);
     } else {
-      await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [Boolean(is_open)]);
+      const depts = await db.all(`SELECT id FROM departments`);
+      if (depts && depts.length > 0) {
+        for (const d of depts) {
+          await db.query(`
+            INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
+            VALUES ($1, $2, true, true, 2, 3, CURRENT_TIMESTAMP)
+            ON CONFLICT (department_id)
+            DO UPDATE SET is_open = EXCLUDED.is_open, updated_at = CURRENT_TIMESTAMP
+          `, [d.id, isOpenBool]);
+        }
+      } else {
+        await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [isOpenBool]);
+      }
     }
 
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', is_open ? 'Opened Subject Selection' : 'Closed Subject Selection', { department_id }, department_id && department_id !== 'all' ? parseInt(department_id) : null);
-    res.json({ message: `Subject Selection is now ${is_open ? 'OPEN' : 'CLOSED'}` });
+    await logTeacherAction(admin_id, admin_name || 'Admin', isOpenBool ? 'Opened Subject Selection' : 'Closed Subject Selection', { department_id }, targetDeptId);
+    res.json({ success: true, is_open: isOpenBool, message: `Subject Selection is now ${isOpenBool ? 'OPEN' : 'CLOSED'}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3405,35 +3419,34 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
   try {
     const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
 
-    let teacherWhere = `WHERE role = 'teacher' AND COALESCE(is_active, true) = true`;
+    let teacherWhere = `WHERE u.role = 'teacher' AND COALESCE(u.is_active, true) = true`;
     let slotWhere = `WHERE status = 'active'`;
     let selectWhere = `WHERE 1=1`;
     let periodWhere = `WHERE is_enabled = false`;
-    let settingsWhere = `WHERE 1=1`;
     const params = [];
 
     if (departmentId && !isNaN(departmentId)) {
       params.push(departmentId);
-      teacherWhere += ` AND department_id = $1`;
+      teacherWhere += ` AND u.department_id = $1`;
       slotWhere += ` AND department_id = $1`;
       selectWhere += ` AND department_id = $1`;
       periodWhere += ` AND department_id = $1`;
-      settingsWhere += ` AND department_id = $1`;
     }
+
+    const targetDept = (departmentId && !isNaN(departmentId)) ? departmentId : 1;
+    const deptStatus = await getDepartmentSelectionStatus(targetDept);
 
     const [
       totalTeachersRes,
       totalTimetableSlotsRes,
       totalAllocationsRes,
       disabledPeriodsRes,
-      settings,
       departmentsSummary
     ] = await Promise.all([
-      db.get(`SELECT count(*)::int as count FROM users ${teacherWhere}`, params),
+      db.get(`SELECT count(*)::int as count FROM users u ${teacherWhere}`, params),
       db.get(`SELECT count(*)::int as count FROM teacher_selection_timetable ${slotWhere}`, params),
       db.get(`SELECT count(*)::int as count FROM teacher_selections ${selectWhere}`, params),
       db.get(`SELECT count(*)::int as count FROM teacher_selection_period_settings ${periodWhere}`, params),
-      db.get(`SELECT * FROM teacher_selection_settings ${settingsWhere} ORDER BY id DESC LIMIT 1`, params),
       db.all(`
         SELECT 
           d.id, d.name, d.code,
@@ -3487,8 +3500,12 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       total_slots: totalSlots,
       remaining_slots: remainingSlots,
       disabled_periods_count: disabledPeriods,
-      is_open: settings ? settings.is_open : true,
-      settings: settings || {},
+      is_open: deptStatus.isOpen,
+      is_closed: deptStatus.isClosed,
+      selection_status: deptStatus.isOpen ? 'OPEN' : 'CLOSED',
+      status_code: deptStatus.code,
+      status_message: deptStatus.message,
+      settings: deptStatus.settings || {},
       departments_summary: departmentsSummary
     });
   } catch (err) {

@@ -608,6 +608,31 @@ input, button, select, textarea {
   padding: 24px 20px 18px 20px;
   text-align: center;
   border-bottom: 1px solid #f1f5f9;
+  position: relative;
+}
+
+.sidebar-close-btn {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 0.95rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.sidebar-close-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fecaca;
 }
 
 .sidebar-crown-avatar {
@@ -2276,7 +2301,7 @@ input, button, select, textarea {
 .q-review-item.unans { border-left: 5px solid var(--warning); }
 
 /* ==========================================================================
-   6. RESPONSIVE BREAKPOINTS & MOBILE DRAWER
+   6. SIDEBAR OVERLAY COMPONENT
    ========================================================================== */
 .sidebar-overlay {
   display: block;
@@ -2297,238 +2322,6 @@ input, button, select, textarea {
 .sidebar-overlay.active {
   opacity: 1;
   pointer-events: auto;
-}
-
-@media (max-width: 900px) {
-  .sidebar-overlay.active,
-  .sidebar.show ~ .sidebar-overlay,
-  .sidebar.show + .sidebar-overlay {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 270px;
-    z-index: 999;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-    box-shadow: var(--shadow-xl);
-  }
-
-  .sidebar.show {
-    transform: translateX(0);
-  }
-
-  .main-wrapper {
-    margin-left: 0 !important;
-    width: 100% !important;
-  }
-
-  .mobile-toggle {
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .top-header {
-    padding: 0 16px;
-  }
-
-  .header-left .page-title {
-    font-size: 1.05rem;
-  }
-
-  .header-time {
-    display: none;
-  }
-
-  .content-container {
-    padding: 16px 14px;
-  }
-
-  .metrics-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px !important;
-  }
-
-  .grid-4-cols {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .grid-2-cols {
-    grid-template-columns: 1fr;
-  }
-
-  /* Exam Engine Responsive Adjustments */
-  .exam-fullscreen-wrapper {
-    padding: 0 !important;
-  }
-
-  .exam-modal-window {
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-width: 100vw !important;
-    border-radius: 0 !important;
-    border: none !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    min-height: 0 !important;
-  }
-
-  .exam-header {
-    flex-shrink: 0 !important;
-    height: auto !important;
-    min-height: 52px;
-    padding: 8px 12px !important;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .exam-title-badge h3 {
-    font-size: 0.92rem;
-  }
-
-  .exam-timer-box {
-    padding: 4px 10px;
-  }
-
-  .timer-time {
-    font-size: 0.9rem;
-  }
-
-  .secure-mode-pill {
-    display: none;
-  }
-
-  .exam-body-grid {
-    flex: 1 !important;
-    min-height: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    height: 100% !important;
-  }
-
-  .question-palette-panel {
-    display: none;
-  }
-
-  .question-main-panel {
-    flex: 1 !important;
-    min-height: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    height: 100% !important;
-    padding: 10px 12px 6px 12px !important;
-  }
-
-  .batch-header-bar {
-    flex-shrink: 0 !important;
-    display: flex !important;
-    flex-direction: row !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    gap: 6px;
-    padding: 8px 12px !important;
-    margin-bottom: 10px !important;
-  }
-
-  .batch-questions-list {
-    flex: 1 !important;
-    min-height: 0 !important;
-    max-height: 100% !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    padding-right: 4px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 16px !important;
-    margin-bottom: 10px !important;
-  }
-
-  .batch-question-card {
-    padding: 14px !important;
-  }
-
-  .batch-question-text {
-    font-size: 0.95rem;
-    margin-bottom: 12px;
-  }
-
-  .option-card {
-    padding: 10px 12px;
-    font-size: 0.88rem;
-  }
-
-  .question-footer-controls {
-    flex-shrink: 0 !important;
-    flex-direction: row;
-    gap: 8px;
-    padding-top: 10px !important;
-    padding-bottom: 4px !important;
-  }
-
-  .question-footer-controls .btn {
-    flex: 1;
-    font-size: 0.82rem;
-    padding: 8px 6px;
-    justify-content: center;
-  }
-}
-
-@media (max-width: 576px) {
-  .metrics-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .hero-banner {
-    padding: 20px 16px;
-  }
-
-  .hero-banner h2 {
-    font-size: 1.25rem;
-  }
-
-  .modal-content {
-    padding: 18px;
-    width: 95%;
-  }
-
-  .form-row {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .form-group.col-6 {
-    width: 100% !important;
-  }
-
-  .options-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .data-table th,
-  .data-table td {
-    padding: 10px 12px;
-    font-size: 0.82rem;
-  }
-
-  .exam-meta-pills {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .meta-pill {
-    font-size: 0.75rem;
-    padding: 3px 8px;
-  }
 }
 
 /* ========================================================================== */
@@ -3946,151 +3739,8 @@ input, button, select, textarea {
   font-size: 0.74rem;
 }
 
-/* ========================================================================== */
-/* RESPONSIVE BREAKPOINTS (MOBILE & TABLET ADAPTATION)                        */
-/* ========================================================================== */
-
-@media (max-width: 1024px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .grid-3-cols {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .top-header {
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    position: sticky;
-    top: 10px;
-  }
-
-  .header-left .page-title {
-    font-size: 1.05rem;
-  }
-
-  .header-time {
-    display: none;
-  }
-
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
-
-  .stat-card {
-    padding: 16px 14px;
-    gap: 12px;
-    border-radius: 16px;
-  }
-
-  .stat-icon {
-    width: 42px;
-    height: 42px;
-    font-size: 1.15rem;
-    border-radius: 12px;
-  }
-
-  .stat-value {
-    font-size: 1.45rem;
-  }
-
-  .stat-label {
-    font-size: 0.72rem;
-  }
-
-  .stat-meta {
-    font-size: 0.72rem;
-  }
-
-  .grid-2-cols,
-  .grid-3-cols,
-  .grid-4-cols {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-
-  .hero-banner {
-    padding: 22px 18px;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
-
-  .hero-banner h2 {
-    font-size: 1.35rem;
-  }
-
-  .hero-banner p {
-    font-size: 0.86rem;
-  }
-
-  .hero-watermark {
-    font-size: 70px;
-    right: 12px;
-    bottom: 12px;
-    opacity: 0.08;
-  }
-
-  .wizard-header-card {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    top: 60px;
-    padding: 14px 16px;
-  }
-
-  .wizard-counter-box {
-    text-align: center;
-  }
-
-  .wizard-steps-indicator {
-    justify-content: space-between;
-    gap: 6px;
-  }
-
-  .period-slots-grid {
-    grid-template-columns: 1fr;
-    padding: 14px;
-  }
-
-  .panel-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .wizard-step .step-title {
-    display: none;
-  }
-
-  .wizard-step-line {
-    max-width: 25px;
-  }
-
-  .wizard-section-banner {
-    padding: 14px;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .btn-logout-modern {
-    padding: 6px 12px;
-    font-size: 0.78rem;
-  }
-}
-
 /* ==========================================================================
-   TEACHING ALLOCATION ADMIN & TEACHER PORTAL MODERN CARD REDESIGN
+   TEACHING ALLOCATION ADMIN & TEACHER PORTAL MODERN COMPONENT STYLES
    ========================================================================== */
 
 /* Modern Period Toggle Card (ON/OFF Settings) */
@@ -4272,4 +3922,700 @@ input, button, select, textarea {
   color: #047857;
   font-weight: 600;
   margin-top: 2px;
+}
+
+/* ========================================================================== */
+/* COMPREHENSIVE RESPONSIVE SYSTEM (TABLETS, MOBILES & ULTRA-COMPACT)        */
+/* ========================================================================== */
+
+/* Global responsive safeguards */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.table-responsive {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1. TABLET BREAKPOINT (max-width: 1024px)                                   */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .app-layout {
+    display: block;
+    padding: 16px 20px;
+    gap: 0;
+    max-width: 100vw;
+    width: 100%;
+  }
+
+  .sidebar-overlay.active,
+  .sidebar.show ~ .sidebar-overlay,
+  .sidebar.show + .sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: 280px;
+    max-width: 85vw;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: var(--shadow-xl);
+    border-radius: 0 24px 24px 0;
+    border-left: none;
+  }
+
+  .sidebar.show {
+    transform: translateX(0);
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+  }
+
+  .main-wrapper {
+    margin-left: 0 !important;
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .mobile-toggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .metrics-grid,
+  .stats-grid,
+  .teacher-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  .grid-3-cols {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid-4-cols {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 2. MOBILE LANDSCAPE & SMALL TABLETS (max-width: 768px)                     */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .app-layout {
+    padding: 12px 14px;
+  }
+
+  .top-header {
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    position: sticky;
+    top: 8px;
+    border-radius: 14px;
+    gap: 10px;
+  }
+
+  .header-left {
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .header-left .page-title {
+    font-size: 1.05rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-time {
+    display: none !important;
+  }
+
+  .btn-logout-modern {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    border-radius: 10px;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .content-container {
+    padding: 0;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Typography & Banners */
+  .hero-banner {
+    padding: 20px 16px;
+    border-radius: 16px;
+    margin-bottom: 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .hero-banner h2 {
+    font-size: 1.3rem;
+    line-height: 1.3;
+  }
+
+  .hero-banner p {
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .hero-watermark {
+    display: none;
+  }
+
+  /* Teacher Aurora Card */
+  .teacher-hero-card {
+    padding: 20px 18px;
+    border-radius: 18px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+
+  .teacher-hero-title {
+    font-size: 1.4rem;
+    line-height: 1.3;
+  }
+
+  .teacher-hero-desc {
+    font-size: 0.86rem;
+    margin-bottom: 12px;
+  }
+
+  .teacher-hero-actions {
+    width: 100%;
+  }
+
+  .teacher-btn-cta {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 18px;
+  }
+
+  .teacher-hero-watermark {
+    display: none;
+  }
+
+  /* Cards & Stats */
+  .metrics-grid,
+  .stats-grid,
+  .teacher-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .stat-card,
+  .metric-card {
+    padding: 16px 14px;
+    border-radius: 16px;
+    gap: 12px;
+  }
+
+  .stat-icon,
+  .metric-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 1.15rem;
+    border-radius: 12px;
+  }
+
+  .stat-value,
+  .metric-value {
+    font-size: 1.45rem;
+  }
+
+  .stat-label,
+  .metric-label {
+    font-size: 0.72rem;
+  }
+
+  .stat-meta {
+    font-size: 0.72rem;
+    margin-top: 4px;
+  }
+
+  .grid-2-cols,
+  .grid-3-cols,
+  .grid-4-cols,
+  .cards-grid,
+  .multi-class-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .options-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .result-grid-stats {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Action Bars, Filters & Search */
+  .panel-header,
+  .section-header,
+  .lms-card-header,
+  .filter-bar,
+  .action-bar,
+  .search-container,
+  .header-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    width: 100% !important;
+  }
+
+  .lms-header-title {
+    font-size: 1.05rem;
+  }
+
+  .lms-header-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .lms-search-pill,
+  .lms-filter-select-wrap,
+  .lms-filter-select-wrap select {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .lms-header-controls .btn,
+  .header-actions .btn,
+  .filter-bar .btn {
+    width: 100% !important;
+    justify-content: center;
+    min-height: 42px;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="number"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="search"],
+  select,
+  textarea,
+  .form-control {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Tables */
+  .modern-table thead th,
+  .modern-table tbody td,
+  .data-table th,
+  .data-table td {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+  }
+
+  .table-actions-cell {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .table-empty-state {
+    margin: 14px;
+    padding: 32px 16px;
+  }
+
+  .empty-state-desc {
+    font-size: 0.85rem;
+  }
+
+  /* Modals */
+  .modal-overlay {
+    padding: 10px;
+    align-items: center;
+  }
+
+  .modal-content,
+  .modal-content-wide {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    max-height: 92dvh !important;
+    border-radius: 18px !important;
+    padding: 0 !important;
+  }
+
+  .modal-header,
+  .modal-header-modern {
+    padding: 14px 16px;
+  }
+
+  .modal-header-text h3 {
+    font-size: 1.1rem;
+  }
+
+  .modal-body,
+  .modal-body-scrollable {
+    padding: 16px 14px;
+    max-height: calc(92dvh - 130px);
+  }
+
+  .modal-footer,
+  .modal-footer-modern {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: stretch;
+  }
+
+  .modal-footer .btn,
+  .modal-footer-modern .btn {
+    flex: 1;
+    min-width: 120px;
+    justify-content: center;
+  }
+
+  /* Forms */
+  .form-row {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .form-group.col-6,
+  .form-group.col-4,
+  .form-group.col-3,
+  .form-group.col-8 {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Wizard & Teacher Flow */
+  .wizard-header-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    top: 56px;
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .wizard-counter-box {
+    text-align: center;
+    width: 100%;
+    padding: 8px 12px;
+  }
+
+  .wizard-steps-indicator {
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .wizard-step {
+    padding: 4px 6px;
+    font-size: 0.8rem;
+    gap: 6px;
+  }
+
+  .wizard-step .step-num {
+    width: 28px;
+    height: 28px;
+    font-size: 0.78rem;
+  }
+
+  .period-slots-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .slot-chip {
+    padding: 12px 14px;
+  }
+
+  .teacher-slip-card {
+    border-radius: 16px;
+  }
+
+  .teacher-slip-header {
+    padding: 16px 18px;
+  }
+
+  .teacher-slip-meta-grid {
+    grid-template-columns: 1fr !important;
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  /* Exam Engine Fullscreen */
+  .exam-fullscreen-wrapper {
+    padding: 0 !important;
+  }
+
+  .exam-modal-window {
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    border-radius: 0 !important;
+    border: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    min-height: 0 !important;
+  }
+
+  .exam-header {
+    flex-shrink: 0 !important;
+    height: auto !important;
+    min-height: 50px;
+    padding: 8px 12px !important;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .exam-title-badge h3 {
+    font-size: 0.9rem;
+  }
+
+  .exam-timer-box {
+    padding: 4px 10px;
+    gap: 6px;
+  }
+
+  .timer-time {
+    font-size: 0.9rem;
+  }
+
+  .secure-mode-pill {
+    display: none;
+  }
+
+  .exam-body-grid {
+    flex: 1 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    height: 100% !important;
+  }
+
+  .question-palette-panel {
+    display: none;
+  }
+
+  .question-main-panel {
+    flex: 1 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    height: 100% !important;
+    padding: 10px 12px 6px 12px !important;
+  }
+
+  .batch-header-bar {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 6px;
+    padding: 8px 12px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .batch-questions-list {
+    flex: 1 !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-right: 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .batch-question-card {
+    padding: 14px !important;
+    border-radius: 14px;
+  }
+
+  .batch-question-text {
+    font-size: 0.94rem;
+    margin-bottom: 12px;
+    line-height: 1.45;
+  }
+
+  .option-card {
+    padding: 10px 12px;
+    font-size: 0.88rem;
+    min-height: 44px;
+  }
+
+  .question-footer-controls {
+    flex-shrink: 0 !important;
+    flex-direction: row;
+    gap: 6px;
+    padding-top: 8px !important;
+    padding-bottom: 4px !important;
+  }
+
+  .question-footer-controls .btn {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 8px 6px;
+    justify-content: center;
+    min-height: 42px;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 3. MOBILE PHONES (max-width: 576px)                                        */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 576px) {
+  .app-layout {
+    padding: 10px 10px;
+  }
+
+  .login-card {
+    padding: 24px 18px;
+    border-radius: 18px;
+  }
+
+  .brand-header h2 {
+    font-size: 1.22rem;
+  }
+
+  .brand-logo {
+    width: 52px;
+    height: 52px;
+    font-size: 1.4rem;
+    margin-bottom: 10px;
+  }
+
+  .metrics-grid,
+  .stats-grid,
+  .teacher-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .wizard-step .step-title {
+    display: none;
+  }
+
+  .wizard-step-line {
+    max-width: 25px;
+  }
+
+  .wizard-section-banner {
+    padding: 14px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .exam-meta-pills {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .meta-pill {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+  }
+
+  .modern-toggle-card {
+    padding: 10px 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .modern-toggle-card .switch-toggle {
+    align-self: flex-end;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 4. ULTRA-COMPACT SMARTPHONES (max-width: 380px)                           */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 380px) {
+  .top-header {
+    padding: 8px 10px;
+  }
+
+  .header-left .page-title {
+    font-size: 0.95rem;
+  }
+
+  .btn-logout-modern {
+    padding: 6px 8px;
+    font-size: 0.74rem;
+  }
+
+  .hero-banner {
+    padding: 14px 12px;
+  }
+
+  .hero-banner h2 {
+    font-size: 1.15rem;
+  }
+
+  .stat-card,
+  .metric-card {
+    padding: 12px 10px;
+  }
+
+  .stat-value,
+  .metric-value {
+    font-size: 1.25rem;
+  }
+
+  .modal-footer,
+  .modal-footer-modern {
+    flex-direction: column;
+  }
+
+  .modal-footer .btn,
+  .modal-footer-modern .btn {
+    width: 100%;
+  }
 }

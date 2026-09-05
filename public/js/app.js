@@ -3077,22 +3077,38 @@ async function loadTeacherDashboard() {
               <div class="table-empty-state">
                 <div class="empty-state-icon-wrapper">
                   <div class="empty-state-icon-glow"></div>
+const TEACHING_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function getDayBadgeHtml(day) {
+  const d = day || 'Sunday';
+  const icons = {
+    Sunday: 'fa-sun',
+    Monday: 'fa-calendar-day',
+    Tuesday: 'fa-calendar-day',
+    Wednesday: 'fa-calendar-day',
+    Thursday: 'fa-calendar-day',
+    Friday: 'fa-calendar-day',
+    Saturday: 'fa-calendar-day'
+  };
+  const icon = icons[d] || 'fa-calendar-day';
+  const cls = `day-badge day-badge-${d.toLowerCase()}`;
+  return `<span class="${cls}"><i class="fa-solid ${icon}"></i> ${escapeHtml(d)}</span>`;
+}
+
                   <div class="empty-state-icon">
                     <i class="fa-regular fa-calendar-plus"></i>
                   </div>
                 </div>
                 <h4 class="empty-state-title">No Teaching Periods Selected Yet</h4>
-                <p class="empty-state-desc">Your teaching schedule is currently open. Select between <strong>2 and 3 periods</strong> across Sunday and Monday without scheduling conflicts.</p>
+                <p class="empty-state-desc">Your teaching schedule is currently open. Select between <strong>2 and 3 periods</strong> across the 7-day schedule without conflicts.</p>
                 <button type="button" class="teacher-btn-cta btn-empty-cta" onclick="startTeacherSelectionWizard()">
                   <i class="fa-solid fa-wand-magic-sparkles"></i> Launch Period Wizard
                   <i class="fa-solid fa-arrow-right-long btn-arrow-icon"></i>
                 </button>
                 <div class="empty-state-steps">
-                  <div class="empty-step-chip"><span class="step-dot">1</span> Pick Sunday</div>
+                  <div class="empty-step-chip"><span class="step-dot">1</span> Choose Periods</div>
                   <i class="fa-solid fa-chevron-right step-arrow"></i>
-                  <div class="empty-step-chip"><span class="step-dot">2</span> Pick Monday</div>
-                  <i class="fa-solid fa-chevron-right step-arrow"></i>
-                  <div class="empty-step-chip"><span class="step-dot">3</span> Review &amp; Lock</div>
+                  <div class="empty-step-chip"><span class="step-dot">2</span> Review &amp; Lock</div>
                 </div>
               </div>
             </td>
@@ -3100,14 +3116,9 @@ async function loadTeacherDashboard() {
         `;
       } else {
         tbody.innerHTML = teacherSelectionState.mySelections.map(s => {
-          const isSun = s.day === 'Sunday';
-          const dayBadge = isSun 
-            ? '<span class="day-badge day-badge-sunday"><i class="fa-solid fa-sun"></i> Sunday</span>' 
-            : '<span class="day-badge day-badge-monday"><i class="fa-solid fa-calendar-day"></i> Monday</span>';
-          
           return `
             <tr class="selection-row">
-              <td>${dayBadge}</td>
+              <td>${getDayBadgeHtml(s.day)}</td>
               <td>
                 <div class="period-cell-badge">
                   <span class="period-pill">Period ${s.period}</span>
@@ -3150,6 +3161,7 @@ function startTeacherSelectionWizard() {
 
 // Initialize Wizard when Tab is opened
 async function initTeacherSelectionWizard() {
+  teacherSelectionState.wizardSelectedDay = teacherSelectionState.wizardSelectedDay || 'Sunday';
   await refreshTeacherSelectionSlots();
   goToWizardStep(1, false);
 }
@@ -3168,8 +3180,8 @@ async function refreshTeacherSelectionSlots() {
     teacherSelectionState.mySelections = mySelData.selections || [];
 
     updateWizardCounters();
-    renderWizardPeriodCards('Sunday', 'teacher-periods-grid-sunday');
-    renderWizardPeriodCards('Monday', 'teacher-periods-grid-monday');
+    updateWizardDayCounters();
+    switchWizardDay(teacherSelectionState.wizardSelectedDay || 'Sunday', false);
     renderWizardReviewTable();
   } catch (err) {
     console.error('Error refreshing slots:', err);
@@ -3191,25 +3203,101 @@ function updateWizardCounters() {
   }
 }
 
+function updateWizardDayCounters() {
+  TEACHING_DAYS.forEach(day => {
+    const count = teacherSelectionState.mySelections.filter(s => s.day === day).length;
+    const badgeEl = document.getElementById(`wiz-day-count-${day}`);
+    if (badgeEl) {
+      badgeEl.textContent = count;
+      badgeEl.style.background = count > 0 ? '#10b981' : '#f1f5f9';
+      badgeEl.style.color = count > 0 ? '#fff' : '#475569';
+    }
+  });
+}
+
+function switchWizardDay(day, doScroll = false) {
+  teacherSelectionState.wizardSelectedDay = day;
+
+  // Update day buttons in tab bar
+  TEACHING_DAYS.forEach(d => {
+    const btn = document.getElementById(`btn-wiz-day-${d}`);
+    if (btn) {
+      if (d === day) {
+        btn.className = 'btn btn-sm btn-primary wiz-day-tab';
+      } else {
+        btn.className = 'btn btn-sm btn-outline wiz-day-tab';
+      }
+    }
+  });
+
+  // Banner styles & metadata per day
+  const dayStyles = {
+    Sunday: { bg: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)', border: '#fde68a', color: '#92400e', icon: 'fa-sun', iconColor: '#f59e0b' },
+    Monday: { bg: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '#bfdbfe', color: '#1e40af', icon: 'fa-calendar-day', iconColor: '#3b82f6' },
+    Tuesday: { bg: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', border: '#a7f3d0', color: '#065f46', icon: 'fa-calendar-day', iconColor: '#10b981' },
+    Wednesday: { bg: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '#ddd6fe', color: '#5b21b6', icon: 'fa-calendar-day', iconColor: '#8b5cf6' },
+    Thursday: { bg: 'linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)', border: '#fecdd3', color: '#9f1239', icon: 'fa-calendar-day', iconColor: '#f43f5e' },
+    Friday: { bg: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', border: '#99f6e4', color: '#115e59', icon: 'fa-calendar-day', iconColor: '#14b8a6' },
+    Saturday: { bg: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)', border: '#c7d2fe', color: '#3730a3', icon: 'fa-calendar-day', iconColor: '#6366f1' }
+  };
+
+  const style = dayStyles[day] || dayStyles.Sunday;
+  const banner = document.getElementById('wizard-day-banner');
+  const title = document.getElementById('wizard-day-banner-title');
+  const desc = document.getElementById('wizard-day-banner-desc');
+
+  if (banner) {
+    banner.style.background = style.bg;
+    banner.style.border = `1.5px solid ${style.border}`;
+  }
+  if (title) {
+    title.style.color = style.color;
+    title.innerHTML = `<i class="fa-solid ${style.icon}" style="color: ${style.iconColor};"></i> ${day} Teaching Periods`;
+  }
+  if (desc) {
+    desc.style.color = style.color;
+    desc.textContent = `Select your classes for ${day}. You can choose at most 1 class per period.`;
+  }
+
+  // Render period cards for this day
+  renderWizardPeriodCards(day, 'teacher-periods-grid-active');
+
+  if (doScroll) {
+    const gridEl = document.getElementById('teacher-periods-grid-active');
+    if (gridEl) gridEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function navigateWizardDay(direction) {
+  const current = teacherSelectionState.wizardSelectedDay || 'Sunday';
+  const idx = TEACHING_DAYS.indexOf(current);
+  const nextIdx = (idx + direction + TEACHING_DAYS.length) % TEACHING_DAYS.length;
+  switchWizardDay(TEACHING_DAYS[nextIdx], true);
+}
+
 function goToWizardStep(step, doScroll = true) {
   teacherSelectionState.currentStep = step;
 
   // Toggle step containers
   const c1 = document.getElementById('wizard-container-step-1');
   const c2 = document.getElementById('wizard-container-step-2');
-  const c3 = document.getElementById('wizard-container-step-3');
 
   if (c1) c1.classList.toggle('hidden', step !== 1);
   if (c2) c2.classList.toggle('hidden', step !== 2);
-  if (c3) c3.classList.toggle('hidden', step !== 3);
 
   // Update step indicator
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 2; i++) {
     const el = document.getElementById(`wiz-step-indicator-${i}`);
     if (el) {
       el.classList.toggle('active', i === step);
       el.classList.toggle('completed', i < step);
     }
+  }
+
+  if (step === 1) {
+    switchWizardDay(teacherSelectionState.wizardSelectedDay || 'Sunday', false);
+  } else if (step === 2) {
+    renderWizardReviewTable();
   }
 
   if (doScroll) {
@@ -3242,7 +3330,7 @@ function renderWizardPeriodCards(day, containerId) {
         <div class="period-card-header">
           <div class="period-card-title">
             <span class="period-badge">Period ${p}</span>
-            <span style="font-size:0.95rem;">${day}</span>
+            <span style="font-size:0.95rem; font-weight:700;">${day}</span>
             ${!isPeriodEnabled ? '<span class="badge badge-danger" style="font-size:0.75rem;"><i class="fa-solid fa-ban"></i> Disabled by Admin</span>' : ''}
           </div>
           <div class="period-card-time">
@@ -3286,7 +3374,7 @@ function renderWizardPeriodCards(day, containerId) {
           if (mySelectionInPeriod) {
             statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Already picked P${p}</span>`;
           } else if (currentTotal >= maxPeriods) {
-            statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Limit reached (3/3)</span>`;
+            statusBadge = `<span class="slot-chip-status text-muted"><i class="fa-solid fa-ban"></i> Limit reached (${maxPeriods}/${maxPeriods})</span>`;
           } else {
             statusBadge = `<span class="slot-chip-status"><i class="fa-solid fa-circle-plus"></i> Available (Click to Pick)</span>`;
             clickHandler = `onclick="handleTeacherPickSlot(${slot.id})"`;
@@ -3302,6 +3390,15 @@ function renderWizardPeriodCards(day, containerId) {
         `;
       });
     }
+
+    html += `
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
 
     html += `
         </div>
@@ -3386,13 +3483,10 @@ function renderWizardReviewTable() {
   const max = teacherSelectionState.settings.max_periods || 3;
 
   if (count === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:28px 20px;">No teaching periods selected yet. Go back to Step 1 or Step 2 to make your selections.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:28px 20px;">No teaching periods selected yet. Go to Step 1 to make your selections.</td></tr>`;
   } else {
     tbody.innerHTML = selections.map(s => {
-      const isSun = s.day === 'Sunday';
-      const dayBadge = isSun 
-        ? '<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700;"><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday</span>' 
-        : '<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;"><i class="fa-solid fa-calendar-day" style="color:#4f46e5;"></i> Monday</span>';
+      const dayBadge = getDayBadgeHtml(s.day);
 
       return `
         <tr>
@@ -4321,10 +4415,7 @@ function renderTimetableTable() {
   }
 
   tbody.innerHTML = list.map(t => {
-    const isSun = t.day === 'Sunday';
-    const dayBadge = isSun 
-      ? '<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700;"><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday</span>' 
-      : '<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;"><i class="fa-solid fa-calendar-day" style="color:#4f46e5;"></i> Monday</span>';
+    const dayBadge = getDayBadgeHtml(t.day);
 
     const enabledBadge = t.is_period_enabled !== false 
       ? '<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;"><i class="fa-solid fa-circle" style="font-size:6px; margin-right:3px;"></i> Available</span>' 
@@ -4423,6 +4514,8 @@ async function deleteTeachingSlot(id) {
 }
 
 // 4. PERIOD ON/OFF SETTINGS (DEPARTMENT-SCOPED)
+teacherSelectionState.periodSettingsSelectedDay = teacherSelectionState.periodSettingsSelectedDay || 'Sunday';
+
 async function loadAdminTeachingPeriods() {
   try {
     const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
@@ -4430,15 +4523,23 @@ async function loadAdminTeachingPeriods() {
     const settings = await res.json();
     teacherSelectionState.periodSettings = settings;
 
-    renderPeriodSettingsGrid('Sunday', 'grid-period-settings-sunday', settings);
-    renderPeriodSettingsGrid('Monday', 'grid-period-settings-monday', settings);
+    renderPeriodSettingsView(teacherSelectionState.periodSettingsSelectedDay || 'Sunday', settings);
   } catch (err) {
     console.error('Error loading period settings:', err);
   }
 }
 
-function renderPeriodSettingsGrid(day, containerId, settings) {
-  const container = document.getElementById(containerId);
+function switchPeriodSettingsDay(day, btnEl) {
+  teacherSelectionState.periodSettingsSelectedDay = day;
+  const buttons = document.querySelectorAll('.day-setting-tab');
+  buttons.forEach(b => b.className = 'btn btn-sm btn-outline day-setting-tab');
+  if (btnEl) btnEl.className = 'btn btn-sm btn-primary day-setting-tab';
+  
+  renderPeriodSettingsView(day, teacherSelectionState.periodSettings || []);
+}
+
+function renderPeriodSettingsView(day, settings) {
+  const container = document.getElementById('container-period-settings-content');
   if (!container) return;
 
   const defaultTimes = {
@@ -4447,37 +4548,105 @@ function renderPeriodSettingsGrid(day, containerId, settings) {
     7: '2:00–2:40', 8: '2:40–3:20', 9: '3:30–4:10'
   };
 
-  let html = '';
-  for (let p = 1; p <= 9; p++) {
-    const item = settings.find(s => s.day === day && s.period === p);
-    const isEnabled = item ? item.is_enabled !== false : true;
-    const time = (item && item.time_slot) || defaultTimes[p];
+  const daysToRender = (day === 'all') ? TEACHING_DAYS : [day];
 
-    html += `
-      <div class="period-toggle-card ${!isEnabled ? 'disabled-mode' : ''}">
-        <div class="period-toggle-info">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-            <span style="background:${day === 'Sunday' ? '#fef3c7' : '#e0e7ff'}; color:${day === 'Sunday' ? '#92400e' : '#3730a3'}; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:6px;">
-              P${p}
-            </span>
-            <span class="toggle-p-title" style="margin:0;">${day} — Period ${p}</span>
+  container.innerHTML = daysToRender.map(d => {
+    let cardsHtml = '';
+    for (let p = 1; p <= 9; p++) {
+      const item = (settings || []).find(s => s.day === d && s.period === p);
+      const isEnabled = item ? item.is_enabled !== false : true;
+      const time = (item && item.time_slot) || defaultTimes[p];
+
+      cardsHtml += `
+        <div class="period-toggle-card ${!isEnabled ? 'disabled-mode' : ''}">
+          <div class="period-toggle-info">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <span style="background:${isEnabled ? '#ecfdf5' : '#fee2e2'}; color:${isEnabled ? '#065f46' : '#991b1b'}; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:6px;">
+                P${p}
+              </span>
+              <span class="toggle-p-title" style="margin:0;">${d} — Period ${p}</span>
+            </div>
+            <span class="toggle-p-time"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${time}</span>
+            <div style="margin-top:6px;">
+              <span class="badge ${isEnabled ? 'badge-success' : 'badge-danger'}" style="font-size:0.74rem; padding:3px 8px;">
+                <i class="fa-solid fa-circle" style="font-size:7px; margin-right:4px;"></i> ${isEnabled ? 'Available' : 'Disabled'}
+              </span>
+            </div>
           </div>
-          <span class="toggle-p-time"><i class="fa-regular fa-clock" style="color:#94a3b8;"></i> ${time}</span>
-          <div style="margin-top:6px;">
-            <span class="badge ${isEnabled ? 'badge-success' : 'badge-danger'}" style="font-size:0.74rem; padding:3px 8px;">
-              <i class="fa-solid fa-circle" style="font-size:7px; margin-right:4px;"></i> ${isEnabled ? 'Available' : 'Disabled'}
-            </span>
+          <label class="switch-toggle">
+            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="togglePeriodSetting('${d}', ${p}, this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="margin-bottom: 26px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; border-bottom:2px solid #f1f5f9; padding-bottom:8px; flex-wrap:wrap; gap:8px;">
+          <h4 style="margin:0; color:#1e1b4b; font-size:1.02rem; display:flex; align-items:center; gap:8px;">
+            ${getDayBadgeHtml(d)} <span style="font-weight:700;">Periods (P1 – P9)</span>
+          </h4>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="btn btn-sm btn-outline" style="font-size:0.75rem; padding:4px 10px;" onclick="setAllPeriodsStatus('${d}', true)">
+              <i class="fa-solid fa-check" style="color:#10b981;"></i> Enable All
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" style="font-size:0.75rem; padding:4px 10px; color:#dc2626;" onclick="setAllPeriodsStatus('${d}', false)">
+              <i class="fa-solid fa-ban" style="color:#ef4444;"></i> Disable All
+            </button>
           </div>
         </div>
-        <label class="switch-toggle">
-          <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="togglePeriodSetting('${day}', ${p}, this.checked)">
-          <span class="slider"></span>
-        </label>
+        <div class="grid-3-cols" style="gap: 14px;">
+          ${cardsHtml}
+        </div>
       </div>
     `;
-  }
+  }).join('');
+}
 
-  container.innerHTML = html;
+function enableCurrentPeriodSettingDay() {
+  const curDay = teacherSelectionState.periodSettingsSelectedDay || 'Sunday';
+  if (curDay === 'all') {
+    setAll7DaysPeriodsStatus(true);
+  } else {
+    setAllPeriodsStatus(curDay, true);
+  }
+}
+
+function disableCurrentPeriodSettingDay() {
+  const curDay = teacherSelectionState.periodSettingsSelectedDay || 'Sunday';
+  if (curDay === 'all') {
+    setAll7DaysPeriodsStatus(false);
+  } else {
+    setAllPeriodsStatus(curDay, false);
+  }
+}
+
+async function setAll7DaysPeriodsStatus(isEnabled) {
+  const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  const updates = [];
+  TEACHING_DAYS.forEach(day => {
+    for (let p = 1; p <= 9; p++) {
+      updates.push({ day, period: p, is_enabled: isEnabled });
+    }
+  });
+
+  try {
+    await fetch(apiUrl('/api/teaching/admin/period-settings/bulk'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: parseInt(deptId),
+        settings: updates,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+    loadAdminTeachingPeriods();
+    loadAdminTeachingDashboard();
+  } catch (e) {
+    alert('Error in bulk update');
+  }
 }
 
 async function togglePeriodSetting(day, period, isEnabled) {
@@ -4717,10 +4886,7 @@ async function loadClassWiseReport() {
               </thead>
               <tbody>
                 ${slots.map(s => {
-                  const isSun = s.day === 'Sunday';
-                  const dayBadge = isSun 
-                    ? '<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700;"><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday</span>' 
-                    : '<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;"><i class="fa-solid fa-calendar-day" style="color:#4f46e5;"></i> Monday</span>';
+                  const dayBadge = getDayBadgeHtml(s.day);
 
                   const teacherBadge = s.teacher_name 
                     ? `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.84rem;"><i class="fa-solid fa-user-check"></i> ${escapeHtml(s.teacher_name)}</span>`
@@ -4772,11 +4938,12 @@ async function loadGridMatrixReport() {
 
 function setGridDay(day) {
   teacherSelectionState.currentGridDay = day;
-  const btnSun = document.getElementById('btn-grid-day-sunday');
-  const btnMon = document.getElementById('btn-grid-day-monday');
-
-  if (btnSun) btnSun.className = `btn btn-sm ${day === 'Sunday' ? 'btn-primary' : 'btn-outline'}`;
-  if (btnMon) btnMon.className = `btn btn-sm ${day === 'Monday' ? 'btn-primary' : 'btn-outline'}`;
+  TEACHING_DAYS.forEach(d => {
+    const btn = document.getElementById(`btn-grid-day-${d}`);
+    if (btn) {
+      btn.className = `btn btn-sm matrix-day-btn ${d === day ? 'btn-primary' : 'btn-outline'}`;
+    }
+  });
 
   renderGridMatrix(day);
 }

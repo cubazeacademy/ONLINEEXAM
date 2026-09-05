@@ -126,9 +126,12 @@ app.get(['/api/sample/timetable.csv', '/api/teaching/sample-timetable-csv'], (re
   const csv = `Department,Day,Period,Time,Class,Subject
 MEDIA,Sunday,1,7:30–8:15,Std 1,MTS
 MEDIA,Sunday,2,8:15–9:00,Std 1,TJWD
-MEDIA,Sunday,1,7:30–8:15,Std 2,S S
 MEDIA,Monday,1,7:30–8:15,Std 1,S S
-MEDIA,Monday,2,8:15–9:00,Std 1,ENG`;
+MEDIA,Tuesday,1,7:30–8:15,Std 1,ENG
+MEDIA,Wednesday,1,7:30–8:15,Std 1,MATH
+MEDIA,Thursday,1,7:30–8:15,Std 1,SCI
+MEDIA,Friday,1,7:30–8:15,Std 1,ARB
+MEDIA,Saturday,1,7:30–8:15,Std 1,HIS`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="sample_timetable_template.csv"');
   res.send(csv);
@@ -1666,13 +1669,14 @@ app.post('/api/teaching/admin/departments', async (req, res) => {
       ON CONFLICT (department_id) DO NOTHING
     `, [newDeptId]);
 
-    // Seed default period settings for the new department (Sunday 1-9, Monday 1-9)
+    // Seed default period settings for the new department (Sunday - Saturday 1-9)
     const timeSlots = {
       1: '7:30–8:15', 2: '8:15–9:00', 3: '9:00–9:45', 4: '10:00–10:45',
       5: '10:45–11:30', 6: '11:30–12:15', 7: '1:30–2:15', 8: '2:15–3:00', 9: '3:00–3:45'
     };
 
-    for (const day of ['Sunday', 'Monday']) {
+    const allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const day of allDays) {
       for (let p = 1; p <= 9; p++) {
         await db.query(`
           INSERT INTO teacher_selection_period_settings (department_id, day, period, time_slot, is_enabled)
@@ -1901,7 +1905,17 @@ app.get('/api/teaching/period-settings', async (req, res) => {
       SELECT day, period, time_slot, is_enabled, department_id
       FROM teacher_selection_period_settings
       WHERE department_id = $1
-      ORDER BY CASE WHEN day = 'Sunday' THEN 1 ELSE 2 END, period ASC
+      ORDER BY 
+        CASE day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, period ASC
     `, [departmentId]);
 
     if (settings.length === 0) {
@@ -1911,7 +1925,8 @@ app.get('/api/teaching/period-settings', async (req, res) => {
         5: '10:45–11:30', 6: '11:30–12:15', 7: '1:30–2:15', 8: '2:15–3:00', 9: '3:00–3:45'
       };
       settings = [];
-      for (const day of ['Sunday', 'Monday']) {
+      const allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      for (const day of allDays) {
         for (let p = 1; p <= 9; p++) {
           settings.push({
             day,
@@ -2336,7 +2351,17 @@ app.get('/api/teaching/timetable', async (req, res) => {
       LEFT JOIN departments d ON t.department_id = d.id
       LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
       ${whereClause}
-      ORDER BY t.department_id ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+      ORDER BY t.department_id ASC, 
+        CASE t.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, t.period ASC, t.class_name ASC
     `, params);
 
     res.json(timetable);
@@ -2380,11 +2405,16 @@ app.post('/api/teaching/admin/timetable/preview-import', async (req, res) => {
     const rawSubject = (r.subject || r.Subject || '').toString().trim();
     const rawTime = (r.time_slot || r.time || r.Time || '').toString().trim();
 
-    // Day validation
+    // Day validation (Sunday to Saturday)
     let day = '';
     if (/^sun/i.test(rawDay)) day = 'Sunday';
     else if (/^mon/i.test(rawDay)) day = 'Monday';
-    else rowErrors.push('Day must be Sunday or Monday');
+    else if (/^tue/i.test(rawDay)) day = 'Tuesday';
+    else if (/^wed/i.test(rawDay)) day = 'Wednesday';
+    else if (/^thu/i.test(rawDay)) day = 'Thursday';
+    else if (/^fri/i.test(rawDay)) day = 'Friday';
+    else if (/^sat/i.test(rawDay)) day = 'Saturday';
+    else rowErrors.push('Day must be Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, or Saturday');
 
     // Period validation
     const period = parseInt(rawPeriod);
@@ -2573,7 +2603,17 @@ app.get('/api/teaching/slots', async (req, res) => {
         LEFT JOIN users u ON ts.teacher_id = u.id
         LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
         WHERE t.department_id = $1 AND t.status = 'active'
-        ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+        ORDER BY 
+          CASE t.day 
+            WHEN 'Sunday' THEN 1 
+            WHEN 'Monday' THEN 2 
+            WHEN 'Tuesday' THEN 3 
+            WHEN 'Wednesday' THEN 4 
+            WHEN 'Thursday' THEN 5 
+            WHEN 'Friday' THEN 6 
+            WHEN 'Saturday' THEN 7 
+            ELSE 8 
+          END, t.period ASC, t.class_name ASC
       `, [departmentId]),
       db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [departmentId]),
       db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [departmentId]),
@@ -2830,7 +2870,17 @@ app.get('/api/teaching/my-selections', async (req, res) => {
         LEFT JOIN teacher_selection_timetable t ON s.timetable_id = t.id
         LEFT JOIN departments d ON s.department_id = d.id
         WHERE s.teacher_id = $1
-        ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
+        ORDER BY 
+          CASE s.day 
+            WHEN 'Sunday' THEN 1 
+            WHEN 'Monday' THEN 2 
+            WHEN 'Tuesday' THEN 3 
+            WHEN 'Wednesday' THEN 4 
+            WHEN 'Thursday' THEN 5 
+            WHEN 'Friday' THEN 6 
+            WHEN 'Saturday' THEN 7 
+            ELSE 8 
+          END, s.period ASC
       `, [teacherId]),
       db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId])
     ]);
@@ -2859,8 +2909,6 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
     let slotWhere = `WHERE status = 'active'`;
     let selectWhere = `WHERE 1=1`;
     let periodWhere = `WHERE is_enabled = false`;
-    let sunWhere = `WHERE day = 'Sunday'`;
-    let monWhere = `WHERE day = 'Monday'`;
     let settingsWhere = `WHERE 1=1`;
     const params = [];
 
@@ -2870,8 +2918,6 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       slotWhere += ` AND department_id = $1`;
       selectWhere += ` AND department_id = $1`;
       periodWhere += ` AND department_id = $1`;
-      sunWhere += ` AND department_id = $1`;
-      monWhere += ` AND department_id = $1`;
       settingsWhere += ` AND department_id = $1`;
     }
 
@@ -2880,8 +2926,6 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       totalTimetableSlotsRes,
       totalAllocationsRes,
       disabledPeriodsRes,
-      sundayAllocRes,
-      mondayAllocRes,
       settings,
       departmentsSummary
     ] = await Promise.all([
@@ -2889,8 +2933,6 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       db.get(`SELECT count(*)::int as count FROM teacher_selection_timetable ${slotWhere}`, params),
       db.get(`SELECT count(*)::int as count FROM teacher_selections ${selectWhere}`, params),
       db.get(`SELECT count(*)::int as count FROM teacher_selection_period_settings ${periodWhere}`, params),
-      db.get(`SELECT count(*)::int as count FROM teacher_selections ${sunWhere}`, params),
-      db.get(`SELECT count(*)::int as count FROM teacher_selections ${monWhere}`, params),
       db.get(`SELECT * FROM teacher_selection_settings ${settingsWhere} ORDER BY id DESC LIMIT 1`, params),
       db.all(`
         SELECT 
@@ -2943,8 +2985,6 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       total_slots: totalSlots,
       remaining_slots: remainingSlots,
       disabled_periods_count: disabledPeriods,
-      sunday_allocations: sundayAllocRes ? sundayAllocRes.count : 0,
-      monday_allocations: mondayAllocRes ? mondayAllocRes.count : 0,
       is_open: settings ? settings.is_open : true,
       settings: settings || {},
       departments_summary: departmentsSummary
@@ -2985,7 +3025,17 @@ app.get('/api/teaching/admin/reports/teacher-wise', async (req, res) => {
               'subject', s.subject,
               'time_slot', t.time_slot,
               'selected_at', s.selected_at
-            ) ORDER BY CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC
+            ) ORDER BY 
+                CASE s.day 
+                  WHEN 'Sunday' THEN 1 
+                  WHEN 'Monday' THEN 2 
+                  WHEN 'Tuesday' THEN 3 
+                  WHEN 'Wednesday' THEN 4 
+                  WHEN 'Thursday' THEN 5 
+                  WHEN 'Friday' THEN 6 
+                  WHEN 'Saturday' THEN 7 
+                  ELSE 8 
+                END, s.period ASC
           ) FILTER (WHERE s.id IS NOT NULL), '[]'::json
         ) as periods,
         COUNT(s.id)::int as total_periods
@@ -3039,7 +3089,17 @@ app.get('/api/teaching/admin/reports/class-wise', async (req, res) => {
       LEFT JOIN users u ON s.teacher_id = u.id
       LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
       ${whereClause}
-      ORDER BY d.name ASC, t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC
+      ORDER BY d.name ASC, t.class_name ASC, 
+        CASE t.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, t.period ASC
     `, params);
 
     // Group by class_name or department + class_name
@@ -3081,7 +3141,17 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
         LEFT JOIN users u ON s.teacher_id = u.id
         LEFT JOIN teacher_selection_period_settings ps ON t.department_id = ps.department_id AND t.day = ps.day AND t.period = ps.period
         WHERE t.department_id = $1
-        ORDER BY CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC, t.class_name ASC
+        ORDER BY 
+          CASE t.day 
+            WHEN 'Sunday' THEN 1 
+            WHEN 'Monday' THEN 2 
+            WHEN 'Tuesday' THEN 3 
+            WHEN 'Wednesday' THEN 4 
+            WHEN 'Thursday' THEN 5 
+            WHEN 'Friday' THEN 6 
+            WHEN 'Saturday' THEN 7 
+            ELSE 8 
+          END, t.period ASC, t.class_name ASC
       `, [departmentId]),
       db.all(`SELECT name FROM teacher_selection_classes WHERE department_id = $1 ORDER BY sort_order ASC, name ASC`, [departmentId]),
       db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 ORDER BY period ASC`, [departmentId]),
@@ -3151,7 +3221,17 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
         params.push(departmentId);
         sql += ` AND u.department_id = $1`;
       }
-      sql += ` ORDER BY d.name ASC, u.full_name ASC, CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC`;
+      sql += ` ORDER BY d.name ASC, u.full_name ASC, 
+        CASE s.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, s.period ASC`;
 
       const data = await db.all(sql, params);
 
@@ -3185,7 +3265,17 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
         params.push(departmentId);
         sql += ` WHERE t.department_id = $1`;
       }
-      sql += ` ORDER BY d.name ASC, t.class_name ASC, CASE WHEN t.day = 'Sunday' THEN 1 ELSE 2 END, t.period ASC`;
+      sql += ` ORDER BY d.name ASC, t.class_name ASC, 
+        CASE t.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, t.period ASC`;
 
       const data = await db.all(sql, params);
 
@@ -3219,7 +3309,17 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
         params.push(departmentId);
         sql += ` WHERE s.department_id = $1`;
       }
-      sql += ` ORDER BY d.name ASC, CASE WHEN s.day = 'Sunday' THEN 1 ELSE 2 END, s.period ASC, s.class_name ASC`;
+      sql += ` ORDER BY d.name ASC, 
+        CASE s.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, s.period ASC, s.class_name ASC`;
 
       const data = await db.all(sql, params);
 

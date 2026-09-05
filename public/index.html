@@ -920,7 +920,7 @@
               <div class="stat-content">
                 <div class="stat-label">Total Selected Periods</div>
                 <div class="stat-value" id="stat-ts-total-allocations">0</div>
-                <div class="stat-meta text-muted"><span id="stat-ts-sunday-alloc">0</span> Sun / <span id="stat-ts-monday-alloc">0</span> Mon</div>
+                <div class="stat-meta text-muted">Across all active days</div>
               </div>
             </div>
 
@@ -938,24 +938,24 @@
               <div class="stat-content">
                 <div class="stat-label">Disabled Periods</div>
                 <div class="stat-value text-danger" id="stat-ts-disabled-periods">0</div>
-                <div class="stat-meta text-muted">Turned OFF by Admin</div>
+                <div class="stat-meta text-muted">Excluded from selection</div>
               </div>
             </div>
           </div>
 
-          <!-- QUICK SHORTCUT CARDS -->
-          <div class="grid-3-cols mt-6">
-            <div class="modern-card" style="padding: 20px; cursor: pointer;" onclick="switchTab('admin-teaching-teachers')">
+          <!-- QUICK ACTION / JUMP CARDS -->
+          <div class="grid-3-cols mb-6" style="gap: 16px;">
+            <div class="modern-card" style="padding: 20px; cursor: pointer;" onclick="switchTab('admin-teaching-timetable')">
               <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
                 <div style="width:40px; height:40px; border-radius:10px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
-                  <i class="fa-solid fa-user-gear"></i>
+                  <i class="fa-solid fa-calendar-days"></i>
                 </div>
                 <div>
-                  <h4 style="margin:0; font-size:1rem; color:#1e293b;">Manage Teachers</h4>
-                  <span style="font-size:0.78rem; color:#64748b;">Credentials & Status</span>
+                  <h4 style="margin:0; font-size:1rem; color:#1e293b;">Master Academic Timetable</h4>
+                  <span style="font-size:0.78rem; color:#64748b;">Manage 7-Day Timetable</span>
                 </div>
               </div>
-              <p style="font-size:0.82rem; color:#475569; margin:0;">View all teachers, reset login passwords, add new educators, and see each teacher's selected slots.</p>
+              <p style="font-size:0.82rem; color:#475569; margin:0;">View master schedules for Std 1 to Std 7, upload CSV/Excel schedules, or add single timetable entries.</p>
             </div>
 
             <div class="modern-card" style="padding: 20px; cursor: pointer;" onclick="switchTab('admin-teaching-periods')">
@@ -968,7 +968,7 @@
                   <span style="font-size:0.78rem; color:#64748b;">Disable Unwanted Periods</span>
                 </div>
               </div>
-              <p style="font-size:0.82rem; color:#475569; margin:0;">Dynamically turn ON or OFF any periods for Sunday or Monday (e.g. P1, P6, P9) without altering master timetable.</p>
+              <p style="font-size:0.82rem; color:#475569; margin:0;">Dynamically turn ON or OFF any periods for any day (Sunday to Saturday) without altering master timetable.</p>
             </div>
 
             <div class="modern-card" style="padding: 20px; cursor: pointer;" onclick="switchTab('admin-teaching-reports')">
@@ -1039,13 +1039,18 @@
             <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
               <div>
                 <h3 style="margin:0;"><i class="fa-solid fa-calendar-days" style="color:var(--primary);"></i> Master Academic Timetable</h3>
-                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">Master schedule for Std 1 to Std 7 (Sunday & Monday, Periods 1 to 9).</p>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">Master schedule for Std 1 to Std 7 (Sunday to Saturday, Periods 1 to 9).</p>
               </div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <select id="filter-tt-day" class="form-control" style="font-size:0.85rem; padding:7px 12px; border-radius:10px;" onchange="renderTimetableTable()">
-                  <option value="all">All Days (Sun & Mon)</option>
+                  <option value="all">All Days (7 Days)</option>
                   <option value="Sunday">Sunday</option>
                   <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
                 </select>
                 <select id="filter-tt-class" class="form-control" style="font-size:0.85rem; padding:7px 12px; border-radius:10px;" onchange="renderTimetableTable()">
                   <option value="all">All Classes</option>
@@ -1096,44 +1101,38 @@
               <div>
                 <h3 style="margin:0;"><i class="fa-solid fa-toggle-on" style="color:var(--primary);"></i> Period Availability Controls</h3>
                 <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">
-                  Turn periods ON or OFF for Sunday and Monday. Disabled periods are protected and hidden from teachers.
+                  Turn periods ON or OFF for any day (Sunday to Saturday). Disabled periods are hidden from teachers.
                 </p>
               </div>
-              <div style="display: flex; gap: 8px;">
-                <button type="button" class="btn btn-sm btn-outline" onclick="setAllPeriodsStatus('Sunday', true)">
-                  <i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Enable All Sunday
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="period-settings-header-actions">
+                <button type="button" class="btn btn-sm btn-outline" id="btn-period-enable-current" onclick="enableCurrentPeriodSettingDay()">
+                  <i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Enable This Day
                 </button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="setAllPeriodsStatus('Monday', true)">
-                  <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Enable All Monday
+                <button type="button" class="btn btn-sm btn-outline" id="btn-period-disable-current" onclick="disableCurrentPeriodSettingDay()">
+                  <i class="fa-solid fa-ban" style="color:#ef4444;"></i> Disable This Day
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="setAll7DaysPeriodsStatus(true)">
+                  <i class="fa-solid fa-check-double"></i> Enable All 7 Days
                 </button>
               </div>
             </div>
             <div class="panel-body" style="padding: 24px;">
 
-              <!-- SUNDAY PERIODS GRID -->
-              <div style="margin-bottom: 30px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-bottom:2px solid #f1f5f9; padding-bottom:8px;">
-                  <h4 style="margin:0; color:#1e1b4b; font-size:1.05rem; display:flex; align-items:center; gap:8px;">
-                    <i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday Periods (P1 – P9)
-                  </h4>
-                  <span class="text-muted" style="font-size:0.8rem;">Click toggle switch to enable or disable</span>
-                </div>
-                <div id="grid-period-settings-sunday" class="grid-3-cols" style="gap: 14px;">
-                  <!-- Dynamically rendered Sunday period toggle cards -->
-                </div>
+              <!-- DAY SWITCHER TABS -->
+              <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; border-bottom:1.5px solid #e2e8f0; padding-bottom:14px;" id="period-settings-day-tabs">
+                <button type="button" class="btn btn-sm btn-primary day-setting-tab" onclick="switchPeriodSettingsDay('Sunday', this)">Sunday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('Monday', this)">Monday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('Tuesday', this)">Tuesday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('Wednesday', this)">Wednesday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('Thursday', this)">Thursday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('Friday', this)">Friday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('Saturday', this)">Saturday</button>
+                <button type="button" class="btn btn-sm btn-outline day-setting-tab" onclick="switchPeriodSettingsDay('all', this)">All 7 Days View</button>
               </div>
 
-              <!-- MONDAY PERIODS GRID -->
-              <div>
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-bottom:2px solid #f1f5f9; padding-bottom:8px;">
-                  <h4 style="margin:0; color:#1e1b4b; font-size:1.05rem; display:flex; align-items:center; gap:8px;">
-                    <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Monday Periods (P1 – P9)
-                  </h4>
-                  <span class="text-muted" style="font-size:0.8rem;">Click toggle switch to enable or disable</span>
-                </div>
-                <div id="grid-period-settings-monday" class="grid-3-cols" style="gap: 14px;">
-                  <!-- Dynamically rendered Monday period toggle cards -->
-                </div>
+              <!-- DYNAMIC PERIOD SETTINGS CONTENT -->
+              <div id="container-period-settings-content">
+                <!-- Dynamically rendered period toggle cards -->
               </div>
 
             </div>
@@ -1267,11 +1266,16 @@
                 </div>
               </div>
 
-              <!-- 3. TIMETABLE GRID MATRIX (SUNDAY & MONDAY) -->
+              <!-- 3. TIMETABLE GRID MATRIX (7 DAYS) -->
               <div id="report-view-grid-matrix" class="hidden">
-                <div style="display:flex; justify-content:center; gap:12px; margin-bottom:16px;">
-                  <button type="button" class="btn btn-sm btn-primary" id="btn-grid-day-sunday" onclick="setGridDay('Sunday')">Sunday Matrix</button>
-                  <button type="button" class="btn btn-sm btn-outline" id="btn-grid-day-monday" onclick="setGridDay('Monday')">Monday Matrix</button>
+                <div style="display:flex; justify-content:center; gap:8px; margin-bottom:16px; flex-wrap:wrap;" id="matrix-day-btns">
+                  <button type="button" class="btn btn-sm btn-primary matrix-day-btn" id="btn-grid-day-Sunday" onclick="setGridDay('Sunday')">Sunday Matrix</button>
+                  <button type="button" class="btn btn-sm btn-outline matrix-day-btn" id="btn-grid-day-Monday" onclick="setGridDay('Monday')">Monday Matrix</button>
+                  <button type="button" class="btn btn-sm btn-outline matrix-day-btn" id="btn-grid-day-Tuesday" onclick="setGridDay('Tuesday')">Tuesday Matrix</button>
+                  <button type="button" class="btn btn-sm btn-outline matrix-day-btn" id="btn-grid-day-Wednesday" onclick="setGridDay('Wednesday')">Wednesday Matrix</button>
+                  <button type="button" class="btn btn-sm btn-outline matrix-day-btn" id="btn-grid-day-Thursday" onclick="setGridDay('Thursday')">Thursday Matrix</button>
+                  <button type="button" class="btn btn-sm btn-outline matrix-day-btn" id="btn-grid-day-Friday" onclick="setGridDay('Friday')">Friday Matrix</button>
+                  <button type="button" class="btn btn-sm btn-outline matrix-day-btn" id="btn-grid-day-Saturday" onclick="setGridDay('Saturday')">Saturday Matrix</button>
                 </div>
                 <div id="container-timetable-grid-matrix" class="table-responsive">
                   <!-- Dynamically rendered 9x7 matrix table -->
@@ -1461,23 +1465,18 @@
           </div>
         </section>
 
-        <!-- TEACHER 2: SEQUENTIAL SUBJECT SELECTION WIZARD (SUNDAY -> MONDAY -> REVIEW) -->
+        <!-- TEACHER 2: 7-DAY SUBJECT SELECTION WIZARD -->
         <section id="view-teacher-subject-selection" class="tab-view hidden">
           <!-- WIZARD STICKY HEADER -->
           <div class="wizard-header-card">
             <div class="wizard-steps-indicator">
               <div class="wizard-step active" id="wiz-step-indicator-1" onclick="goToWizardStep(1)">
                 <span class="step-num">1</span>
-                <span class="step-title">Sunday Selection</span>
+                <span class="step-title">Select Teaching Periods</span>
               </div>
               <div class="wizard-step-line"></div>
               <div class="wizard-step" id="wiz-step-indicator-2" onclick="goToWizardStep(2)">
                 <span class="step-num">2</span>
-                <span class="step-title">Monday Selection</span>
-              </div>
-              <div class="wizard-step-line"></div>
-              <div class="wizard-step" id="wiz-step-indicator-3" onclick="goToWizardStep(3)">
-                <span class="step-num">3</span>
                 <span class="step-title">Review & Submit</span>
               </div>
             </div>
@@ -1489,67 +1488,75 @@
             </div>
           </div>
 
-          <!-- STEP 1: SUNDAY PERIODS CONTAINER -->
+          <!-- STEP 1: 7-DAY PERIOD SELECTION CONTAINER -->
           <div id="wizard-container-step-1" class="wizard-container">
-            <div class="wizard-section-banner" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1.5px solid #fde68a;">
-              <div>
-                <h3 style="color: #92400e; margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 800;">
-                  <i class="fa-solid fa-sun" style="color: #f59e0b;"></i> STEP 1: Sunday Teaching Periods
-                </h3>
-                <p style="color: #b45309; margin: 0; font-size: 0.88rem;">Select your classes for Sunday. You can pick at most 1 class per period.</p>
+            <!-- 7-DAY SELECTOR TABS -->
+            <div style="background:#fff; border-radius:14px; padding:14px 18px; margin-bottom:16px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+              <div style="font-size:0.8rem; font-weight:700; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+                <i class="fa-solid fa-calendar-week" style="color:var(--primary);"></i> Select Timetable Day
               </div>
-              <button type="button" class="btn btn-primary" onclick="goToWizardStep(2)">
-                Next: Monday Periods <i class="fa-solid fa-arrow-right"></i>
-              </button>
-            </div>
-
-            <div id="teacher-periods-grid-sunday" class="period-cards-flow mt-4">
-              <!-- Dynamically rendered Period 1 to 9 cards for Sunday -->
-            </div>
-
-            <div class="wizard-footer-bar mt-6">
-              <div></div>
-              <button type="button" class="btn btn-primary btn-lg" onclick="goToWizardStep(2)">
-                Proceed to Monday Periods <i class="fa-solid fa-arrow-right"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- STEP 2: MONDAY PERIODS CONTAINER -->
-          <div id="wizard-container-step-2" class="wizard-container hidden">
-            <div class="wizard-section-banner" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #bfdbfe;">
-              <div>
-                <h3 style="color: #1e40af; margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 800;">
-                  <i class="fa-solid fa-calendar-day" style="color: #3b82f6;"></i> STEP 2: Monday Teaching Periods
-                </h3>
-                <p style="color: #1d4ed8; margin: 0; font-size: 0.88rem;">Select your classes for Monday. Sunday and Monday selections are independent.</p>
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <button type="button" class="btn btn-outline" onclick="goToWizardStep(1)">
-                  <i class="fa-solid fa-arrow-left"></i> Back to Sunday
+              <div style="display:flex; gap:8px; flex-wrap:wrap;" id="teacher-wizard-day-tabs">
+                <button type="button" class="btn btn-sm btn-primary wiz-day-tab" id="btn-wiz-day-Sunday" onclick="switchWizardDay('Sunday')">
+                  <i class="fa-solid fa-sun" style="color:#f59e0b;"></i> Sunday <span class="badge" id="wiz-day-count-Sunday" style="background:#fff; color:#0f172a; margin-left:4px; font-size:0.75rem;">0</span>
                 </button>
-                <button type="button" class="btn btn-primary" onclick="goToWizardStep(3)">
+                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Monday" onclick="switchWizardDay('Monday')">
+                  <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Monday <span class="badge" id="wiz-day-count-Monday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Tuesday" onclick="switchWizardDay('Tuesday')">
+                  <i class="fa-solid fa-calendar-day" style="color:#10b981;"></i> Tuesday <span class="badge" id="wiz-day-count-Tuesday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Wednesday" onclick="switchWizardDay('Wednesday')">
+                  <i class="fa-solid fa-calendar-day" style="color:#8b5cf6;"></i> Wednesday <span class="badge" id="wiz-day-count-Wednesday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Thursday" onclick="switchWizardDay('Thursday')">
+                  <i class="fa-solid fa-calendar-day" style="color:#f43f5e;"></i> Thursday <span class="badge" id="wiz-day-count-Thursday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Friday" onclick="switchWizardDay('Friday')">
+                  <i class="fa-solid fa-calendar-day" style="color:#14b8a6;"></i> Friday <span class="badge" id="wiz-day-count-Friday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline wiz-day-tab" id="btn-wiz-day-Saturday" onclick="switchWizardDay('Saturday')">
+                  <i class="fa-solid fa-calendar-day" style="color:#6366f1;"></i> Saturday <span class="badge" id="wiz-day-count-Saturday" style="background:#f1f5f9; color:#475569; margin-left:4px; font-size:0.75rem;">0</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- ACTIVE DAY BANNER -->
+            <div class="wizard-section-banner" id="wizard-day-banner" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1.5px solid #fde68a;">
+              <div>
+                <h3 id="wizard-day-banner-title" style="color: #92400e; margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 800;">
+                  <i class="fa-solid fa-sun" style="color: #f59e0b;"></i> Sunday Teaching Periods
+                </h3>
+                <p id="wizard-day-banner-desc" style="color: #b45309; margin: 0; font-size: 0.88rem;">Select your classes for Sunday. You can choose at most 1 class per period.</p>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-primary" onclick="goToWizardStep(2)">
                   Review Selections <i class="fa-solid fa-arrow-right"></i>
                 </button>
               </div>
             </div>
 
-            <div id="teacher-periods-grid-monday" class="period-cards-flow mt-4">
-              <!-- Dynamically rendered Period 1 to 9 cards for Monday -->
+            <!-- ACTIVE DAY PERIOD CARDS CONTAINER -->
+            <div id="teacher-periods-grid-active" class="period-cards-flow mt-4">
+              <!-- Dynamically rendered Period 1 to 9 cards for active day -->
             </div>
 
-            <div class="wizard-footer-bar mt-6">
-              <button type="button" class="btn btn-outline" onclick="goToWizardStep(1)">
-                <i class="fa-solid fa-arrow-left"></i> Back to Sunday
-              </button>
-              <button type="button" class="btn btn-primary btn-lg" onclick="goToWizardStep(3)">
-                Review & Confirm Selections <i class="fa-solid fa-arrow-right"></i>
+            <div class="wizard-footer-bar mt-6" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-outline" id="btn-wiz-prev-day" onclick="navigateWizardDay(-1)">
+                  <i class="fa-solid fa-chevron-left"></i> Previous Day
+                </button>
+                <button type="button" class="btn btn-outline" id="btn-wiz-next-day" onclick="navigateWizardDay(1)">
+                  Next Day <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
+              <button type="button" class="btn btn-primary btn-lg" onclick="goToWizardStep(2)">
+                Proceed to Review & Confirm <i class="fa-solid fa-arrow-right"></i>
               </button>
             </div>
           </div>
 
-          <!-- STEP 3: REVIEW & CONFIRM CONTAINER -->
-          <div id="wizard-container-step-3" class="wizard-container hidden">
+          <!-- STEP 2: REVIEW & CONFIRM CONTAINER -->
+          <div id="wizard-container-step-2" class="wizard-container hidden">
             <div class="panel-card max-w-3xl" style="margin: 0 auto;">
               <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
                 <h3 style="color: #fff; margin:0;"><i class="fa-solid fa-clipboard-check" style="color: #38bdf8;"></i> Review Your Teaching Period Selections</h3>
@@ -2637,6 +2644,11 @@
               <select id="teaching-slot-day" class="form-control" required>
                 <option value="Sunday">Sunday</option>
                 <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
               </select>
             </div>
             <div class="form-group col-6">

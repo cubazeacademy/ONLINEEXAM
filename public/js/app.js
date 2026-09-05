@@ -4021,6 +4021,7 @@ async function loadAdminTeachingDashboard(isSilent = false) {
     const elTotal = document.getElementById('stat-ts-total-teachers');
     const elComp = document.getElementById('stat-ts-completed-teachers');
     const elPend = document.getElementById('stat-ts-pending-teachers');
+    const elPendMeta = document.getElementById('stat-ts-pending-meta');
     const elAlloc = document.getElementById('stat-ts-total-allocations');
     const elSun = document.getElementById('stat-ts-sunday-alloc');
     const elMon = document.getElementById('stat-ts-monday-alloc');
@@ -4030,6 +4031,13 @@ async function loadAdminTeachingDashboard(isSilent = false) {
     if (elTotal && elTotal.textContent != (data.total_teachers || 0)) elTotal.textContent = data.total_teachers || 0;
     if (elComp && elComp.textContent != (data.completed_teachers || 0)) elComp.textContent = data.completed_teachers || 0;
     if (elPend && elPend.textContent != (data.pending_teachers || 0)) elPend.textContent = data.pending_teachers || 0;
+    if (elPendMeta) {
+      if (data.in_progress_teachers > 0) {
+        elPendMeta.textContent = `${data.not_started_teachers || 0} not started, ${data.in_progress_teachers} in progress`;
+      } else {
+        elPendMeta.textContent = 'Awaiting completion';
+      }
+    }
     if (elAlloc && elAlloc.textContent != (data.total_allocations || 0)) elAlloc.textContent = data.total_allocations || 0;
     if (elSun && elSun.textContent != (data.sunday_allocations || 0)) elSun.textContent = data.sunday_allocations || 0;
     if (elMon && elMon.textContent != (data.monday_allocations || 0)) elMon.textContent = data.monday_allocations || 0;

@@ -3021,12 +3021,12 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
 
     let completed = 0;
     let inProgress = 0;
-    let pending = 0;
+    let notStarted = 0;
 
     teacherCounts.forEach(t => {
       if (t.count >= 2) completed++;
       else if (t.count > 0) inProgress++;
-      else pending++;
+      else notStarted++;
     });
 
     const totalTeachers = totalTeachersRes ? totalTeachersRes.count : 0;
@@ -3034,13 +3034,15 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
     const totalAllocations = totalAllocationsRes ? totalAllocationsRes.count : 0;
     const disabledPeriods = disabledPeriodsRes ? disabledPeriodsRes.count : 0;
     const remainingSlots = Math.max(0, totalSlots - totalAllocations);
+    const pendingTotal = inProgress + notStarted;
 
     res.json({
       department_id: departmentId || 'all',
       total_teachers: totalTeachers,
       completed_teachers: completed,
       in_progress_teachers: inProgress,
-      pending_teachers: pending,
+      not_started_teachers: notStarted,
+      pending_teachers: pendingTotal,
       total_allocations: totalAllocations,
       total_slots: totalSlots,
       remaining_slots: remainingSlots,

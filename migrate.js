@@ -288,20 +288,20 @@ async function runMigration() {
         max_periods INTEGER DEFAULT 3,
         active_days TEXT,
         rule_4_enabled BOOLEAN DEFAULT false,
-        group_a_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
-        group_a_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
-        group_b_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
-        group_b_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_a_start_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        group_a_end_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        group_b_start_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        group_b_end_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id) ON DELETE CASCADE;`);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS active_days TEXT;`);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS rule_4_enabled BOOLEAN DEFAULT false;`);
-    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
-    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
-    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
-    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_start_class_id INTEGER;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_end_class_id INTEGER;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_start_class_id INTEGER;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_end_class_id INTEGER;`);
     await client.query(`UPDATE teacher_selection_settings SET department_id = $1 WHERE department_id IS NULL`, [mediaDeptId]);
     await client.query(`ALTER TABLE teacher_selection_settings ALTER COLUMN department_id SET DEFAULT 1;`);
     try {
@@ -309,20 +309,59 @@ async function runMigration() {
       await client.query(`ALTER TABLE teacher_selection_settings ADD CONSTRAINT uq_ts_settings_dept UNIQUE (department_id);`);
     } catch (e) { console.log('Selection settings constraint note:', e.message); }
 
+    // Drop legacy foreign keys to teacher_selection_classes on teacher_selection_settings
+    try {
+      await client.query(`ALTER TABLE teacher_selection_settings DROP CONSTRAINT IF EXISTS teacher_selection_settings_group_a_start_class_id_fkey;`);
+      await client.query(`ALTER TABLE teacher_selection_settings DROP CONSTRAINT IF EXISTS teacher_selection_settings_group_a_end_class_id_fkey;`);
+      await client.query(`ALTER TABLE teacher_selection_settings DROP CONSTRAINT IF EXISTS teacher_selection_settings_group_b_start_class_id_fkey;`);
+      await client.query(`ALTER TABLE teacher_selection_settings DROP CONSTRAINT IF EXISTS teacher_selection_settings_group_b_end_class_id_fkey;`);
+
+      // Clean invalid class IDs before adding foreign key to classes(id)
+      await client.query(`UPDATE teacher_selection_settings SET group_a_start_class_id = NULL WHERE group_a_start_class_id IS NOT NULL AND group_a_start_class_id NOT IN (SELECT id FROM classes);`);
+      await client.query(`UPDATE teacher_selection_settings SET group_a_end_class_id = NULL WHERE group_a_end_class_id IS NOT NULL AND group_a_end_class_id NOT IN (SELECT id FROM classes);`);
+      await client.query(`UPDATE teacher_selection_settings SET group_b_start_class_id = NULL WHERE group_b_start_class_id IS NOT NULL AND group_b_start_class_id NOT IN (SELECT id FROM classes);`);
+      await client.query(`UPDATE teacher_selection_settings SET group_b_end_class_id = NULL WHERE group_b_end_class_id IS NOT NULL AND group_b_end_class_id NOT IN (SELECT id FROM classes);`);
+
+      await client.query(`ALTER TABLE teacher_selection_settings ADD CONSTRAINT teacher_selection_settings_group_a_start_class_id_fkey FOREIGN KEY (group_a_start_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+      await client.query(`ALTER TABLE teacher_selection_settings ADD CONSTRAINT teacher_selection_settings_group_a_end_class_id_fkey FOREIGN KEY (group_a_end_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+      await client.query(`ALTER TABLE teacher_selection_settings ADD CONSTRAINT teacher_selection_settings_group_b_start_class_id_fkey FOREIGN KEY (group_b_start_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+      await client.query(`ALTER TABLE teacher_selection_settings ADD CONSTRAINT teacher_selection_settings_group_b_end_class_id_fkey FOREIGN KEY (group_b_end_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+    } catch (e) { console.log('Teacher selection settings FK update note:', e.message); }
+
     // Dedicated student_selection_rule_settings table for extensibility
     await client.query(`
       CREATE TABLE IF NOT EXISTS student_selection_rule_settings (
         id SERIAL PRIMARY KEY,
         department_id INTEGER UNIQUE REFERENCES departments(id) ON DELETE CASCADE,
         rule_4_enabled BOOLEAN DEFAULT false,
-        group_a_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
-        group_a_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
-        group_b_start_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
-        group_b_end_class_id INTEGER REFERENCES teacher_selection_classes(id) ON DELETE SET NULL,
+        group_a_start_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        group_a_end_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        group_b_start_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        group_b_end_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Drop legacy foreign keys to teacher_selection_classes on student_selection_rule_settings
+    try {
+      await client.query(`ALTER TABLE student_selection_rule_settings DROP CONSTRAINT IF EXISTS student_selection_rule_settings_group_a_start_class_id_fkey;`);
+      await client.query(`ALTER TABLE student_selection_rule_settings DROP CONSTRAINT IF EXISTS student_selection_rule_settings_group_a_end_class_id_fkey;`);
+      await client.query(`ALTER TABLE student_selection_rule_settings DROP CONSTRAINT IF EXISTS student_selection_rule_settings_group_b_start_class_id_fkey;`);
+      await client.query(`ALTER TABLE student_selection_rule_settings DROP CONSTRAINT IF EXISTS student_selection_rule_settings_group_b_end_class_id_fkey;`);
+
+      // Clean invalid class IDs before adding foreign key to classes(id)
+      await client.query(`UPDATE student_selection_rule_settings SET group_a_start_class_id = NULL WHERE group_a_start_class_id IS NOT NULL AND group_a_start_class_id NOT IN (SELECT id FROM classes);`);
+      await client.query(`UPDATE student_selection_rule_settings SET group_a_end_class_id = NULL WHERE group_a_end_class_id IS NOT NULL AND group_a_end_class_id NOT IN (SELECT id FROM classes);`);
+      await client.query(`UPDATE student_selection_rule_settings SET group_b_start_class_id = NULL WHERE group_b_start_class_id IS NOT NULL AND group_b_start_class_id NOT IN (SELECT id FROM classes);`);
+      await client.query(`UPDATE student_selection_rule_settings SET group_b_end_class_id = NULL WHERE group_b_end_class_id IS NOT NULL AND group_b_end_class_id NOT IN (SELECT id FROM classes);`);
+
+      await client.query(`ALTER TABLE student_selection_rule_settings ADD CONSTRAINT student_selection_rule_settings_group_a_start_class_id_fkey FOREIGN KEY (group_a_start_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+      await client.query(`ALTER TABLE student_selection_rule_settings ADD CONSTRAINT student_selection_rule_settings_group_a_end_class_id_fkey FOREIGN KEY (group_a_end_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+      await client.query(`ALTER TABLE student_selection_rule_settings ADD CONSTRAINT student_selection_rule_settings_group_b_start_class_id_fkey FOREIGN KEY (group_b_start_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+      await client.query(`ALTER TABLE student_selection_rule_settings ADD CONSTRAINT student_selection_rule_settings_group_b_end_class_id_fkey FOREIGN KEY (group_b_end_class_id) REFERENCES classes(id) ON DELETE SET NULL;`);
+    } catch (e) { console.log('Student selection rule settings FK update note:', e.message); }
+
     console.log('✅ teacher_selection_settings & student_selection_rule_settings migrated.');
 
     // 3.6 Teacher Selections

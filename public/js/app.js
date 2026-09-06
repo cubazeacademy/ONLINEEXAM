@@ -5209,9 +5209,54 @@ async function deleteTeachingSlot(id) {
       })
     });
 
+    clearClientCache('/api/teaching');
     loadAdminTeachingTimetable();
+    loadAdminTeachingDashboard();
   } catch (e) {
     alert('Error deleting slot');
+  }
+}
+
+async function clearAllTeachingTimetable() {
+  const deptId = teacherSelectionState.currentDepartmentId || 'all';
+  let deptName = 'Selected Department';
+  if (deptId === 'all') {
+    deptName = 'All Departments';
+  } else {
+    const dept = (teacherSelectionState.departments || []).find(d => d.id == deptId);
+    deptName = dept ? `${dept.name} (${dept.code})` : `Department #${deptId}`;
+  }
+
+  const confirmMsg = deptId === 'all'
+    ? '⚠️ Are you sure you want to delete ALL master timetable slots from ALL departments?\n\nThis will completely remove all timetable entries and associated teacher selections across the entire system from the database.'
+    : `⚠️ Are you sure you want to delete ALL master timetable slots for ${deptName}?\n\nThis will completely remove all timetable entries and associated teacher selections for this department from the database.`;
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/timetable-clear-all'), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to clear timetable.');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(data.message || 'Master timetable cleared successfully.');
+    loadAdminTeachingTimetable();
+    loadAdminTeachingDashboard();
+    loadTeachingDepartments(true);
+  } catch (err) {
+    alert('Error clearing master timetable.');
   }
 }
 

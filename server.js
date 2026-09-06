@@ -3274,6 +3274,38 @@ app.delete('/api/teaching/admin/timetable/entry/:id', async (req, res) => {
   }
 });
 
+// Clear All / Bulk Delete Master Timetable (Scoped to selected department if provided)
+app.delete(['/api/teaching/admin/timetable-clear-all', '/api/teaching/admin/timetable/clear-all'], async (req, res) => {
+  const { department_id, admin_id, admin_name } = req.body;
+  try {
+    if (department_id && department_id !== 'all') {
+      const deptId = parseInt(department_id);
+      const dept = await db.get(`SELECT id, name, code FROM departments WHERE id = $1`, [deptId]);
+      const deptName = dept ? `${dept.name} (${dept.code})` : `Dept #${deptId}`;
+
+      // Delete associated teacher selections for this department
+      await db.query(`DELETE FROM teacher_selections WHERE department_id = $1`, [deptId]);
+      // Delete all timetable entries for this department
+      const del = await db.query(`DELETE FROM teacher_selection_timetable WHERE department_id = $1`, [deptId]);
+
+      invalidateCache('/api/teaching');
+      await logTeacherAction(admin_id, admin_name || 'Admin', `Cleared master timetable (${del.rowCount || 0} slots removed) for department: ${deptName}`, {}, deptId);
+      res.json({ message: `Successfully cleared ${del.rowCount || 0} timetable slots for ${deptName}.`, count: del.rowCount || 0 });
+    } else {
+      // Delete all selections across all departments
+      await db.query(`DELETE FROM teacher_selections`);
+      // Delete all timetable slots across all departments
+      const del = await db.query(`DELETE FROM teacher_selection_timetable`);
+
+      invalidateCache('/api/teaching');
+      await logTeacherAction(admin_id, admin_name || 'Admin', `Cleared master timetable (${del.rowCount || 0} slots removed) across all departments.`);
+      res.json({ message: `Successfully cleared ${del.rowCount || 0} timetable slots across all departments.`, count: del.rowCount || 0 });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 6. TEACHER SELECTION FLOW & REAL-TIME CLASH PREVENTION ENGINE
 // -------------------------------------------------------------

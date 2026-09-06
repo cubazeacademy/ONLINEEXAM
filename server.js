@@ -1684,17 +1684,32 @@ app.get('/api/teaching/admin/departments', async (req, res) => {
         COUNT(DISTINCT u.id)::int as teacher_count,
         COUNT(DISTINCT t.id)::int as slot_count,
         COUNT(DISTINCT s.id)::int as allocation_count,
-        COALESCE(st.is_open, true) as is_open,
+        st.is_open,
+        st.start_datetime,
+        st.end_datetime,
         COALESCE(st.is_timetable_published, true) as is_timetable_published
       FROM departments d
       LEFT JOIN users u ON d.id = u.department_id AND u.role = 'teacher' AND COALESCE(u.is_active, true) = true
       LEFT JOIN teacher_selection_timetable t ON d.id = t.department_id AND t.status = 'active'
       LEFT JOIN teacher_selections s ON d.id = s.department_id
       LEFT JOIN teacher_selection_settings st ON d.id = st.department_id
-      GROUP BY d.id, d.name, d.code, d.status, d.active_days, st.active_days, d.created_at, st.is_open, st.is_timetable_published
+      GROUP BY d.id, d.name, d.code, d.status, d.active_days, st.active_days, d.created_at, st.is_open, st.start_datetime, st.end_datetime, st.is_timetable_published
       ORDER BY d.id ASC
     `);
-    res.json(departments);
+
+    const now = new Date();
+    const enriched = departments.map(d => {
+      let isOpen = d.is_open !== false;
+      if (d.start_datetime && new Date(d.start_datetime) > now) isOpen = false;
+      if (d.end_datetime && new Date(d.end_datetime) < now) isOpen = false;
+      if (d.is_timetable_published === false) isOpen = false;
+      return {
+        ...d,
+        is_open: isOpen
+      };
+    });
+
+    res.json(enriched);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2435,22 +2450,48 @@ app.post('/api/teaching/admin/toggle-status', async (req, res) => {
     const targetDeptId = (department_id && department_id !== 'all') ? parseInt(department_id) : null;
 
     if (targetDeptId && !isNaN(targetDeptId)) {
-      await db.query(`
-        INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
-        VALUES ($1, $2, true, true, 2, 3, CURRENT_TIMESTAMP)
-        ON CONFLICT (department_id)
-        DO UPDATE SET is_open = EXCLUDED.is_open, updated_at = CURRENT_TIMESTAMP
-      `, [targetDeptId, isOpenBool]);
+      if (isOpenBool) {
+        await db.query(`
+          INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, start_datetime, updated_at)
+          VALUES ($1, true, true, true, 2, 3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT (department_id)
+          DO UPDATE SET 
+            is_open = true,
+            start_datetime = CASE WHEN teacher_selection_settings.start_datetime > CURRENT_TIMESTAMP THEN CURRENT_TIMESTAMP ELSE teacher_selection_settings.start_datetime END,
+            end_datetime = CASE WHEN teacher_selection_settings.end_datetime < CURRENT_TIMESTAMP THEN NULL ELSE teacher_selection_settings.end_datetime END,
+            updated_at = CURRENT_TIMESTAMP
+        `, [targetDeptId]);
+      } else {
+        await db.query(`
+          INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
+          VALUES ($1, false, true, true, 2, 3, CURRENT_TIMESTAMP)
+          ON CONFLICT (department_id)
+          DO UPDATE SET is_open = false, updated_at = CURRENT_TIMESTAMP
+        `, [targetDeptId]);
+      }
     } else {
       const depts = await db.all(`SELECT id FROM departments`);
       if (depts && depts.length > 0) {
         for (const d of depts) {
-          await db.query(`
-            INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
-            VALUES ($1, $2, true, true, 2, 3, CURRENT_TIMESTAMP)
-            ON CONFLICT (department_id)
-            DO UPDATE SET is_open = EXCLUDED.is_open, updated_at = CURRENT_TIMESTAMP
-          `, [d.id, isOpenBool]);
+          if (isOpenBool) {
+            await db.query(`
+              INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, start_datetime, updated_at)
+              VALUES ($1, true, true, true, 2, 3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              ON CONFLICT (department_id)
+              DO UPDATE SET 
+                is_open = true,
+                start_datetime = CASE WHEN teacher_selection_settings.start_datetime > CURRENT_TIMESTAMP THEN CURRENT_TIMESTAMP ELSE teacher_selection_settings.start_datetime END,
+                end_datetime = CASE WHEN teacher_selection_settings.end_datetime < CURRENT_TIMESTAMP THEN NULL ELSE teacher_selection_settings.end_datetime END,
+                updated_at = CURRENT_TIMESTAMP
+            `, [d.id]);
+          } else {
+            await db.query(`
+              INSERT INTO teacher_selection_settings (department_id, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
+              VALUES ($1, false, true, true, 2, 3, CURRENT_TIMESTAMP)
+              ON CONFLICT (department_id)
+              DO UPDATE SET is_open = false, updated_at = CURRENT_TIMESTAMP
+            `, [d.id]);
+          }
         }
       } else {
         await db.query(`UPDATE teacher_selection_settings SET is_open = $1, updated_at = CURRENT_TIMESTAMP`, [isOpenBool]);

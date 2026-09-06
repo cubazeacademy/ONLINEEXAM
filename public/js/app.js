@@ -5533,6 +5533,20 @@ async function setAllPeriodsStatus(day, isEnabled) {
   }
 }
 
+// Helper to format ISO timestamp to local HTML datetime-local input string without timezone distortion
+function formatDateTimeLocal(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const mins = pad(d.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${mins}`;
+}
+
 // 5. GLOBAL SETTINGS (DEPARTMENT-SCOPED)
 async function loadAdminTeachingSettings() {
   try {
@@ -5540,16 +5554,8 @@ async function loadAdminTeachingSettings() {
     const res = await fetch(apiUrl(`/api/teaching/settings?department_id=${deptId}`));
     const data = await res.json();
 
-    if (data.start_datetime) {
-      document.getElementById('ts-setting-start').value = new Date(data.start_datetime).toISOString().slice(0, 16);
-    } else {
-      document.getElementById('ts-setting-start').value = '';
-    }
-    if (data.end_datetime) {
-      document.getElementById('ts-setting-end').value = new Date(data.end_datetime).toISOString().slice(0, 16);
-    } else {
-      document.getElementById('ts-setting-end').value = '';
-    }
+    document.getElementById('ts-setting-start').value = formatDateTimeLocal(data.start_datetime);
+    document.getElementById('ts-setting-end').value = formatDateTimeLocal(data.end_datetime);
 
     document.getElementById('ts-setting-min').value = data.min_periods || 2;
     document.getElementById('ts-setting-max').value = data.max_periods || 3;
@@ -5568,8 +5574,10 @@ async function loadAdminTeachingSettings() {
 async function saveTeachingSettingsForm(e) {
   e.preventDefault();
   const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
-  const start_datetime = document.getElementById('ts-setting-start').value || null;
-  const end_datetime = document.getElementById('ts-setting-end').value || null;
+  const startRaw = document.getElementById('ts-setting-start').value;
+  const endRaw = document.getElementById('ts-setting-end').value;
+  const start_datetime = startRaw ? new Date(startRaw).toISOString() : null;
+  const end_datetime = endRaw ? new Date(endRaw).toISOString() : null;
   const min_periods = parseInt(document.getElementById('ts-setting-min').value) || 2;
   const max_periods = parseInt(document.getElementById('ts-setting-max').value) || 3;
   const is_open = document.getElementById('ts-setting-is-open').checked;
@@ -5605,6 +5613,7 @@ async function saveTeachingSettingsForm(e) {
     clearClientCache('/api/teaching');
     alert(data.message || 'Settings saved successfully!');
     loadAdminTeachingDashboard();
+    loadTeachingDepartments(true);
   } catch (err) {
     alert('Error saving settings.');
   }

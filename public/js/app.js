@@ -5072,19 +5072,60 @@ async function populateTimetableModalClassDropdown(deptId) {
 }
 
 function openModalAddTimetableSlot() {
+  document.getElementById('modal-teaching-slot-title').innerHTML = '<i class="fa-solid fa-calendar-plus" style="color:var(--primary);"></i> Add Timetable Slot';
   document.getElementById('teaching-slot-id').value = '';
   document.getElementById('teaching-slot-day').value = 'Sunday';
   document.getElementById('teaching-slot-period').value = '1';
   document.getElementById('teaching-slot-subject').value = '';
-  document.getElementById('teaching-slot-time').value = '7:30–8:15';
+  document.getElementById('teaching-slot-time').value = '7:45–8:30';
 
   const deptSelect = document.getElementById('teaching-slot-dept-select');
-  const targetDeptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  const targetDeptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : (deptSelect?.value || 1));
   if (deptSelect) {
     deptSelect.value = targetDeptId;
   }
 
   populateTimetableModalClassDropdown(targetDeptId);
+  openModal('modal-teaching-slot');
+}
+
+async function openModalEditTimetableSlot(slotId) {
+  const slot = (teacherSelectionState.allTimetable || []).find(t => t.id == slotId);
+  if (!slot) return;
+
+  document.getElementById('modal-teaching-slot-title').innerHTML = '<i class="fa-solid fa-pen-to-square" style="color:var(--primary);"></i> Edit Timetable Slot';
+  document.getElementById('teaching-slot-id').value = slot.id;
+  document.getElementById('teaching-slot-day').value = slot.day || 'Sunday';
+  document.getElementById('teaching-slot-period').value = slot.period || '1';
+  document.getElementById('teaching-slot-subject').value = slot.subject || '';
+  document.getElementById('teaching-slot-time').value = slot.time_slot || '';
+
+  const deptSelect = document.getElementById('teaching-slot-dept-select');
+  const targetDeptId = slot.department_id || (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  if (deptSelect) {
+    deptSelect.value = targetDeptId;
+  }
+
+  await populateTimetableModalClassDropdown(targetDeptId);
+
+  const classSelect = document.getElementById('teaching-slot-class');
+  if (classSelect) {
+    let exists = false;
+    for (let i = 0; i < classSelect.options.length; i++) {
+      if (classSelect.options[i].value === slot.class_name) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists && slot.class_name) {
+      const opt = document.createElement('option');
+      opt.value = slot.class_name;
+      opt.textContent = slot.class_name;
+      classSelect.appendChild(opt);
+    }
+    classSelect.value = slot.class_name;
+  }
+
   openModal('modal-teaching-slot');
 }
 
@@ -5137,33 +5178,23 @@ function renderTimetableTable() {
         <td><strong class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.85rem;">${escapeHtml(t.subject)}</strong></td>
         <td>${enabledBadge}</td>
         <td class="text-right">
-          <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingSlot(${t.id})" title="Delete Slot" style="border-radius:8px; padding:6px 10px; border-color:#fca5a5; background:#fff5f5;">
-            <i class="fa-solid fa-trash"></i>
-          </button>
+          <div style="display:inline-flex; gap:6px;">
+            <button type="button" class="btn btn-sm btn-outline" onclick="openModalEditTimetableSlot(${t.id})" title="Edit Slot" style="border-radius:8px; padding:6px 10px; border-color:#cbd5e1; background:#ffffff;">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="deleteTeachingSlot(${t.id})" title="Delete Slot" style="border-radius:8px; padding:6px 10px; border-color:#fca5a5; background:#fff5f5;">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
         </td>
       </tr>
     `;
   }).join('');
 }
 
-function openModalAddTimetableSlot() {
-  document.getElementById('teaching-slot-id').value = '';
-  document.getElementById('teaching-slot-day').value = 'Sunday';
-  document.getElementById('teaching-slot-period').value = '1';
-  document.getElementById('teaching-slot-class').value = 'Std 1';
-  document.getElementById('teaching-slot-subject').value = '';
-  document.getElementById('teaching-slot-time').value = '7:30–8:15';
-
-  const deptSelect = document.getElementById('teaching-slot-dept-select');
-  if (deptSelect) {
-    deptSelect.value = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
-  }
-
-  openModal('modal-teaching-slot');
-}
-
 async function saveTeachingSlotForm(e) {
   e.preventDefault();
+  const id = document.getElementById('teaching-slot-id').value;
   const department_id = document.getElementById('teaching-slot-dept-select').value;
   const day = document.getElementById('teaching-slot-day').value;
   const period = document.getElementById('teaching-slot-period').value;
@@ -5176,6 +5207,7 @@ async function saveTeachingSlotForm(e) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: id ? parseInt(id) : null,
         department_id: parseInt(department_id),
         day, period, class_name, subject, time_slot,
         admin_id: currentUser ? currentUser.id : null,
@@ -5189,6 +5221,7 @@ async function saveTeachingSlotForm(e) {
       return;
     }
 
+    clearClientCache('/api/teaching');
     closeModal('modal-teaching-slot');
     loadAdminTeachingTimetable();
     loadAdminTeachingDashboard();

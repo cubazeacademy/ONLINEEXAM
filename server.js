@@ -3222,7 +3222,7 @@ app.post('/api/teaching/admin/timetable/confirm-import', async (req, res) => {
 });
 
 app.post('/api/teaching/admin/timetable/entry', async (req, res) => {
-  const { department_id, day, period, class_name, subject, time_slot, admin_id, admin_name } = req.body;
+  const { id, department_id, day, period, class_name, subject, time_slot, admin_id, admin_name } = req.body;
   const deptId = department_id ? parseInt(department_id) : 1;
   if (!day || !period || !class_name || !subject) {
     return res.status(400).json({ error: 'Day, Period, Class, and Subject are required' });
@@ -3235,12 +3235,40 @@ app.post('/api/teaching/admin/timetable/entry', async (req, res) => {
     const assignedClasses = await getDepartmentAssignedClasses(deptId);
     const assignedNamesSet = new Set(assignedClasses.map(c => c.name.trim().toLowerCase()));
 
-    if (assignedClasses.length === 0) {
-      return res.status(400).json({ error: 'No classes are assigned to this department. Please assign classes in Department Class Assignment first.' });
+    if (assignedClasses.length > 0 && !assignedNamesSet.has(cleanClassName.toLowerCase())) {
+      return res.status(400).json({ error: `Class "${cleanClassName}" is not assigned to this department. Please assign it in Department Class Assignment first.` });
     }
 
-    if (!assignedNamesSet.has(cleanClassName.toLowerCase())) {
-      return res.status(400).json({ error: `Class "${cleanClassName}" is not assigned to this department. Please assign it in Department Class Assignment first.` });
+    if (id) {
+      const slotId = parseInt(id);
+      // Check if another slot in this department conflicts with new day/period/class
+      const conflict = await db.get(
+        `SELECT id FROM teacher_selection_timetable WHERE department_id = $1 AND day = $2 AND period = $3 AND class_name = $4 AND id != $5`,
+        [deptId, day.trim(), periodNum, cleanClassName, slotId]
+      );
+      if (conflict) {
+        return res.status(400).json({ error: `A slot for ${day.trim()}, Period ${periodNum}, and Class "${cleanClassName}" already exists in this department.` });
+      }
+
+      await db.query(`
+        UPDATE teacher_selection_timetable 
+        SET department_id = $1, class_name = $2, day = $3, period = $4, time_slot = $5, subject = $6
+        WHERE id = $7
+      `, [deptId, cleanClassName, day.trim(), periodNum, time_slot || '', subject.trim(), slotId]);
+
+      // Sync teacher_selections if any
+      await db.query(`
+        UPDATE teacher_selections
+        SET department_id = $1, day = $2, period = $3, class_name = $4, subject = $5
+        WHERE timetable_id = $6
+      `, [deptId, day.trim(), periodNum, cleanClassName, subject.trim(), slotId]);
+
+      // Ensure subject exists
+      await db.query(`INSERT INTO teacher_selection_subjects (department_id, name, code, status) VALUES ($1, $2, $2, 'active') ON CONFLICT (department_id, name) DO NOTHING`, [deptId, subject.trim()]);
+
+      invalidateCache('/api/teaching');
+      await logTeacherAction(admin_id, admin_name || 'Admin', `Updated timetable slot #${slotId} (Dept ${deptId}): ${day} P${periodNum} ${cleanClassName} - ${subject}`, {}, deptId);
+      return res.json({ message: 'Timetable entry updated successfully' });
     }
 
     await db.query(`
@@ -3256,6 +3284,48 @@ app.post('/api/teaching/admin/timetable/entry', async (req, res) => {
     invalidateCache('/api/teaching');
     await logTeacherAction(admin_id, admin_name || 'Admin', `Added/Updated timetable slot (Dept ${deptId}): ${day} P${periodNum} ${cleanClassName} - ${subject}`, {}, deptId);
     res.json({ message: 'Timetable entry saved successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/teaching/admin/timetable/entry/:id', async (req, res) => {
+  req.body.id = req.params.id;
+  const { id, department_id, day, period, class_name, subject, time_slot, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+  if (!day || !period || !class_name || !subject) {
+    return res.status(400).json({ error: 'Day, Period, Class, and Subject are required' });
+  }
+  try {
+    const slotId = parseInt(id);
+    const periodNum = parseInt(period);
+    const cleanClassName = class_name.trim();
+
+    const conflict = await db.get(
+      `SELECT id FROM teacher_selection_timetable WHERE department_id = $1 AND day = $2 AND period = $3 AND class_name = $4 AND id != $5`,
+      [deptId, day.trim(), periodNum, cleanClassName, slotId]
+    );
+    if (conflict) {
+      return res.status(400).json({ error: `A slot for ${day.trim()}, Period ${periodNum}, and Class "${cleanClassName}" already exists in this department.` });
+    }
+
+    await db.query(`
+      UPDATE teacher_selection_timetable 
+      SET department_id = $1, class_name = $2, day = $3, period = $4, time_slot = $5, subject = $6
+      WHERE id = $7
+    `, [deptId, cleanClassName, day.trim(), periodNum, time_slot || '', subject.trim(), slotId]);
+
+    await db.query(`
+      UPDATE teacher_selections
+      SET department_id = $1, day = $2, period = $3, class_name = $4, subject = $5
+      WHERE timetable_id = $6
+    `, [deptId, day.trim(), periodNum, cleanClassName, subject.trim(), slotId]);
+
+    await db.query(`INSERT INTO teacher_selection_subjects (department_id, name, code, status) VALUES ($1, $2, $2, 'active') ON CONFLICT (department_id, name) DO NOTHING`, [deptId, subject.trim()]);
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated timetable slot #${slotId} (Dept ${deptId}): ${day} P${periodNum} ${cleanClassName} - ${subject}`, {}, deptId);
+    res.json({ message: 'Timetable entry updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

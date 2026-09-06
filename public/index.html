@@ -2985,7 +2985,7 @@
         <div class="modal-body" style="padding: 16px 20px;">
           <div class="form-group">
             <label>Department <span class="text-danger">*</span></label>
-            <select id="teaching-slot-dept-select" class="form-control" required style="font-weight:600;">
+            <select id="teaching-slot-dept-select" class="form-control" required style="font-weight:600;" onchange="populateTimetableModalClassDropdown(this.value)">
               <option value="1">MEDIA</option>
             </select>
           </div>

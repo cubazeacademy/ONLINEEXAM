@@ -107,6 +107,39 @@ async function runMigration() {
       );
     `);
 
+    // Ensure standard master classes exist in classes table
+    const defaultClasses = ['Std 1', 'Std 2', 'Std 3', 'Std 4', 'Std 5', 'Std 6', 'Std 7'];
+    for (const cName of defaultClasses) {
+      await client.query(`INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`, [cName]);
+    }
+
+    // 2.5 Department Classes Mapping Table
+    console.log('📦 3.5 Creating department_classes mapping table...');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS department_classes (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_dept_classes UNIQUE (department_id, class_id)
+      );
+    `);
+
+    // Map MEDIA department to standard classes
+    const allMasterClasses = await client.query(`SELECT id, name FROM classes`);
+    for (const c of allMasterClasses.rows) {
+      if (defaultClasses.includes(c.name)) {
+        await client.query(`
+          INSERT INTO department_classes (department_id, class_id, status)
+          VALUES ($1, $2, 'active')
+          ON CONFLICT (department_id, class_id) DO NOTHING
+        `, [mediaDeptId, c.id]);
+      }
+    }
+    console.log('✅ department_classes mapping table initialized and seeded.');
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS questions (
         id SERIAL PRIMARY KEY,
@@ -353,7 +386,10 @@ async function runMigration() {
       `CREATE INDEX IF NOT EXISTS idx_ts_selections_dept ON teacher_selections(department_id);`,
       `CREATE INDEX IF NOT EXISTS idx_ts_selections_dept_day_period ON teacher_selections(department_id, day, period);`,
       `CREATE INDEX IF NOT EXISTS idx_ts_selections_teacher ON teacher_selections(teacher_id);`,
-      `CREATE INDEX IF NOT EXISTS idx_ts_audit_dept ON teacher_selection_audit_logs(department_id);`
+      `CREATE INDEX IF NOT EXISTS idx_ts_audit_dept ON teacher_selection_audit_logs(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_dept_classes_dept ON department_classes(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_dept_classes_class ON department_classes(class_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_dept_classes_dept_class ON department_classes(department_id, class_id);`
     ];
 
     for (const idxSql of indexes) {

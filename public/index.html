@@ -107,6 +107,9 @@
         <a href="#admin-teaching-departments" class="nav-item" onclick="switchTab('admin-teaching-departments')">
           <i class="fa-solid fa-building-user"></i> <span>Departments</span>
         </a>
+        <a href="#admin-teaching-classes" class="nav-item" onclick="switchTab('admin-teaching-classes')">
+          <i class="fa-solid fa-layer-group"></i> <span>Class Assignment</span>
+        </a>
         <a href="#admin-teaching-teachers" class="nav-item" onclick="switchTab('admin-teaching-teachers')">
           <i class="fa-solid fa-chalkboard-user"></i> <span>Teachers</span>
         </a>
@@ -865,6 +868,86 @@
           </div>
         </section>
 
+        <!-- ADMIN 0.5: DEPARTMENT CLASS ASSIGNMENT VIEW -->
+        <section id="view-admin-teaching-classes" class="tab-view hidden">
+          <div class="hero-banner" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                <span class="badge" style="background:#3b82f6; color:#fff; font-size: 0.8rem; padding: 4px 12px; border-radius: 20px;">
+                  <i class="fa-solid fa-layer-group"></i> Class Assignment System
+                </span>
+              </div>
+              <h2 style="color: #fff; margin: 0 0 6px 0;">Department Class Assignment</h2>
+              <p style="color: #c7d2fe; margin: 0; max-width: 650px;">Assign and control exactly which master classes belong to each department. This controls Timetables, Teacher Selection, CSV samples, and Reports.</p>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm btn-light" style="background:#fff; color:#312e81; font-weight:700;" onclick="switchTab('admin-teaching-timetable')">
+                <i class="fa-solid fa-calendar-days"></i> View Timetable
+              </button>
+            </div>
+            <i class="fa-solid fa-graduation-cap hero-watermark"></i>
+          </div>
+
+          <div class="panel-card max-w-4xl mt-6" style="margin: 0 auto;">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-sliders" style="color:var(--primary);"></i> Class Availability Configuration</h3>
+                <p class="text-muted" style="margin:4px 0 0 0; font-size:0.84rem;">Multi-select the master classes assigned to the selected academic department.</p>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.85rem; font-weight:700; color:#475569; margin:0;"><i class="fa-solid fa-building"></i> Department:</label>
+                <select id="assign-classes-dept-select" class="form-control" style="min-width:190px; padding:6px 12px; font-weight:700;" onchange="onAssignClassesDepartmentChanged(this.value)">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+            </div>
+
+            <div class="panel-body" style="padding: 24px;">
+              <!-- CONTROLS & STATS BAR -->
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:#f8fafc; padding:12px 18px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                  <span style="font-weight:700; color:#1e293b; font-size:0.92rem;">
+                    Classes for <strong id="assign-classes-dept-name" class="text-primary" style="font-size:1rem;">MEDIA</strong>:
+                  </span>
+                  <span id="assign-classes-selected-badge" class="badge" style="background:#e0e7ff; color:#4338ca; font-weight:700; font-size:0.82rem; padding:5px 12px; border-radius:20px;">
+                    <i class="fa-solid fa-circle-check"></i> <span id="assign-classes-selected-count">0</span> Classes Selected
+                  </span>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                  <div style="position:relative; display:inline-flex; align-items:center;">
+                    <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:10px; color:#94a3b8; font-size:0.8rem; pointer-events:none;"></i>
+                    <input type="text" id="search-assign-classes" class="form-control" placeholder="Search classes..." style="width:160px; padding:5px 10px 5px 28px; font-size:0.82rem; border-radius:8px;" oninput="filterAssignClassesCheckboxes()">
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline" onclick="selectAllAssignClasses(true)">
+                    <i class="fa-solid fa-square-check"></i> Select All
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline" onclick="selectAllAssignClasses(false)">
+                    <i class="fa-regular fa-square"></i> Clear All
+                  </button>
+                </div>
+              </div>
+
+              <!-- CLASSES CHECKBOX GRID -->
+              <form id="form-dept-class-assignment" onsubmit="saveDepartmentClassAssignments(event)">
+                <div id="container-assign-classes-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; margin-bottom:24px;">
+                  <!-- Checkbox cards rendered dynamically -->
+                  <div class="text-center p-4 text-muted" style="grid-column:1/-1;">Loading classes...</div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f1f5f9; padding-top:18px; flex-wrap:wrap; gap:12px;">
+                  <div style="font-size:0.82rem; color:#64748b; max-width:550px; line-height:1.4;">
+                    <i class="fa-solid fa-shield-halved" style="color:#10b981;"></i> <strong>Zero Data Loss Guarantee:</strong> Removing a class assignment marks it inactive for future selections while completely preserving historical timetable and teacher allocation records.
+                  </div>
+                  <button type="submit" class="btn btn-primary" id="btn-save-class-assignment" style="padding:10px 22px; font-weight:700;">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Class Assignment
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
         <!-- ADMIN 1: TEACHING DASHBOARD -->
         <section id="view-admin-teaching-dashboard" class="tab-view hidden">
           <div class="hero-banner" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);">
@@ -1065,9 +1148,9 @@
                   <option value="Std 6">Std 6</option>
                   <option value="Std 7">Std 7</option>
                 </select>
-                <a href="/api/sample/timetable.csv" download="sample_timetable_template.csv" class="btn btn-outline btn-sm" title="Download sample timetable CSV template">
-                  <i class="fa-solid fa-download"></i> Sample CSV
-                </a>
+                <button type="button" class="btn btn-outline btn-sm" onclick="downloadDynamicTimetableSampleCSV()" title="Download department-specific dynamic timetable CSV sample">
+                  <i class="fa-solid fa-download"></i> Download CSV Sample
+                </button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="openModalImportTimetable()">
                   <i class="fa-solid fa-file-import"></i> Upload CSV/Excel
                 </button>
@@ -2833,9 +2916,9 @@
               <input type="file" id="teaching-timetable-file-input" accept=".csv" onchange="previewTeachingTimetableFile(event)">
             </div>
           </div>
-          <a href="/api/sample/timetable.csv" download="sample_timetable_template.csv" class="btn btn-sm btn-outline">
-            <i class="fa-solid fa-download"></i> Download Sample CSV
-          </a>
+          <button type="button" class="btn btn-sm btn-outline" onclick="downloadDynamicTimetableSampleCSV()">
+            <i class="fa-solid fa-download"></i> Download CSV Sample
+          </button>
         </div>
 
         <!-- PREVIEW CONTAINER -->

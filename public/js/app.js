@@ -196,6 +196,7 @@ function initLiveSync() {
         else if (viewId === 'admin-teaching-reports') await loadAdminTeachingReports(true);
         else if (viewId === 'admin-teaching-timetable') await loadAdminTeachingTimetable(true);
         else if (viewId === 'admin-teaching-departments') await loadTeachingDepartments(true);
+        else if (viewId === 'admin-teaching-classes') await loadTeachingDepartmentClasses(true);
         else if (viewId === 'admin-teaching-periods') await loadAdminTeachingPeriods(true);
       } else if (currentUser.role === 'teacher') {
         if (viewId === 'teacher-dashboard') await loadTeacherDashboard(true);
@@ -392,6 +393,7 @@ function switchTab(tabId) {
     'admin-results': 'Student Results & Performance Analytics',
     'admin-settings': 'Exam System Settings',
     'admin-teaching-departments': 'Academic Departments Management',
+    'admin-teaching-classes': 'Department Class Assignment',
     'admin-teaching-dashboard': 'Teacher Subject Selection Dashboard',
     'admin-teaching-teachers': 'Teachers Management',
     'admin-teaching-timetable': 'Master Academic Timetable',
@@ -425,6 +427,7 @@ function switchTab(tabId) {
 
   // Teacher Selection Admin Views
   if (tabId === 'admin-teaching-departments') loadTeachingDepartments();
+  if (tabId === 'admin-teaching-classes') loadTeachingDepartmentClasses();
   if (tabId === 'admin-teaching-dashboard') loadAdminTeachingDashboard();
   if (tabId === 'admin-teaching-teachers') loadAdminTeachingTeachers();
   if (tabId === 'admin-teaching-timetable') loadAdminTeachingTimetable();
@@ -3251,9 +3254,28 @@ function renderTeacherSelectionClosedScreen(slotsData) {
   const deptEl = document.getElementById('closed-screen-dept-name');
   if (deptEl) deptEl.textContent = `Department: ${deptName}`;
 
+  const titleEl = document.querySelector('.selection-closed-title');
+  const subtitleEl = document.querySelector('.selection-closed-subtitle');
+  const descEl = document.querySelector('.selection-closed-desc');
   const openingBox = document.getElementById('closed-screen-opening-container');
   const openingTimeEl = document.getElementById('closed-screen-opening-time');
   const footnoteEl = document.getElementById('closed-screen-footnote');
+
+  const isNoClasses = slotsData && (slotsData.code === 'NO_CLASSES_ASSIGNED' || (slotsData.assigned_classes && slotsData.assigned_classes.length === 0));
+
+  if (isNoClasses) {
+    if (titleEl) titleEl.textContent = 'No Classes Assigned';
+    if (subtitleEl) subtitleEl.innerHTML = '<strong>No classes are currently assigned to your department.</strong>';
+    if (descEl) descEl.textContent = `The administrator has not assigned any teaching classes to the ${deptName} Department yet. You will be able to select periods once classes are configured.`;
+    if (openingBox) openingBox.classList.add('hidden');
+    if (footnoteEl) footnoteEl.innerHTML = 'Please contact the administrator to assign classes to your department.';
+    return;
+  }
+
+  // Regular closed / schedule
+  if (titleEl) titleEl.textContent = 'Subject Selection Closed';
+  if (subtitleEl) subtitleEl.innerHTML = '<strong>Subject selection is currently closed.</strong>';
+  if (descEl) descEl.textContent = 'The subject selection session has not been opened yet or is temporarily closed by the administrator.';
 
   const startDatetime = (slotsData && slotsData.start_datetime) || (teacherSelectionState.settings && teacherSelectionState.settings.start_datetime);
   const now = new Date();
@@ -3932,6 +3954,7 @@ async function loadTeachingDepartmentsDropdown() {
     const importTeacherDeptSelect = document.getElementById('import-teachers-department-select');
     const importTtDeptSelect = document.getElementById('import-tt-department-select');
     const slotDeptSelect = document.getElementById('teaching-slot-dept-select');
+    const assignDeptSelect = document.getElementById('assign-classes-dept-select');
 
     const currentVal = teacherSelectionState.currentDepartmentId || 'all';
 
@@ -3946,6 +3969,17 @@ async function loadTeachingDepartmentsDropdown() {
     if (importTeacherDeptSelect) importTeacherDeptSelect.innerHTML = modalOptions;
     if (importTtDeptSelect) importTtDeptSelect.innerHTML = modalOptions;
     if (slotDeptSelect) slotDeptSelect.innerHTML = modalOptions;
+
+    if (assignDeptSelect) {
+      assignDeptSelect.innerHTML = modalOptions;
+      if (teacherSelectionState.assignClassesDeptId) {
+        assignDeptSelect.value = teacherSelectionState.assignClassesDeptId;
+      } else if (currentVal !== 'all') {
+        assignDeptSelect.value = currentVal;
+      } else if (departments.length > 0) {
+        assignDeptSelect.value = departments[0].id;
+      }
+    }
 
     updateActiveDeptBadge();
   } catch (err) {
@@ -3968,6 +4002,9 @@ function updateActiveDeptBadge() {
 
 function onTeachingDepartmentChanged(deptId) {
   teacherSelectionState.currentDepartmentId = deptId;
+  if (deptId !== 'all') {
+    teacherSelectionState.assignClassesDeptId = parseInt(deptId);
+  }
   updateActiveDeptBadge();
   clearClientCache('/api/teaching');
 
@@ -3975,6 +4012,7 @@ function onTeachingDepartmentChanged(deptId) {
   const activeTab = document.querySelector('.nav-item.active')?.getAttribute('href')?.replace('#', '');
   if (activeTab === 'admin-teaching-dashboard') loadAdminTeachingDashboard();
   else if (activeTab === 'admin-teaching-departments') loadTeachingDepartments();
+  else if (activeTab === 'admin-teaching-classes') loadTeachingDepartmentClasses();
   else if (activeTab === 'admin-teaching-teachers') loadAdminTeachingTeachers();
   else if (activeTab === 'admin-teaching-timetable') loadAdminTeachingTimetable();
   else if (activeTab === 'admin-teaching-periods') loadAdminTeachingPeriods();
@@ -4178,6 +4216,224 @@ async function deleteTeachingDepartment(id, name) {
   } catch (err) {
     alert('Error deleting department.');
   }
+}
+
+// -------------------------------------------------------------
+// 0.5 DEPARTMENT CLASS ASSIGNMENT CONTROLLERS
+// -------------------------------------------------------------
+let currentAssignClassesList = [];
+let previouslyAssignedClassIds = new Set();
+
+async function loadTeachingDepartmentClasses(isSilent = false) {
+  const container = document.getElementById('container-assign-classes-grid');
+  const deptSelect = document.getElementById('assign-classes-dept-select');
+  const deptNameEl = document.getElementById('assign-classes-dept-name');
+  const badgeCountEl = document.getElementById('assign-classes-selected-count');
+
+  let deptId = teacherSelectionState.assignClassesDeptId;
+  if (!deptId) {
+    if (deptSelect && deptSelect.value) {
+      deptId = parseInt(deptSelect.value);
+    } else if (teacherSelectionState.currentDepartmentId && teacherSelectionState.currentDepartmentId !== 'all') {
+      deptId = parseInt(teacherSelectionState.currentDepartmentId);
+    } else if (teacherSelectionState.departments && teacherSelectionState.departments.length > 0) {
+      deptId = parseInt(teacherSelectionState.departments[0].id);
+    } else {
+      deptId = 1;
+    }
+  }
+
+  teacherSelectionState.assignClassesDeptId = deptId;
+
+  if (deptSelect && deptSelect.value != deptId) {
+    deptSelect.value = deptId;
+  }
+
+  if (container && !isSilent && currentAssignClassesList.length === 0) {
+    container.innerHTML = '<div class="text-center p-4 text-muted" style="grid-column:1/-1;"><i class="fa-solid fa-spinner fa-spin"></i> Loading department classes...</div>';
+  }
+
+  try {
+    const data = await fetchJsonWithCache(`/api/teaching/admin/departments/${deptId}/classes`, 3000, !isSilent);
+    const assignedIds = new Set((data.assigned_classes || []).map(c => c.id));
+    previouslyAssignedClassIds = assignedIds;
+    const masterClasses = data.master_classes || [];
+    currentAssignClassesList = masterClasses;
+
+    if (deptNameEl) {
+      deptNameEl.textContent = data.department_name || `Dept #${deptId}`;
+    }
+
+    if (!container) return;
+
+    if (masterClasses.length === 0) {
+      container.innerHTML = '<div class="text-center p-4 text-muted" style="grid-column:1/-1;">No master classes configured in system.</div>';
+      if (badgeCountEl) badgeCountEl.textContent = 0;
+      return;
+    }
+
+    container.innerHTML = masterClasses.map(c => {
+      const isChecked = assignedIds.has(c.id);
+      return `
+        <label class="assign-class-card ${isChecked ? 'selected' : ''}" style="display:flex; align-items:center; gap:12px; padding:14px 16px; border:1.5px solid ${isChecked ? '#6366f1' : '#e2e8f0'}; background:${isChecked ? '#f5f3ff' : '#ffffff'}; border-radius:12px; cursor:pointer; transition:all 0.15s ease; box-shadow:0 1px 3px rgba(0,0,0,0.04);" data-class-name="${escapeHtml(c.name).toLowerCase()}">
+          <input type="checkbox" name="assign_class_id" value="${c.id}" ${isChecked ? 'checked' : ''} onchange="onAssignClassCheckboxChanged(this)" style="width:19px; height:19px; accent-color:#4f46e5; cursor:pointer; flex-shrink:0;">
+          <div style="flex:1;">
+            <div style="font-weight:700; color:#1e293b; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-graduation-cap" style="color:${isChecked ? '#6366f1' : '#94a3b8'};"></i>
+              ${escapeHtml(c.name)}
+            </div>
+            <div style="font-size:0.75rem; margin-top:2px;">
+              ${isChecked 
+                ? '<span class="text-success" style="font-weight:600;"><i class="fa-solid fa-circle-check"></i> Assigned to Department</span>' 
+                : '<span class="text-muted"><i class="fa-regular fa-circle"></i> Not Assigned</span>'}
+            </div>
+          </div>
+        </label>
+      `;
+    }).join('');
+
+    updateAssignClassesCount();
+  } catch (err) {
+    console.error('Error loading department classes:', err);
+    if (container && !isSilent) {
+      container.innerHTML = '<div class="text-center text-danger p-4" style="grid-column:1/-1;"><i class="fa-solid fa-circle-exclamation"></i> Error loading department classes.</div>';
+    }
+  }
+}
+
+function onAssignClassesDepartmentChanged(deptId) {
+  teacherSelectionState.assignClassesDeptId = parseInt(deptId);
+  clearClientCache('/api/teaching');
+  loadTeachingDepartmentClasses();
+}
+
+function onAssignClassCheckboxChanged(checkbox) {
+  const card = checkbox.closest('.assign-class-card');
+  if (card) {
+    const isChecked = checkbox.checked;
+    card.classList.toggle('selected', isChecked);
+    card.style.borderColor = isChecked ? '#6366f1' : '#e2e8f0';
+    card.style.background = isChecked ? '#f5f3ff' : '#ffffff';
+    const icon = card.querySelector('i.fa-graduation-cap');
+    if (icon) icon.style.color = isChecked ? '#6366f1' : '#94a3b8';
+    const sub = card.querySelector('div div:last-child');
+    if (sub) {
+      sub.innerHTML = isChecked 
+        ? '<span class="text-success" style="font-weight:600;"><i class="fa-solid fa-circle-check"></i> Assigned to Department</span>' 
+        : '<span class="text-muted"><i class="fa-regular fa-circle"></i> Not Assigned</span>';
+    }
+  }
+  updateAssignClassesCount();
+}
+
+function updateAssignClassesCount() {
+  const checked = document.querySelectorAll('input[name="assign_class_id"]:checked');
+  const badgeCountEl = document.getElementById('assign-classes-selected-count');
+  if (badgeCountEl) {
+    badgeCountEl.textContent = checked.length;
+  }
+}
+
+function filterAssignClassesCheckboxes() {
+  const query = (document.getElementById('search-assign-classes')?.value || '').trim().toLowerCase();
+  const cards = document.querySelectorAll('.assign-class-card');
+  cards.forEach(card => {
+    const name = card.getAttribute('data-class-name') || '';
+    card.style.display = name.includes(query) ? 'flex' : 'none';
+  });
+}
+
+function selectAllAssignClasses(selectAll) {
+  const cards = document.querySelectorAll('.assign-class-card');
+  cards.forEach(card => {
+    if (card.style.display !== 'none') {
+      const cb = card.querySelector('input[type="checkbox"]');
+      if (cb && cb.checked !== selectAll) {
+        cb.checked = selectAll;
+        onAssignClassCheckboxChanged(cb);
+      }
+    }
+  });
+  updateAssignClassesCount();
+}
+
+async function saveDepartmentClassAssignments(e) {
+  e.preventDefault();
+  const deptSelect = document.getElementById('assign-classes-dept-select');
+  const deptId = deptSelect ? parseInt(deptSelect.value) : (teacherSelectionState.assignClassesDeptId || 1);
+  const checked = document.querySelectorAll('input[name="assign_class_id"]:checked');
+  const selectedClassIds = Array.from(checked).map(cb => parseInt(cb.value));
+
+  // Check if any previously assigned classes were deselected
+  const deselectedClassNames = [];
+  if (previouslyAssignedClassIds && previouslyAssignedClassIds.size > 0) {
+    previouslyAssignedClassIds.forEach(prevId => {
+      if (!selectedClassIds.includes(prevId)) {
+        const found = currentAssignClassesList.find(c => c.id === prevId);
+        deselectedClassNames.push(found ? found.name : `Class #${prevId}`);
+      }
+    });
+  }
+
+  if (deselectedClassNames.length > 0) {
+    const warningMsg = `⚠️ Attention: You are unassigning ${deselectedClassNames.length} class(es) (${deselectedClassNames.join(', ')}) from this department.\n\n` +
+      `• Historical timetable slots and teacher allocations for these classes will be safely PRESERVED in the database.\n` +
+      `• Teachers will no longer be able to select new periods for these unassigned classes.\n\n` +
+      `Do you want to proceed with saving?`;
+    if (!confirm(warningMsg)) {
+      return;
+    }
+  }
+
+  const saveBtn = document.getElementById('btn-save-class-assignment');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+  }
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/admin/departments/${deptId}/classes`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        class_ids: selectedClassIds,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to save class assignments.');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(data.message || 'Department class assignments updated successfully!');
+    await loadTeachingDepartmentClasses(true);
+    loadAdminTeachingDashboard(true);
+  } catch (err) {
+    alert('Error saving department class assignments.');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Class Assignment';
+    }
+  }
+}
+
+function downloadDynamicTimetableSampleCSV() {
+  let deptId = teacherSelectionState.currentDepartmentId;
+  if (!deptId || deptId === 'all') {
+    const modalSelect = document.getElementById('import-tt-department-select');
+    if (modalSelect && modalSelect.value) {
+      deptId = modalSelect.value;
+    } else {
+      deptId = 1;
+    }
+  }
+  const url = apiUrl(`/api/teaching/sample-timetable-csv?department_id=${deptId}`);
+  window.location.href = url;
 }
 
 // 1. ADMIN DASHBOARD (DEPARTMENT-SCOPED)
@@ -4761,6 +5017,7 @@ async function loadAdminTeachingTimetable(isSilent = false) {
   const tbody = document.getElementById('table-admin-teaching-timetable');
   try {
     const deptId = teacherSelectionState.currentDepartmentId || 'all';
+    updateTimetableFilterClassOptions(deptId);
     const res = await fetch(apiUrl(`/api/teaching/timetable?department_id=${deptId}`));
     const timetable = await res.json();
     const oldJson = JSON.stringify(teacherSelectionState.allTimetable);
@@ -4776,6 +5033,59 @@ async function loadAdminTeachingTimetable(isSilent = false) {
       tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> Error loading master timetable. Please try again.</td></tr>`;
     }
   }
+}
+
+async function updateTimetableFilterClassOptions(deptId) {
+  const classFilterEl = document.getElementById('filter-tt-class');
+  if (!classFilterEl) return;
+  const currentVal = classFilterEl.value;
+
+  try {
+    const classes = await fetchJsonWithCache(`/api/teaching/admin/classes?department_id=${deptId}`, 5000);
+    const options = ['<option value="all">All Classes</option>'];
+    if (classes && classes.length > 0) {
+      classes.forEach(c => {
+        options.push(`<option value="${escapeHtml(c.name)}" ${currentVal === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`);
+      });
+    }
+    classFilterEl.innerHTML = options.join('');
+  } catch (e) {}
+}
+
+async function populateTimetableModalClassDropdown(deptId) {
+  const classSelect = document.getElementById('teaching-slot-class');
+  if (!classSelect) return;
+
+  try {
+    const classes = await fetchJsonWithCache(`/api/teaching/admin/classes?department_id=${deptId}`, 5000);
+    if (classes && classes.length > 0) {
+      classSelect.innerHTML = classes.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      classSelect.disabled = false;
+    } else {
+      classSelect.innerHTML = '<option value="">(No classes assigned to this department)</option>';
+      classSelect.disabled = true;
+    }
+  } catch (e) {
+    classSelect.innerHTML = ['Std 1', 'Std 2', 'Std 3', 'Std 4', 'Std 5', 'Std 6', 'Std 7'].map(c => `<option value="${c}">${c}</option>`).join('');
+    classSelect.disabled = false;
+  }
+}
+
+function openModalAddTimetableSlot() {
+  document.getElementById('teaching-slot-id').value = '';
+  document.getElementById('teaching-slot-day').value = 'Sunday';
+  document.getElementById('teaching-slot-period').value = '1';
+  document.getElementById('teaching-slot-subject').value = '';
+  document.getElementById('teaching-slot-time').value = '7:30–8:15';
+
+  const deptSelect = document.getElementById('teaching-slot-dept-select');
+  const targetDeptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 1);
+  if (deptSelect) {
+    deptSelect.value = targetDeptId;
+  }
+
+  populateTimetableModalClassDropdown(targetDeptId);
+  openModal('modal-teaching-slot');
 }
 
 function renderTimetableTable() {

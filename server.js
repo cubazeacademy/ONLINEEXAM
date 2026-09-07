@@ -52,8 +52,12 @@ function setCache(key, data) {
 }
 
 function invalidateCache(prefix) {
+  if (!prefix) {
+    memCache.clear();
+    return;
+  }
   for (const k of memCache.keys()) {
-    if (k.startsWith(prefix)) {
+    if (k.startsWith(prefix) || k.includes(prefix) || k.startsWith('dept_')) {
       memCache.delete(k);
     }
   }
@@ -1851,6 +1855,10 @@ app.delete('/api/teaching/admin/departments/:id', async (req, res) => {
 // Helper: Get active assigned classes for a department
 async function getDepartmentAssignedClasses(departmentId) {
   const deptId = departmentId ? parseInt(departmentId) : 1;
+  const cacheKey = `dept_assigned_classes_${deptId}`;
+  const cached = getCache(cacheKey, 15000);
+  if (cached) return cached;
+
   const assigned = await db.all(`
     SELECT c.id, c.name, dc.status, dc.department_id
     FROM department_classes dc
@@ -1860,6 +1868,7 @@ async function getDepartmentAssignedClasses(departmentId) {
   `, [deptId]);
   
   if (assigned && assigned.length > 0) {
+    setCache(cacheKey, assigned);
     return assigned;
   }
   
@@ -1870,7 +1879,9 @@ async function getDepartmentAssignedClasses(departmentId) {
     WHERE department_id = $1 AND status = 'active'
     ORDER BY sort_order ASC, id ASC
   `, [deptId]);
-  return fallback || [];
+  const res = fallback || [];
+  setCache(cacheKey, res);
+  return res;
 }
 
 // -------------------------------------------------------------
@@ -2006,6 +2017,10 @@ app.post(['/api/departments/:id/classes', '/api/teaching/admin/departments/:id/c
 // Helper to retrieve and evaluate Department Rule 4 (Class Group Selection Restriction)
 async function getDepartmentRule4Settings(departmentId) {
   const deptId = departmentId ? parseInt(departmentId) : 1;
+  const cacheKey = `dept_rule4_${deptId}`;
+  const cached = getCache(cacheKey, 15000);
+  if (cached) return cached;
+
   const [settings, classes, dept] = await Promise.all([
     db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]),
     getDepartmentAssignedClasses(deptId),
@@ -2068,7 +2083,7 @@ async function getDepartmentRule4Settings(departmentId) {
     return null;
   }
 
-  return {
+  const result = {
     department_id: deptId,
     department_name: dept ? dept.name : 'MEDIA',
     rule_4_enabled,
@@ -2087,6 +2102,9 @@ async function getDepartmentRule4Settings(departmentId) {
     classes,
     getClassGroup
   };
+
+  setCache(cacheKey, result);
+  return result;
 }
 
 async function getDepartmentSelectionStatus(departmentId) {
@@ -3652,7 +3670,7 @@ app.get('/api/teaching/slots', async (req, res) => {
   }
 });
 
-// Select Slot with full atomic Department-Isolated clash prevention
+// Select Slot with full atomic Department-Isolated clash prevention (Optimized Parallel Execution)
 app.post('/api/teaching/select', async (req, res) => {
   const { teacher_id, timetable_id } = req.body;
   if (!teacher_id || !timetable_id) {
@@ -3660,39 +3678,60 @@ app.post('/api/teaching/select', async (req, res) => {
   }
 
   try {
-    // 1. Authenticate & validate teacher server-side
-    const teacher = await db.get(`
-      SELECT u.id, u.full_name, u.role, u.is_active, u.department_id, COALESCE(d.name, 'MEDIA') as department_name
-      FROM users u
-      LEFT JOIN departments d ON u.department_id = d.id
-      WHERE u.id = $1 AND u.role = 'teacher'
-    `, [teacher_id]);
+    // 1. Concurrent initial lookups: Authenticate teacher and fetch slot in parallel
+    const [teacher, slot] = await Promise.all([
+      db.get(`
+        SELECT u.id, u.full_name, u.role, u.is_active, u.department_id, COALESCE(d.name, 'MEDIA') as department_name
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE u.id = $1 AND u.role = 'teacher'
+      `, [teacher_id]),
+      db.get(`SELECT * FROM teacher_selection_timetable WHERE id = $1 AND status = 'active'`, [timetable_id])
+    ]);
 
     if (!teacher || teacher.is_active === false) {
       return res.status(403).json({ error: 'Teacher account is inactive or not authorized.' });
     }
 
-    const teacherDeptId = teacher.department_id || 1;
-
-    // 2. Validate Timetable Slot belongs to teacher's department
-    const slot = await db.get(`SELECT * FROM teacher_selection_timetable WHERE id = $1 AND status = 'active'`, [timetable_id]);
     if (!slot) {
       return res.status(404).json({ error: 'Timetable slot does not exist or is inactive.' });
     }
+
+    const teacherDeptId = teacher.department_id || 1;
 
     if (slot.department_id !== teacherDeptId) {
       return res.status(403).json({ error: 'Forbidden: You can only select timetable slots from your own department.' });
     }
 
-    // 2.5 Strict Server-Side Validation: Ensure class is assigned to teacher's department
-    const assignedClasses = await getDepartmentAssignedClasses(teacherDeptId);
+    // 2. Parallel validation query batch (All remaining checks in 1 single roundtrip)
+    const [
+      assignedClasses,
+      selectionStatus,
+      rule4,
+      periodSetting,
+      existingSelections,
+      classClash
+    ] = await Promise.all([
+      getDepartmentAssignedClasses(teacherDeptId),
+      getDepartmentSelectionStatus(teacherDeptId),
+      getDepartmentRule4Settings(teacherDeptId),
+      db.get(`SELECT is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 AND day = $2 AND period = $3`, [teacherDeptId, slot.day, slot.period]),
+      db.all(`SELECT id, class_name, subject, day, period, selected_at FROM teacher_selections WHERE teacher_id = $1 ORDER BY selected_at ASC, id ASC`, [teacher_id]),
+      db.get(`
+        SELECT s.id, u.full_name as teacher_name
+        FROM teacher_selections s
+        JOIN users u ON s.teacher_id = u.id
+        WHERE s.department_id = $1 AND s.day = $2 AND s.period = $3 AND s.class_name = $4
+      `, [teacherDeptId, slot.day, slot.period, slot.class_name])
+    ]);
+
+    // 2.5 Strict Validation: Ensure class is assigned to teacher's department
     const assignedNamesSet = new Set(assignedClasses.map(c => c.name.trim().toLowerCase()));
     if (!assignedNamesSet.has(slot.class_name.trim().toLowerCase())) {
       return res.status(403).json({ error: 'This class is not assigned to your department.' });
     }
 
-    // 3. Validate Selection Settings & Window for teacher's department
-    const selectionStatus = await getDepartmentSelectionStatus(teacherDeptId);
+    // 3. Selection Lock & Window Validation
     if (selectionStatus.isLocked) {
       return res.status(403).json({
         success: false,
@@ -3710,17 +3749,13 @@ app.post('/api/teaching/select', async (req, res) => {
       });
     }
 
-    // 4. Validate Period Settings for teacher's department
-    const periodSetting = await db.get(`
-      SELECT is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 AND day = $2 AND period = $3
-    `, [teacherDeptId, slot.day, slot.period]);
+    // 4. Period Enabled Validation
     if (periodSetting && periodSetting.is_enabled === false) {
       return res.status(400).json({ error: `This period (${slot.day} Period ${slot.period}) has been disabled by the administrator.` });
     }
 
-    // 5. Validate Selection Count Limit (Min/Max periods)
-    const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);
-    const currentCount = countRes ? countRes.count : 0;
+    // 5. Selection Count Limit Validation
+    const currentCount = existingSelections ? existingSelections.length : 0;
     const settings = selectionStatus.settings;
     const maxPeriods = settings ? (settings.max_periods || 3) : 3;
     if (currentCount >= maxPeriods) {
@@ -3728,45 +3763,22 @@ app.post('/api/teaching/select', async (req, res) => {
     }
 
     // 6. RULE 1 — TEACHER CLASH (Same teacher, same day, same period)
-    const teacherClash = await db.get(`
-      SELECT s.id, s.class_name, s.subject
-      FROM teacher_selections s
-      WHERE s.teacher_id = $1 AND s.day = $2 AND s.period = $3
-    `, [teacher_id, slot.day, slot.period]);
+    const teacherClash = (existingSelections || []).find(s => s.day === slot.day && s.period === slot.period);
     if (teacherClash) {
       return res.status(400).json({ error: `You have already selected a class (${teacherClash.class_name} - ${teacherClash.subject}) for ${slot.day} Period ${slot.period}.` });
     }
 
     // 7. RULE 2 — CLASS CLASH (Same department, same day, same period, same class already taken by another teacher)
-    const classClash = await db.get(`
-      SELECT s.id, u.full_name as teacher_name
-      FROM teacher_selections s
-      JOIN users u ON s.teacher_id = u.id
-      WHERE s.department_id = $1 AND s.day = $2 AND s.period = $3 AND s.class_name = $4
-    `, [teacherDeptId, slot.day, slot.period, slot.class_name]);
     if (classClash) {
       return res.status(409).json({ error: `This class has already been selected by ${classClash.teacher_name} for this period.` });
     }
 
     // 8. RULE 4 — CLASS GROUP RESTRICTION (Department-Specific)
-    // Applied ONLY to the 1st and 2nd selections. Must belong to opposite class groups.
-    // Does NOT apply to the 3rd selection.
-    const rule4 = await getDepartmentRule4Settings(teacherDeptId);
     if (rule4 && rule4.rule_4_enabled) {
-      const existingSelections = await db.all(`
-        SELECT id, class_name, subject, day, period, selected_at
-        FROM teacher_selections
-        WHERE teacher_id = $1 AND department_id = $2
-        ORDER BY selected_at ASC, id ASC
-      `, [teacher_id, teacherDeptId]);
-
-      const selectionIndex = existingSelections.length; // 0 for 1st selection, 1 for 2nd selection, 2 for 3rd selection
+      const selectionIndex = currentCount; // 0 for 1st selection, 1 for 2nd selection, 2 for 3rd selection
       const candidateGroup = rule4.getClassGroup(slot.class_name);
 
-      if (selectionIndex === 0) {
-        // First selection:
-        // Valid for any class belonging to a valid group (or any class in dept)
-      } else if (selectionIndex === 1) {
+      if (selectionIndex === 1) {
         // Second selection — CORE RULE:
         const firstSelection = existingSelections[0];
         const firstGroup = rule4.getClassGroup(firstSelection.class_name);
@@ -3794,13 +3806,10 @@ app.post('/api/teaching/select', async (req, res) => {
             error: 'Your first selection is from Group B.\nFor your second selection, please choose a subject from Group A.'
           });
         }
-      } else {
-        // Third selection (selectionIndex >= 2):
-        // Rule 4 does NOT apply to the third selection!
       }
     }
 
-    // 9. Atomic Insert into teacher_selections
+    // 9. Atomic Insert into teacher_selections (Guarded by unique constraints)
     const inserted = await db.run(`
       INSERT INTO teacher_selections (teacher_id, timetable_id, department_id, day, period, class_name, subject, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed')
@@ -3808,9 +3817,12 @@ app.post('/api/teaching/select', async (req, res) => {
     `, [teacher_id, slot.id, teacherDeptId, slot.day, slot.period, slot.class_name, slot.subject]);
 
     invalidateCache('/api/teaching');
-    await logTeacherAction(teacher_id, teacher.full_name, `Selected: ${slot.day} P${slot.period} ${slot.class_name} (${slot.subject})`, {}, teacherDeptId);
+    
+    // Log asynchronously without delaying client response
+    logTeacherAction(teacher_id, teacher.full_name, `Selected: ${slot.day} P${slot.period} ${slot.class_name} (${slot.subject})`, {}, teacherDeptId).catch(() => {});
 
     res.json({
+      success: true,
       message: 'Period selected successfully',
       selection_id: inserted.lastInsertRowid,
       selected_count: currentCount + 1
@@ -3826,7 +3838,7 @@ app.post('/api/teaching/select', async (req, res) => {
   }
 });
 
-// Teacher Remove Selection
+// Teacher Remove Selection (Optimized)
 app.post('/api/teaching/remove', async (req, res) => {
   const { teacher_id, selection_id } = req.body;
   if (!teacher_id || !selection_id) {
@@ -3867,9 +3879,9 @@ app.post('/api/teaching/remove', async (req, res) => {
 
     await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
     invalidateCache('/api/teaching');
-    await logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id);
+    logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id).catch(() => {});
 
-    res.json({ message: 'Selection removed successfully' });
+    res.json({ success: true, message: 'Selection removed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3904,7 +3916,7 @@ app.post('/api/teaching/admin/remove-selection', async (req, res) => {
     // Completely remove from database
     await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Admin Removed Selection #${selection_id}: ${selection.teacher_name || 'Teacher'} -> ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id);
+    logTeacherAction(admin_id, admin_name || 'Admin', `Admin Removed Selection #${selection_id}: ${selection.teacher_name || 'Teacher'} -> ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id).catch(() => {});
 
     res.json({ success: true, message: 'Selection completely removed from database successfully' });
   } catch (err) {
@@ -3970,7 +3982,7 @@ app.post(['/api/teaching/admin/clear-selections', '/api/teaching/admin/selection
     }
 
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', logMsg, {}, targetDeptId);
+    logTeacherAction(admin_id, admin_name || 'Admin', logMsg, {}, targetDeptId).catch(() => {});
 
     res.json({
       success: true,
@@ -3982,13 +3994,17 @@ app.post(['/api/teaching/admin/clear-selections', '/api/teaching/admin/selection
   }
 });
 
-// Submit Selection
+// Submit Selection (Optimized Parallel Execution)
 app.post('/api/teaching/submit', async (req, res) => {
   const { teacher_id } = req.body;
   if (!teacher_id) return res.status(400).json({ error: 'Teacher ID is required' });
 
   try {
-    const teacher = await db.get(`SELECT id, full_name, department_id FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]);
+    const [teacher, countRes] = await Promise.all([
+      db.get(`SELECT id, full_name, department_id FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id])
+    ]);
+
     if (!teacher) return res.status(404).json({ error: 'Teacher not found' });
 
     const deptId = teacher.department_id || 1;
@@ -4004,8 +4020,6 @@ app.post('/api/teaching/submit', async (req, res) => {
 
     const settings = selectionStatus.settings;
     const minPeriods = settings ? (settings.min_periods || 2) : 2;
-
-    const countRes = await db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE teacher_id = $1`, [teacher_id]);
     const count = countRes ? countRes.count : 0;
 
     if (count < minPeriods) {
@@ -4019,9 +4033,10 @@ app.post('/api/teaching/submit', async (req, res) => {
     `, [teacher_id]);
 
     invalidateCache('/api/teaching');
-    await logTeacherAction(teacher_id, teacher.full_name, `Finalized and submitted ${count} teaching periods.`, {}, deptId);
+    logTeacherAction(teacher_id, teacher.full_name, `Finalized and submitted ${count} teaching periods.`, {}, deptId).catch(() => {});
 
     res.json({
+      success: true,
       message: 'Selections submitted successfully!',
       selected_count: count
     });

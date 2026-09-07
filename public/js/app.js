@@ -3686,10 +3686,47 @@ function renderWizardPeriodCards(day, containerId) {
   }
 }
 
-// Select a teaching period slot
+// Select a teaching period slot (Optimistic UI - 0ms Instant Response)
 async function handleTeacherPickSlot(timetableId) {
   if (!currentUser) return;
 
+  const slot = (teacherSelectionState.slots || []).find(s => s.id === timetableId);
+  if (!slot) return;
+
+  // Snapshot for rollback in case of conflict or network failure
+  const prevSlots = JSON.parse(JSON.stringify(teacherSelectionState.slots || []));
+  const prevMySelections = JSON.parse(JSON.stringify(teacherSelectionState.mySelections || []));
+
+  const tempSelectionId = 'opt_' + Date.now();
+
+  // 1. Optimistic Local State Update (0ms Instant UI)
+  slot.status = 'selected_by_me';
+  slot.my_selection_id = tempSelectionId;
+
+  const newSelectionItem = {
+    id: tempSelectionId,
+    timetable_id: slot.id,
+    department_id: slot.department_id,
+    day: slot.day,
+    period: slot.period,
+    class_name: slot.class_name,
+    subject: slot.subject,
+    time_slot: slot.time_slot,
+    selected_at: new Date().toISOString()
+  };
+
+  teacherSelectionState.mySelections.push(newSelectionItem);
+
+  // Immediately reflect in UI
+  updateWizardCounters();
+  updateWizardDayCounters();
+  if (teacherSelectionState.currentStep === 1) {
+    renderWizardPeriodCards(teacherSelectionState.wizardSelectedDay || slot.day, 'teacher-periods-grid-active');
+  } else if (teacherSelectionState.currentStep === 2) {
+    renderWizardReviewTable();
+  }
+
+  // 2. Background Asynchronous API Call
   try {
     const res = await fetch(apiUrl('/api/teaching/select'), {
       method: 'POST',
@@ -3703,29 +3740,81 @@ async function handleTeacherPickSlot(timetableId) {
     const data = await res.json();
 
     if (!res.ok) {
+      // Rollback on server rejection
+      teacherSelectionState.slots = prevSlots;
+      teacherSelectionState.mySelections = prevMySelections;
+      updateWizardCounters();
+      updateWizardDayCounters();
+      if (teacherSelectionState.currentStep === 1) {
+        renderWizardPeriodCards(teacherSelectionState.wizardSelectedDay || slot.day, 'teacher-periods-grid-active');
+      } else if (teacherSelectionState.currentStep === 2) {
+        renderWizardReviewTable();
+      }
+
       if (data.code === 'SELECTION_CLOSED') {
         alert(`Subject Selection Closed\n\n${data.error || 'Subject selection is currently closed. Please check back later.'}`);
       } else {
         alert(`⚠️ Selection Blocked:\n\n${data.error || 'Failed to select slot'}`);
       }
       clearClientCache('/api/teaching');
-      await refreshTeacherSelectionSlots(false);
+      await refreshTeacherSelectionSlots(true);
       return;
     }
 
+    // Success: Update real DB selection_id silently
+    if (data.selection_id) {
+      slot.my_selection_id = data.selection_id;
+      const found = teacherSelectionState.mySelections.find(s => s.id === tempSelectionId);
+      if (found) found.id = data.selection_id;
+    }
+
     clearClientCache('/api/teaching');
-    await refreshTeacherSelectionSlots(false);
   } catch (err) {
-    alert('Connection error while selecting slot.');
+    // Rollback on network error
+    teacherSelectionState.slots = prevSlots;
+    teacherSelectionState.mySelections = prevMySelections;
+    updateWizardCounters();
+    updateWizardDayCounters();
+    if (teacherSelectionState.currentStep === 1) {
+      renderWizardPeriodCards(teacherSelectionState.wizardSelectedDay || slot.day, 'teacher-periods-grid-active');
+    }
+    alert('Connection error while selecting slot. Please check your internet connection.');
   }
 }
 
-// Remove a selected slot
+// Remove a selected slot (Optimistic UI - 0ms Instant Response)
 async function removeTeacherSelection(selectionId) {
   if (!confirm('Are you sure you want to remove this teaching period selection? It will become available to other teachers immediately.')) {
     return;
   }
 
+  // Snapshot for rollback
+  const prevSlots = JSON.parse(JSON.stringify(teacherSelectionState.slots || []));
+  const prevMySelections = JSON.parse(JSON.stringify(teacherSelectionState.mySelections || []));
+
+  // 1. Optimistic Local State Update (0ms Instant UI)
+  const targetSelection = teacherSelectionState.mySelections.find(s => s.id === selectionId);
+  teacherSelectionState.mySelections = teacherSelectionState.mySelections.filter(s => s.id !== selectionId);
+
+  const matchedSlot = (teacherSelectionState.slots || []).find(s => 
+    s.my_selection_id === selectionId || 
+    (targetSelection && s.day === targetSelection.day && s.period === targetSelection.period && s.class_name === targetSelection.class_name)
+  );
+
+  if (matchedSlot) {
+    matchedSlot.status = 'available';
+    matchedSlot.my_selection_id = null;
+  }
+
+  updateWizardCounters();
+  updateWizardDayCounters();
+  if (teacherSelectionState.currentStep === 1) {
+    renderWizardPeriodCards(teacherSelectionState.wizardSelectedDay || (matchedSlot ? matchedSlot.day : 'Sunday'), 'teacher-periods-grid-active');
+  } else if (teacherSelectionState.currentStep === 2) {
+    renderWizardReviewTable();
+  }
+
+  // 2. Background Asynchronous API Call
   try {
     const res = await fetch(apiUrl('/api/teaching/remove'), {
       method: 'POST',
@@ -3738,20 +3827,36 @@ async function removeTeacherSelection(selectionId) {
 
     const data = await res.json();
     if (!res.ok) {
+      // Rollback on failure
+      teacherSelectionState.slots = prevSlots;
+      teacherSelectionState.mySelections = prevMySelections;
+      updateWizardCounters();
+      updateWizardDayCounters();
+      if (teacherSelectionState.currentStep === 1) {
+        renderWizardPeriodCards(teacherSelectionState.wizardSelectedDay || 'Sunday', 'teacher-periods-grid-active');
+      } else if (teacherSelectionState.currentStep === 2) {
+        renderWizardReviewTable();
+      }
+
       if (data.code === 'SELECTION_CLOSED') {
         alert(`Subject Selection Closed\n\n${data.error || 'Subject selection is currently closed. Edits are no longer allowed.'}`);
       } else {
         alert(data.error || 'Failed to remove selection');
       }
       clearClientCache('/api/teaching');
-      await refreshTeacherSelectionSlots(false);
+      await refreshTeacherSelectionSlots(true);
       return;
     }
 
     clearClientCache('/api/teaching');
-    await refreshTeacherSelectionSlots(false);
-    loadTeacherDashboard();
   } catch (err) {
+    teacherSelectionState.slots = prevSlots;
+    teacherSelectionState.mySelections = prevMySelections;
+    updateWizardCounters();
+    updateWizardDayCounters();
+    if (teacherSelectionState.currentStep === 1) {
+      renderWizardPeriodCards(teacherSelectionState.wizardSelectedDay || 'Sunday', 'teacher-periods-grid-active');
+    }
     alert('Connection error while removing selection.');
   }
 }

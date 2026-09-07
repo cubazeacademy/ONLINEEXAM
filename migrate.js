@@ -429,13 +429,19 @@ async function runMigration() {
       `CREATE INDEX IF NOT EXISTS idx_ts_audit_dept ON teacher_selection_audit_logs(department_id);`,
       `CREATE INDEX IF NOT EXISTS idx_dept_classes_dept ON department_classes(department_id);`,
       `CREATE INDEX IF NOT EXISTS idx_dept_classes_class ON department_classes(class_id);`,
-      `CREATE INDEX IF NOT EXISTS idx_dept_classes_dept_class ON department_classes(department_id, class_id);`
+      `CREATE INDEX IF NOT EXISTS idx_dept_classes_dept_class ON department_classes(department_id, class_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_ts_selections_teacher_time ON teacher_selections(teacher_id, selected_at ASC, id ASC);`,
+      `CREATE INDEX IF NOT EXISTS idx_ts_selections_dept_class ON teacher_selections(department_id, class_name);`,
+      `CREATE INDEX IF NOT EXISTS idx_ts_timetable_dept_class ON teacher_selection_timetable(department_id, class_name);`,
+      `CREATE INDEX IF NOT EXISTS idx_users_role_dept_active ON users(role, department_id, is_active);`,
+      `CREATE INDEX IF NOT EXISTS idx_dept_classes_dept_status ON department_classes(department_id, status);`,
+      `CREATE INDEX IF NOT EXISTS idx_ts_period_settings_dept_enabled ON teacher_selection_period_settings(department_id, is_enabled);`
     ];
 
     for (const idxSql of indexes) {
       await client.query(idxSql);
     }
-    console.log('✅ All department isolation indexes created successfully.');
+    console.log('✅ All performance indexes created successfully.');
 
     // Seed default Admin user if empty
     const adminCheck = await client.query(`SELECT count(*)::int as count FROM users WHERE role = 'admin'`);

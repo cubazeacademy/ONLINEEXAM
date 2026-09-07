@@ -302,6 +302,7 @@ async function runMigration() {
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_a_end_class_id INTEGER;`);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_start_class_id INTEGER;`);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_end_class_id INTEGER;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT false;`);
     await client.query(`UPDATE teacher_selection_settings SET department_id = $1 WHERE department_id IS NULL`, [mediaDeptId]);
     await client.query(`ALTER TABLE teacher_selection_settings ALTER COLUMN department_id SET DEFAULT 1;`);
     try {

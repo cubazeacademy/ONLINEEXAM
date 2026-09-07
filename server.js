@@ -2094,11 +2094,14 @@ async function getDepartmentSelectionStatus(departmentId) {
   const deptId = departmentId ? parseInt(departmentId) : 1;
   const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
   const now = new Date();
+  const isLocked = Boolean(settings && settings.is_locked);
 
   if (!settings) {
     return {
       isOpen: true,
       isClosed: false,
+      isLocked: false,
+      is_locked: false,
       code: 'SELECTION_OPEN',
       reason: 'OPEN',
       message: 'Subject selection is currently open.',
@@ -2107,6 +2110,7 @@ async function getDepartmentSelectionStatus(departmentId) {
       settings: {
         department_id: deptId,
         is_open: true,
+        is_locked: false,
         is_timetable_published: true,
         allow_edit: true,
         min_periods: 2,
@@ -2121,6 +2125,8 @@ async function getDepartmentSelectionStatus(departmentId) {
     return {
       isOpen: false,
       isClosed: true,
+      isLocked,
+      is_locked: isLocked,
       code: 'SELECTION_CLOSED',
       reason: 'MANUALLY_CLOSED',
       message: 'Subject selection is currently closed by the administrator.',
@@ -2134,6 +2140,8 @@ async function getDepartmentSelectionStatus(departmentId) {
     return {
       isOpen: false,
       isClosed: true,
+      isLocked,
+      is_locked: isLocked,
       code: 'SELECTION_CLOSED',
       reason: 'NOT_STARTED',
       message: 'Subject selection has not opened yet.',
@@ -2147,6 +2155,8 @@ async function getDepartmentSelectionStatus(departmentId) {
     return {
       isOpen: false,
       isClosed: true,
+      isLocked,
+      is_locked: isLocked,
       code: 'SELECTION_CLOSED',
       reason: 'DEADLINE_PASSED',
       message: 'Subject selection deadline has passed.',
@@ -2160,6 +2170,8 @@ async function getDepartmentSelectionStatus(departmentId) {
     return {
       isOpen: false,
       isClosed: true,
+      isLocked,
+      is_locked: isLocked,
       code: 'SELECTION_CLOSED',
       reason: 'TIMETABLE_NOT_PUBLISHED',
       message: 'Timetable has not been published yet.',
@@ -2172,6 +2184,8 @@ async function getDepartmentSelectionStatus(departmentId) {
   return {
     isOpen: true,
     isClosed: false,
+    isLocked,
+    is_locked: isLocked,
     code: 'SELECTION_OPEN',
     reason: 'OPEN',
     message: 'Subject selection is currently open.',
@@ -2359,6 +2373,7 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
     start_datetime,
     end_datetime,
     is_open,
+    is_locked,
     is_timetable_published,
     allow_edit,
     min_periods,
@@ -2376,8 +2391,9 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
   const cleanActiveDays = active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
 
   try {
-    const existing = await db.get(`SELECT id, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
+    const existing = await db.get(`SELECT id, is_locked, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
     const r4Enabled = rule_4_enabled !== undefined ? Boolean(rule_4_enabled) : (existing ? existing.rule_4_enabled : false);
+    const isLockedVal = is_locked !== undefined ? Boolean(is_locked) : (existing ? Boolean(existing.is_locked) : false);
     const gAStart = group_a_start_class_id !== undefined ? (group_a_start_class_id ? parseInt(group_a_start_class_id) : null) : (existing ? existing.group_a_start_class_id : null);
     const gAEnd = group_a_end_class_id !== undefined ? (group_a_end_class_id ? parseInt(group_a_end_class_id) : null) : (existing ? existing.group_a_end_class_id : null);
     const gBStart = group_b_start_class_id !== undefined ? (group_b_start_class_id ? parseInt(group_b_start_class_id) : null) : (existing ? existing.group_b_start_class_id : null);
@@ -2389,8 +2405,8 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         SET start_datetime = $1, end_datetime = $2, is_open = $3, is_timetable_published = $4,
             allow_edit = $5, min_periods = $6, max_periods = $7, active_days = $8,
             rule_4_enabled = $9, group_a_start_class_id = $10, group_a_end_class_id = $11, group_b_start_class_id = $12, group_b_end_class_id = $13,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $14
+            is_locked = $14, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $15
       `, [
         start_datetime || null,
         end_datetime || null,
@@ -2405,12 +2421,13 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         gAEnd,
         gBStart,
         gBEnd,
+        isLockedVal,
         existing.id
       ]);
     } else {
       await db.run(`
-        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        INSERT INTO teacher_selection_settings (department_id, start_datetime, end_datetime, is_open, is_timetable_published, allow_edit, min_periods, max_periods, active_days, rule_4_enabled, group_a_start_class_id, group_a_end_class_id, group_b_start_class_id, group_b_end_class_id, is_locked)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       `, [
         deptId,
         start_datetime || null,
@@ -2425,7 +2442,8 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
         gAStart,
         gAEnd,
         gBStart,
-        gBEnd
+        gBEnd,
+        isLockedVal
       ]);
     }
 
@@ -2433,8 +2451,8 @@ app.post('/api/teaching/admin/settings', async (req, res) => {
     await db.query(`UPDATE departments SET active_days = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [cleanActiveDays, deptId]);
 
     invalidateCache('/api/teaching');
-    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Selection Settings for Dept ${deptId} (Active Days: ${cleanActiveDays})`, {
-      department_id: deptId, start_datetime, end_datetime, is_open, is_timetable_published, min_periods, max_periods, active_days: cleanActiveDays
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Selection Settings for Dept ${deptId} (Locked: ${isLockedVal}, Active Days: ${cleanActiveDays})`, {
+      department_id: deptId, start_datetime, end_datetime, is_open, is_locked: isLockedVal, is_timetable_published, min_periods, max_periods, active_days: cleanActiveDays
     }, deptId);
 
     res.json({ message: 'Settings saved successfully' });
@@ -2501,6 +2519,43 @@ app.post('/api/teaching/admin/toggle-status', async (req, res) => {
     invalidateCache('/api/teaching');
     await logTeacherAction(admin_id, admin_name || 'Admin', isOpenBool ? 'Opened Subject Selection' : 'Closed Subject Selection', { department_id }, targetDeptId);
     res.json({ success: true, is_open: isOpenBool, message: `Subject Selection is now ${isOpenBool ? 'OPEN' : 'CLOSED'}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teaching/admin/toggle-lock', async (req, res) => {
+  const { department_id, is_locked, admin_id, admin_name } = req.body;
+  try {
+    const isLockedBool = Boolean(is_locked);
+    const targetDeptId = (department_id && department_id !== 'all') ? parseInt(department_id) : null;
+
+    if (targetDeptId && !isNaN(targetDeptId)) {
+      await db.query(`
+        INSERT INTO teacher_selection_settings (department_id, is_locked, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
+        VALUES ($1, $2, true, true, true, 2, 3, CURRENT_TIMESTAMP)
+        ON CONFLICT (department_id)
+        DO UPDATE SET is_locked = $2, updated_at = CURRENT_TIMESTAMP
+      `, [targetDeptId, isLockedBool]);
+    } else {
+      const depts = await db.all(`SELECT id FROM departments`);
+      if (depts && depts.length > 0) {
+        for (const d of depts) {
+          await db.query(`
+            INSERT INTO teacher_selection_settings (department_id, is_locked, is_open, is_timetable_published, allow_edit, min_periods, max_periods, updated_at)
+            VALUES ($1, $2, true, true, true, 2, 3, CURRENT_TIMESTAMP)
+            ON CONFLICT (department_id)
+            DO UPDATE SET is_locked = $2, updated_at = CURRENT_TIMESTAMP
+          `, [d.id, isLockedBool]);
+        }
+      } else {
+        await db.query(`UPDATE teacher_selection_settings SET is_locked = $1, updated_at = CURRENT_TIMESTAMP`, [isLockedBool]);
+      }
+    }
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', isLockedBool ? 'Locked Subject Selections (Allocations Frozen)' : 'Unlocked Subject Selections (Modifications Allowed)', { department_id }, targetDeptId);
+    res.json({ success: true, is_locked: isLockedBool, message: `Subject Selection is now ${isLockedBool ? 'LOCKED' : 'UNLOCKED'}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3639,6 +3694,14 @@ app.post('/api/teaching/select', async (req, res) => {
 
     // 3. Validate Selection Settings & Window for teacher's department
     const selectionStatus = await getDepartmentSelectionStatus(teacherDeptId);
+    if (selectionStatus.isLocked) {
+      return res.status(403).json({
+        success: false,
+        code: 'SELECTION_LOCKED',
+        error: 'Subject selection is currently locked by the administrator. New selections are not allowed.',
+        message: 'Subject selection is currently locked by the administrator.'
+      });
+    }
     if (!selectionStatus.isOpen) {
       return res.status(400).json({
         success: false,
@@ -3764,7 +3827,7 @@ app.post('/api/teaching/select', async (req, res) => {
   }
 });
 
-// Remove Selection
+// Teacher Remove Selection
 app.post('/api/teaching/remove', async (req, res) => {
   const { teacher_id, selection_id } = req.body;
   if (!teacher_id || !selection_id) {
@@ -3782,8 +3845,18 @@ app.post('/api/teaching/remove', async (req, res) => {
       return res.status(404).json({ error: 'Selection not found or unauthorized' });
     }
 
-    // Check if selection window is open for this department
+    // Check if locked
     const selectionStatus = await getDepartmentSelectionStatus(selection.department_id);
+    if (selectionStatus.isLocked) {
+      return res.status(403).json({
+        success: false,
+        code: 'SELECTION_LOCKED',
+        error: 'Subject selection is currently locked by the administrator. Selections cannot be removed.',
+        message: 'Subject selection is currently locked by the administrator.'
+      });
+    }
+
+    // Check if selection window is open for this department
     if (!selectionStatus.isOpen) {
       return res.status(400).json({
         success: false,
@@ -3798,6 +3871,113 @@ app.post('/api/teaching/remove', async (req, res) => {
     await logTeacherAction(teacher_id, selection.teacher_name, `Removed Selection: ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id);
 
     res.json({ message: 'Selection removed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Individual Remove Selection (Completely deletes from database)
+app.post('/api/teaching/admin/remove-selection', async (req, res) => {
+  const { selection_id, admin_id, admin_name } = req.body;
+  if (!selection_id) return res.status(400).json({ error: 'Selection ID is required' });
+  try {
+    const selection = await db.get(`
+      SELECT s.*, u.full_name as teacher_name, COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selections s
+      LEFT JOIN users u ON s.teacher_id = u.id
+      LEFT JOIN departments d ON s.department_id = d.id
+      WHERE s.id = $1
+    `, [selection_id]);
+
+    if (!selection) {
+      return res.status(404).json({ error: 'Selection not found or already removed' });
+    }
+
+    // Check if locked
+    const status = await getDepartmentSelectionStatus(selection.department_id);
+    if (status.isLocked) {
+      return res.status(403).json({
+        error: 'Subject selection is currently locked. You cannot delete or modify allocations until you unlock them in settings.',
+        is_locked: true
+      });
+    }
+
+    // Completely remove from database
+    await db.query(`DELETE FROM teacher_selections WHERE id = $1`, [selection_id]);
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Admin Removed Selection #${selection_id}: ${selection.teacher_name || 'Teacher'} -> ${selection.day} P${selection.period} ${selection.class_name} (${selection.subject})`, {}, selection.department_id);
+
+    res.json({ success: true, message: 'Selection completely removed from database successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Clear All Selections (Scoped to department, teacher, or all)
+app.post(['/api/teaching/admin/clear-selections', '/api/teaching/admin/selections-clear-all'], async (req, res) => {
+  const { department_id, teacher_id, admin_id, admin_name } = req.body;
+  try {
+    const targetDeptId = (department_id && department_id !== 'all') ? parseInt(department_id) : null;
+    const targetTeacherId = teacher_id ? parseInt(teacher_id) : null;
+
+    if (targetDeptId) {
+      const status = await getDepartmentSelectionStatus(targetDeptId);
+      if (status.isLocked) {
+        return res.status(403).json({
+          error: 'Subject selections for this department are currently locked. Please unlock allocations in settings before clearing.',
+          is_locked: true
+        });
+      }
+    } else if (targetTeacherId) {
+      const teacher = await db.get(`SELECT department_id, full_name FROM users WHERE id = $1`, [targetTeacherId]);
+      const deptId = teacher ? (teacher.department_id || 1) : 1;
+      const status = await getDepartmentSelectionStatus(deptId);
+      if (status.isLocked) {
+        return res.status(403).json({
+          error: 'Subject selections are currently locked. Please unlock allocations in settings before clearing.',
+          is_locked: true
+        });
+      }
+    } else {
+      // Check if any department is locked
+      const lockedDept = await db.get(`
+        SELECT d.name 
+        FROM teacher_selection_settings s 
+        JOIN departments d ON s.department_id = d.id 
+        WHERE s.is_locked = true 
+        LIMIT 1
+      `);
+      if (lockedDept) {
+        return res.status(403).json({
+          error: `Selections are currently locked for department "${lockedDept.name}". Please unlock allocations before clearing all.`,
+          is_locked: true
+        });
+      }
+    }
+
+    let del;
+    let logMsg = '';
+    if (targetTeacherId) {
+      const teacher = await db.get(`SELECT full_name, department_id FROM users WHERE id = $1`, [targetTeacherId]);
+      del = await db.query(`DELETE FROM teacher_selections WHERE teacher_id = $1`, [targetTeacherId]);
+      logMsg = `Admin Cleared all selections (${del.rowCount || 0}) for teacher: ${teacher ? teacher.full_name : targetTeacherId}`;
+    } else if (targetDeptId) {
+      const dept = await db.get(`SELECT name FROM departments WHERE id = $1`, [targetDeptId]);
+      del = await db.query(`DELETE FROM teacher_selections WHERE department_id = $1`, [targetDeptId]);
+      logMsg = `Admin Cleared all subject selections (${del.rowCount || 0}) for department: ${dept ? dept.name : targetDeptId}`;
+    } else {
+      del = await db.query(`DELETE FROM teacher_selections`);
+      logMsg = `Admin Cleared all subject selections (${del.rowCount || 0}) across all departments`;
+    }
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', logMsg, {}, targetDeptId);
+
+    res.json({
+      success: true,
+      message: `Successfully cleared ${del.rowCount || 0} selection(s) from database.`,
+      count: del.rowCount || 0
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3990,6 +4170,7 @@ app.get('/api/teaching/admin/dashboard-stats', async (req, res) => {
       disabled_periods_count: disabledPeriods,
       is_open: deptStatus.isOpen,
       is_closed: deptStatus.isClosed,
+      is_locked: deptStatus.isLocked,
       selection_status: deptStatus.isOpen ? 'OPEN' : 'CLOSED',
       status_code: deptStatus.code,
       status_message: deptStatus.message,
@@ -4130,7 +4311,7 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
   try {
     const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : 1;
 
-    const [slots, classes, periodSettings, dept] = await Promise.all([
+    const [slots, classes, periodSettings, dept, deptStatus] = await Promise.all([
       db.all(`
         SELECT 
           t.day,
@@ -4140,6 +4321,7 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
           t.time_slot,
           t.department_id,
           COALESCE(d.name, 'MEDIA') as department_name,
+          s.id as selection_id,
           u.full_name as teacher_name,
           ps.is_enabled as is_period_enabled
         FROM teacher_selection_timetable t
@@ -4162,13 +4344,15 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
       `, [departmentId]),
       getDepartmentAssignedClasses(departmentId),
       db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1 ORDER BY period ASC`, [departmentId]),
-      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId])
+      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId]),
+      getDepartmentSelectionStatus(departmentId)
     ]);
 
     res.json({
       department_id: departmentId,
       department_name: dept ? dept.name : 'MEDIA',
       active_days: dept ? dept.active_days : 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+      is_locked: deptStatus ? deptStatus.isLocked : false,
       slots,
       classes: classes.map(c => c.name),
       period_settings: periodSettings

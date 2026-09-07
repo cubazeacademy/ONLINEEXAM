@@ -4493,8 +4493,170 @@ async function loadAdminTeachingDashboard(isSilent = false) {
         deadlineText.textContent = '';
       }
     }
+
+    // Sync lock status across entire UI
+    updateLockUI(Boolean(data.is_locked));
   } catch (err) {
     console.error('Error loading admin teaching dashboard:', err);
+  }
+}
+
+function updateLockUI(isLocked) {
+  teacherSelectionState.isLocked = Boolean(isLocked);
+
+  // Dashboard lock button
+  const dashBtn = document.getElementById('btn-dashboard-lock-toggle');
+  const dashIcon = document.getElementById('icon-dashboard-lock');
+  const dashText = document.getElementById('btn-dashboard-lock-text');
+  if (dashBtn) {
+    dashBtn.style.background = isLocked ? '#ef4444' : 'rgba(255,255,255,0.1)';
+    dashBtn.style.borderColor = isLocked ? '#dc2626' : 'rgba(255,255,255,0.4)';
+    dashBtn.style.color = '#fff';
+    if (dashIcon) dashIcon.className = isLocked ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open';
+    if (dashText) dashText.textContent = isLocked ? 'Unlock Selections' : 'Lock Selections';
+  }
+
+  // Reports lock button
+  const repBtn = document.getElementById('btn-reports-lock-toggle');
+  const repIcon = document.getElementById('icon-reports-lock');
+  const repText = document.getElementById('btn-reports-lock-text');
+  if (repBtn) {
+    repBtn.className = `btn btn-sm ${isLocked ? 'btn-danger' : 'btn-outline'}`;
+    if (repIcon) repIcon.className = isLocked ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open';
+    if (repText) repText.textContent = isLocked ? 'Unlock Selections' : 'Lock Selections';
+  }
+
+  // Settings checkbox & badge
+  const settingCb = document.getElementById('ts-setting-is-locked');
+  const settingBadge = document.getElementById('badge-setting-lock-status');
+  if (settingCb) settingCb.checked = isLocked;
+  if (settingBadge) {
+    settingBadge.textContent = isLocked ? 'LOCKED (FROZEN)' : 'UNLOCKED';
+    settingBadge.style.background = isLocked ? '#fee2e2' : '#e2e8f0';
+    settingBadge.style.color = isLocked ? '#b91c1c' : '#475569';
+  }
+}
+
+async function toggleAdminSelectionLock() {
+  const currentLocked = Boolean(teacherSelectionState.isLocked);
+  const nextLocked = !currentLocked;
+
+  const confirmMsg = nextLocked
+    ? '🔒 Are you sure you want to LOCK subject selections?\n\nWhen locked, all allocations are frozen in the database and cannot be deleted or cleared by admins or teachers until unlocked.'
+    : '🔓 Are you sure you want to UNLOCK subject selections?\n\nWhen unlocked, administrators can remove selections or clear allocations.';
+
+  if (!confirm(confirmMsg)) return;
+
+  // Optimistic update
+  updateLockUI(nextLocked);
+
+  try {
+    const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 'all');
+    const res = await fetch(apiUrl('/api/teaching/admin/toggle-lock'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        is_locked: nextLocked,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    clearClientCache('/api/teaching');
+    if (res.ok) {
+      updateLockUI(data.is_locked);
+      loadAdminTeachingDashboard(true);
+      loadAdminTeachingReports(true);
+    } else {
+      updateLockUI(currentLocked);
+      alert(data.error || 'Failed to toggle lock status.');
+    }
+  } catch (err) {
+    updateLockUI(currentLocked);
+    alert('Error connecting to server.');
+  }
+}
+
+async function adminClearAllAllocations() {
+  if (teacherSelectionState.isLocked) {
+    alert('🔒 Subject selections are currently locked!\n\nPlease unlock selections first in Deadline & Settings or via the Lock button before clearing allocations.');
+    return;
+  }
+
+  const deptId = teacherSelectionState.currentDepartmentId || 'all';
+  const deptName = (deptId !== 'all' && teacherSelectionState.departments)
+    ? (teacherSelectionState.departments.find(d => d.id == deptId)?.name || `Department #${deptId}`)
+    : 'ALL Departments';
+
+  const confirmMsg = `⚠️ DANGER: Completely Clear All Subject Allocations?\n\nTarget: ${deptName}\n\nThis will completely delete all teacher subject selections from the database and free up all timetable slots.\n\nAre you sure you want to proceed?`;
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/clear-selections'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Error clearing allocations.');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(data.message || 'All selections cleared from database successfully!');
+    loadAdminTeachingReports(false);
+    loadAdminTeachingTeachers(false);
+    loadAdminTeachingDashboard(false);
+  } catch (err) {
+    alert('Error clearing allocations from database.');
+  }
+}
+
+async function adminClearCurrentTeacherAllocations() {
+  if (!teacherSelectionState.modalTeacherId) return;
+  if (teacherSelectionState.isLocked) {
+    alert('🔒 Subject selections are currently locked!\n\nPlease unlock selections first before clearing allocations.');
+    return;
+  }
+
+  const teacher = (teacherSelectionState.allTeachers || []).find(t => t.id === teacherSelectionState.modalTeacherId);
+  const teacherName = teacher ? teacher.full_name : 'this teacher';
+
+  if (!confirm(`Are you sure you want to remove ALL allocations for ${teacherName}?\n\nAll their chosen periods will be deleted from the database and become available for other teachers.`)) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/clear-selections'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teacher_id: teacherSelectionState.modalTeacherId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Error clearing teacher allocations.');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    closeModal('modal-view-teacher-allocations');
+    loadAdminTeachingReports(true);
+    loadAdminTeachingTeachers(true);
+    loadAdminTeachingDashboard(true);
+  } catch (err) {
+    alert('Error clearing teacher allocations.');
   }
 }
 
@@ -4518,15 +4680,7 @@ async function toggleAdminSelectionStatus() {
   }
 
   // Determine active department
-  let deptId = teacherSelectionState.currentDepartmentId;
-  if (!deptId || deptId === 'all') {
-    const globalSelect = document.getElementById('global-teaching-department-select');
-    if (globalSelect && globalSelect.value && globalSelect.value !== 'all') {
-      deptId = globalSelect.value;
-    } else {
-      deptId = 'all';
-    }
-  }
+  const deptId = (teacherSelectionState.currentDepartmentId !== 'all' ? teacherSelectionState.currentDepartmentId : 'all');
 
   try {
     // 2. Clear client-side cache so future calls get fresh data
@@ -4568,6 +4722,82 @@ async function toggleAdminSelectionStatus() {
       toggleBtnText.textContent = isCurrentlyOpen ? 'Close Selection' : 'Reopen Selection';
     }
     alert(err.message || 'Error updating status. Please try again.');
+  }
+}
+
+function viewTeacherAllocationsModal(teacherId, teacherName) {
+  teacherSelectionState.modalTeacherId = teacherId;
+  const teacher = teacherSelectionState.allTeachers.find(t => t.id === teacherId);
+  const title = document.getElementById('modal-view-teacher-allocations-title');
+  const tbody = document.getElementById('table-view-teacher-allocations-body');
+
+  if (title) title.innerHTML = `<i class="fa-solid fa-clipboard-list" style="color:var(--primary);"></i> ${escapeHtml(teacherName)}'s Selections`;
+
+  if (tbody) {
+    const selections = (teacher && teacher.selections) || [];
+    if (selections.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted" style="padding:16px;">No period selections made yet.</td></tr>`;
+    } else {
+      tbody.innerHTML = selections.map(s => `
+        <tr>
+          <td><strong>${s.day}</strong></td>
+          <td><strong>Period ${s.period}</strong></td>
+          <td>${escapeHtml(s.class_name)}</td>
+          <td><strong class="badge badge-success">${escapeHtml(s.subject)}</strong></td>
+          <td class="text-right">
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="adminRemoveAllocation(${s.id})" title="Remove this allocation from database">
+              <i class="fa-solid fa-xmark"></i> Remove
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  openModal('modal-view-teacher-allocations');
+}
+
+async function adminRemoveAllocation(selectionId) {
+  if (teacherSelectionState.isLocked) {
+    alert('🔒 Subject selections are currently locked!\n\nPlease unlock selections first in Deadline & Settings or via the Lock button before removing allocations.');
+    return;
+  }
+
+  if (!confirm('Remove this selected subject? The allocation will be completely deleted from the database and the slot will become available again.')) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/remove-selection'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        selection_id: selectionId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Error removing allocation.');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+
+    // If modal is open, refresh modal data
+    if (teacherSelectionState.modalTeacherId) {
+      const teacher = (teacherSelectionState.allTeachers || []).find(t => t.id === teacherSelectionState.modalTeacherId);
+      if (teacher && teacher.selections) {
+        teacher.selections = teacher.selections.filter(s => s.id !== selectionId);
+        viewTeacherAllocationsModal(teacher.id, teacher.full_name);
+      }
+    }
+
+    loadAdminTeachingTeachers(true);
+    loadAdminTeachingReports(true);
+    loadAdminTeachingDashboard(true);
+  } catch (e) {
+    alert('Error removing allocation from database.');
   }
 }
 
@@ -5561,6 +5791,16 @@ async function loadAdminTeachingSettings() {
     document.getElementById('ts-setting-max').value = data.max_periods || 3;
     document.getElementById('ts-setting-is-open').checked = data.is_open !== false;
     document.getElementById('ts-setting-allow-edit').checked = data.allow_edit !== false;
+    
+    // Sync lock status
+    const isLocked = Boolean(data.is_locked);
+    document.getElementById('ts-setting-is-locked').checked = isLocked;
+    const badgeLock = document.getElementById('badge-setting-lock-status');
+    if (badgeLock) {
+      badgeLock.textContent = isLocked ? 'LOCKED (FROZEN)' : 'UNLOCKED';
+      badgeLock.style.background = isLocked ? '#fee2e2' : '#e2e8f0';
+      badgeLock.style.color = isLocked ? '#b91c1c' : '#475569';
+    }
 
     const activeDays = (data.active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday').split(',').map(s => s.trim());
     document.querySelectorAll('input[name="ts-active-day"]').forEach(cb => {
@@ -5582,6 +5822,7 @@ async function saveTeachingSettingsForm(e) {
   const max_periods = parseInt(document.getElementById('ts-setting-max').value) || 3;
   const is_open = document.getElementById('ts-setting-is-open').checked;
   const allow_edit = document.getElementById('ts-setting-allow-edit').checked;
+  const is_locked = document.getElementById('ts-setting-is-locked').checked;
 
   const activeDayCheckboxes = document.querySelectorAll('input[name="ts-active-day"]:checked');
   const activeDaysArray = Array.from(activeDayCheckboxes).map(cb => cb.value);
@@ -5603,6 +5844,7 @@ async function saveTeachingSettingsForm(e) {
         max_periods,
         is_open,
         allow_edit,
+        is_locked,
         active_days,
         admin_id: currentUser ? currentUser.id : null,
         admin_name: currentUser ? currentUser.full_name : 'Admin'
@@ -5611,6 +5853,7 @@ async function saveTeachingSettingsForm(e) {
 
     const data = await res.json();
     clearClientCache('/api/teaching');
+    updateLockUI(is_locked);
     alert(data.message || 'Settings saved successfully!');
     loadAdminTeachingDashboard();
     loadTeachingDepartments(true);
@@ -5919,8 +6162,9 @@ async function loadTeacherWiseReport(isSilent = false) {
 
       const periodsHtml = (t.periods && t.periods.length > 0)
         ? t.periods.map(p => `
-            <span style="display:inline-block; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:3px 8px; margin:2px; font-size:0.8rem;">
-              <strong>${p.day} P${p.period}:</strong> ${escapeHtml(p.class_name)} (${escapeHtml(p.subject)})
+            <span style="display:inline-flex; align-items:center; gap:6px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:3px 8px; margin:2px; font-size:0.8rem;">
+              <span><strong>${p.day} P${p.period}:</strong> ${escapeHtml(p.class_name)} (${escapeHtml(p.subject)})</span>
+              <button type="button" title="Remove this allocation (Admin)" onclick="adminRemoveAllocation(${p.id})" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold; font-size:0.95rem; line-height:1; padding:0 2px;">&times;</button>
             </span>
           `).join('')
         : '<span class="text-muted" style="font-size:0.82rem;">None selected</span>';
@@ -5992,7 +6236,10 @@ async function loadClassWiseReport(isSilent = false) {
                   const dayBadge = getDayBadgeHtml(s.day);
 
                   const teacherBadge = s.teacher_name 
-                    ? `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.84rem;"><i class="fa-solid fa-user-check"></i> ${escapeHtml(s.teacher_name)}</span>`
+                    ? `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.84rem; display:inline-flex; align-items:center; gap:6px;">
+                        <span><i class="fa-solid fa-user-check"></i> ${escapeHtml(s.teacher_name)}</span>
+                        ${s.selection_id ? `<button type="button" title="Remove allocation" onclick="adminRemoveAllocation(${s.selection_id})" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold; font-size:1rem; line-height:1; padding:0 2px;">&times;</button>` : ''}
+                      </span>`
                     : '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; font-size:0.8rem;"><i class="fa-regular fa-clock"></i> Unassigned</span>';
 
                   return `
@@ -6035,6 +6282,9 @@ async function loadGridMatrixReport(isSilent = false) {
     const oldJson = JSON.stringify(teacherSelectionState.gridData);
     const newJson = JSON.stringify(data);
     teacherSelectionState.gridData = data;
+    if (data.is_locked !== undefined) {
+      updateLockUI(Boolean(data.is_locked));
+    }
     
     const activeDays = getActiveDepartmentDays();
     const currentDay = teacherSelectionState.currentGridDay || activeDays[0] || 'Sunday';
@@ -6091,8 +6341,9 @@ function renderGridMatrix(day) {
   }
 
   let tableHtml = `
-    <div style="margin-bottom:8px; font-weight:700; color:#475569; font-size:0.85rem;">
-      <i class="fa-solid fa-building"></i> Matrix for Department: <span class="badge badge-primary">${escapeHtml(department_name)}</span>
+    <div style="margin-bottom:8px; font-weight:700; color:#475569; font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
+      <div><i class="fa-solid fa-building"></i> Matrix for Department: <span class="badge badge-primary">${escapeHtml(department_name)}</span></div>
+      ${teacherSelectionState.isLocked ? '<span class="badge badge-danger" style="background:#fee2e2; color:#b91c1c;"><i class="fa-solid fa-lock"></i> Selections Locked</span>' : ''}
     </div>
     <table class="matrix-table">
       <thead>
@@ -6125,9 +6376,12 @@ function renderGridMatrix(day) {
         tableHtml += `<td class="matrix-cell-available">—</td>`;
       } else if (slot.teacher_name) {
         tableHtml += `
-          <td class="matrix-cell-allocated">
+          <td class="matrix-cell-allocated" style="position:relative;">
             <span class="matrix-subject-code">${escapeHtml(slot.subject)}</span>
-            <span class="matrix-teacher-name"><i class="fa-solid fa-user-check"></i> ${escapeHtml(slot.teacher_name)}</span>
+            <span class="matrix-teacher-name" style="display:flex; align-items:center; justify-content:center; gap:4px;">
+              <i class="fa-solid fa-user-check"></i> ${escapeHtml(slot.teacher_name)}
+              ${slot.selection_id ? `<button type="button" title="Remove allocation" onclick="event.stopPropagation(); adminRemoveAllocation(${slot.selection_id})" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold; font-size:1.1rem; line-height:1; padding:0 3px;">&times;</button>` : ''}
+            </span>
           </td>
         `;
       } else {

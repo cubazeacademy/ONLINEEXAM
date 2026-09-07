@@ -248,7 +248,6 @@ app.post('/api/auth/login', async (req, res) => {
       ) AND (
         TRIM(u.password) = $2 OR
         LOWER(TRIM(u.password)) = LOWER($2) OR
-        (LOWER(TRIM(u.username)) = 'admin' AND ($2 = 'sinan@123' OR $2 = 'sinan123' OR $2 = 'admin123' OR $2 = 'admin')) OR
         (u.role = 'teacher' AND ($2 = 'teacher123' OR $2 = '1234'))
       )
     `, [cleanUsername, cleanPassword]);

@@ -441,7 +441,7 @@ async function runMigration() {
     if (!adminCheck.rows[0] || adminCheck.rows[0].count === 0) {
       await client.query(`
         INSERT INTO users (username, password, full_name, email, role, department_id)
-        VALUES ('admin', 'admin123', 'System Administrator', 'admin@onlineexam.com', 'admin', $1)
+        VALUES ('admin', 'sinan@123', 'System Administrator', 'admin@onlineexam.com', 'admin', $1)
         ON CONFLICT (username) DO NOTHING;
       `, [mediaDeptId]);
       console.log('✅ Seeded default Admin user.');

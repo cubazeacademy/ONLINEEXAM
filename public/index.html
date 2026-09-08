@@ -2319,7 +2319,7 @@
                 <h3 class="today-schedule-main-heading">Today's Schedule Overview</h3>
               </div>
               <div class="today-schedule-header-actions">
-                <button type="button" class="btn btn-sm btn-outline-light" onclick="loadTeacherDashboard(true)" title="Refresh Live Schedule">
+                <button type="button" class="btn btn-sm btn-outline" onclick="loadTeacherDashboard(true)" title="Refresh Live Schedule">
                   <i class="fa-solid fa-arrows-rotate"></i> <span class="hide-mobile">Sync Status</span>
                 </button>
                 <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('teacher-movement')">
@@ -2436,8 +2436,8 @@
                   <span class="pulse-beacon"></span> Selection Portal Open
                 </span>
                 <span id="teacher-dash-dept-pill" class="teacher-deadline-tag"
-                  style="background: rgba(99, 102, 241, 0.25); border-color: rgba(165, 180, 252, 0.4); color: #e0e7ff;">
-                  <i class="fa-solid fa-building"></i> Dept: <span id="teacher-dash-dept-name">MEDIA</span>
+                  style="background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8;">
+                  <i class="fa-solid fa-building" style="color: #2563eb;"></i> Dept: <span id="teacher-dash-dept-name">MEDIA</span>
                 </span>
                 <span id="teacher-dash-deadline" class="teacher-deadline-tag">
                   <i class="fa-regular fa-clock"></i> Deadline: Active
@@ -2862,14 +2862,14 @@
         <!-- TEACHER: MY OBSERVER DUTIES VIEW -->
         <section id="view-teacher-observer-duties" class="tab-view hidden">
           <div class="panel-card mb-6">
-            <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="panel-header" style="background: #ffffff; border-bottom: 1.5px solid #e2e8f0; color: #0f172a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
               <div>
-                <h3 style="color: #fff; margin: 0;"><i class="fa-solid fa-user-shield" style="color: #38bdf8;"></i> My Observer Duties</h3>
-                <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.85rem;">Official duty allocation and monitoring roster assigned by Department Administration</p>
+                <h3 style="color: #0f172a; margin: 0;"><i class="fa-solid fa-user-shield text-primary"></i> My Observer Duties</h3>
+                <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.85rem;">Official duty allocation and monitoring roster assigned by Department Administration</p>
               </div>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <span class="badge badge-info" id="badge-observer-dept-name"><i class="fa-solid fa-building"></i> Dept: MEDIA</span>
-                <button type="button" class="btn btn-sm btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.3);" onclick="loadTeacherObserverDutiesView()">
+                <button type="button" class="btn btn-sm btn-outline" onclick="loadTeacherObserverDutiesView()">
                   <i class="fa-solid fa-rotate"></i> Refresh
                 </button>
               </div>
@@ -3013,16 +3013,16 @@
         <!-- TEACHER: MY MOVEMENT VIEW -->
         <section id="view-teacher-movement" class="tab-view hidden">
           <div class="panel-card mb-6">
-            <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="panel-header" style="background: #ffffff; border-bottom: 1.5px solid #e2e8f0; color: #0f172a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
               <div>
-                <h3 style="color: #fff; margin: 0;"><i class="fa-solid fa-route" style="color: #38bdf8;"></i> My Daily Movement Roster</h3>
-                <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.85rem;">Period-by-period movement sequence across Teaching, Observer Duty, and Standby periods</p>
+                <h3 style="color: #0f172a; margin: 0;"><i class="fa-solid fa-route text-primary"></i> My Daily Movement Roster</h3>
+                <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.85rem;">Period-by-period movement sequence across Teaching, Observer Duty, and Standby periods</p>
               </div>
               <div style="display: flex; gap: 8px; align-items: center;">
-                <button type="button" class="btn btn-sm btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.3);" onclick="window.print()">
+                <button type="button" class="btn btn-sm btn-outline" onclick="window.print()">
                   <i class="fa-solid fa-print"></i> Print Roster
                 </button>
-                <button type="button" class="btn btn-sm btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.3);" onclick="loadTeacherMovementView()">
+                <button type="button" class="btn btn-sm btn-outline" onclick="loadTeacherMovementView()">
                   <i class="fa-solid fa-rotate"></i> Refresh
                 </button>
               </div>

@@ -303,6 +303,9 @@ async function runMigration() {
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_start_class_id INTEGER;`);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS group_b_end_class_id INTEGER;`);
     await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT false;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS rule_5_enabled BOOLEAN DEFAULT false;`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS rule_5_day_1 VARCHAR(20);`);
+    await client.query(`ALTER TABLE teacher_selection_settings ADD COLUMN IF NOT EXISTS rule_5_day_2 VARCHAR(20);`);
     await client.query(`UPDATE teacher_selection_settings SET department_id = $1 WHERE department_id IS NULL`, [mediaDeptId]);
     await client.query(`ALTER TABLE teacher_selection_settings ALTER COLUMN department_id SET DEFAULT 1;`);
     try {
@@ -408,6 +411,24 @@ async function runMigration() {
     await client.query(`ALTER TABLE teacher_selection_audit_logs ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL;`);
     await client.query(`UPDATE teacher_selection_audit_logs SET department_id = $1 WHERE department_id IS NULL`, [mediaDeptId]);
     console.log('✅ teacher_selection_audit_logs migrated.');
+
+    // 3.8 Teacher Selection Rule 5 Emergency Overrides
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS teacher_selection_rule5_overrides (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER REFERENCES departments(id) ON DELETE CASCADE,
+        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        day VARCHAR(20) NOT NULL,
+        unlocked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        unlocked_by_name VARCHAR(255),
+        reason TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_ts_rule5_override_teacher_day UNIQUE (teacher_id, day)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ts_rule5_overrides_dept ON teacher_selection_rule5_overrides(department_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ts_rule5_overrides_teacher ON teacher_selection_rule5_overrides(teacher_id);`);
+    console.log('✅ teacher_selection_rule5_overrides migrated.');
 
     // 4. Performance Indexes
     console.log('⚡ 5. Creating Department-Scoped Performance Indexes...');

@@ -3836,6 +3836,10 @@ function updateWizardCounters() {
 
 function updateWizardDayCounters() {
   const activeDays = getActiveDepartmentDays();
+  const rule5 = teacherSelectionState.rule_5 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_5);
+  const isRule5Enabled = rule5 && (rule5.enabled || rule5.rule_5_enabled);
+  const reqDay1 = rule5 ? (rule5.day1 || rule5.required_day_1) : null;
+  const reqDay2 = rule5 ? (rule5.day2 || rule5.required_day_2) : null;
   
   TEACHING_DAYS.forEach(day => {
     const btn = document.getElementById(`btn-wiz-day-${day}`);
@@ -3844,12 +3848,44 @@ function updateWizardDayCounters() {
 
     if (btn) {
       btn.style.display = isActiveDay ? 'inline-flex' : 'none';
+      btn.classList.remove('day-locked-rule5');
     }
     if (badgeEl && isActiveDay) {
       const count = teacherSelectionState.mySelections.filter(s => s.day === day).length;
-      badgeEl.textContent = count;
-      badgeEl.style.background = count > 0 ? '#10b981' : '#f1f5f9';
-      badgeEl.style.color = count > 0 ? '#fff' : '#475569';
+
+      if (isRule5Enabled && (day === reqDay1 || day === reqDay2)) {
+        if (day === reqDay1) {
+          if (count > 0) {
+            badgeEl.innerHTML = `<i class="fa-solid fa-check"></i> ${count}`;
+            badgeEl.style.background = '#10b981';
+            badgeEl.style.color = '#fff';
+          } else {
+            badgeEl.innerHTML = `Req 1: 0`;
+            badgeEl.style.background = '#3b82f6';
+            badgeEl.style.color = '#fff';
+          }
+        } else if (day === reqDay2) {
+          const isDay2Unlocked = rule5.day2_unlocked;
+          if (count > 0) {
+            badgeEl.innerHTML = `<i class="fa-solid fa-check"></i> ${count}`;
+            badgeEl.style.background = '#10b981';
+            badgeEl.style.color = '#fff';
+          } else if (isDay2Unlocked) {
+            badgeEl.innerHTML = `<i class="fa-solid fa-lock-open"></i> 0`;
+            badgeEl.style.background = '#f97316';
+            badgeEl.style.color = '#fff';
+          } else {
+            btn && btn.classList.add('day-locked-rule5');
+            badgeEl.innerHTML = `<i class="fa-solid fa-lock"></i> Locked`;
+            badgeEl.style.background = '#94a3b8';
+            badgeEl.style.color = '#fff';
+          }
+        }
+      } else {
+        badgeEl.textContent = count;
+        badgeEl.style.background = count > 0 ? '#10b981' : '#f1f5f9';
+        badgeEl.style.color = count > 0 ? '#fff' : '#475569';
+      }
     }
   });
 }
@@ -3959,8 +3995,108 @@ function renderWizardPeriodCards(day, containerId) {
   const currentTotal = teacherSelectionState.mySelections.length;
   const rule4 = teacherSelectionState.rule_4 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_4);
   const isRule4Enabled = rule4 && rule4.rule_4_enabled;
+  const rule5 = teacherSelectionState.rule_5 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_5);
+  const isRule5Enabled = rule5 && (rule5.enabled || rule5.rule_5_enabled);
 
-  // Render Dynamic Proactive Guidance Banner
+  // 1. Render Dynamic Rule 5 Multi-Day Selection Guidance Banner
+  const r5GuidanceContainer = document.getElementById('wizard-rule5-guidance-container');
+  if (r5GuidanceContainer) {
+    if (!isRule5Enabled) {
+      r5GuidanceContainer.style.display = 'none';
+      r5GuidanceContainer.innerHTML = '';
+    } else {
+      r5GuidanceContainer.style.display = 'block';
+      const reqDay1 = rule5.day1 || rule5.required_day_1;
+      const reqDay2 = rule5.day2 || rule5.required_day_2;
+      const day1Count = (teacherSelectionState.mySelections || []).filter(s => s.day === reqDay1).length;
+      const day2Count = (teacherSelectionState.mySelections || []).filter(s => s.day === reqDay2).length;
+      const day1Completed = day1Count > 0;
+      const day2Completed = day2Count > 0;
+      const day2Unlocked = Boolean(rule5.day2_unlocked || day1Completed || day2Count > 0 || rule5.has_override);
+      const bothCompleted = day1Completed && day2Completed;
+
+      let progressText = '0 / 2 Days Completed';
+      let progressBadgeStyle = 'background:#94a3b8; color:#fff;';
+      if (bothCompleted) {
+        progressText = '2 / 2 Days Completed ✓';
+        progressBadgeStyle = 'background:#10b981; color:#fff;';
+      } else if (day1Completed || day2Completed) {
+        progressText = '1 / 2 Days Completed';
+        progressBadgeStyle = 'background:#f97316; color:#fff;';
+      }
+
+      let bannerBg = 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)';
+      let bannerBorder = '#fed7aa';
+      let bannerColor = '#7c2d12';
+      let bannerIcon = 'fa-calendar-days';
+      let bannerIconBg = '#ea580c';
+
+      if (bothCompleted) {
+        bannerBg = 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)';
+        bannerBorder = '#a7f3d0';
+        bannerColor = '#065f46';
+        bannerIcon = 'fa-circle-check';
+        bannerIconBg = '#10b981';
+      }
+
+      r5GuidanceContainer.innerHTML = `
+        <div style="background: ${bannerBg}; border: 1.5px solid ${bannerBorder}; border-radius: 14px; padding: 14px 18px; color: ${bannerColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bannerIconBg}; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; flex-shrink: 0;">
+                <i class="fa-solid ${bannerIcon}"></i>
+              </div>
+              <div>
+                <strong style="font-size: 0.92rem; display: block; font-weight: 800;">
+                  Required Multi-Day Selection (Rule 5)
+                </strong>
+                <span style="font-size: 0.82rem; opacity: 0.9;">
+                  ${bothCompleted 
+                    ? 'Required 2-Day Selection Completed. You can continue selecting additional subjects from either day.' 
+                    : (day2Unlocked 
+                      ? `1 of 2 required days completed. ${escapeHtml(reqDay2)} is available.` 
+                      : `Complete at least one selection on ${escapeHtml(reqDay1)} to unlock ${escapeHtml(reqDay2)}.`)}
+                </span>
+              </div>
+            </div>
+            <span class="badge" style="${progressBadgeStyle} font-size: 0.78rem; font-weight: 800; padding: 5px 10px; border-radius: 20px;">
+              ${progressText}
+            </span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            <!-- DAY 1 STATUS BOX -->
+            <div style="background: #fff; border: 1.5px solid ${day1Completed ? '#10b981' : '#3b82f6'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <div style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Required Day 1</div>
+                <strong style="font-size: 0.88rem; color: #0f172a;">${escapeHtml(reqDay1)}</strong>
+              </div>
+              <span class="badge" style="background: ${day1Completed ? '#10b981' : '#eff6ff'}; color: ${day1Completed ? '#fff' : '#1e40af'}; border: 1px solid ${day1Completed ? '#059669' : '#bfdbfe'}; font-size: 0.72rem; font-weight: 700;">
+                ${day1Completed ? `<i class="fa-solid fa-check"></i> Completed (${day1Count})` : `0 selections`}
+              </span>
+            </div>
+
+            <!-- DAY 2 STATUS BOX -->
+            <div style="background: #fff; border: 1.5px solid ${day2Completed ? '#10b981' : (day2Unlocked ? '#f97316' : '#cbd5e1')}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <div style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Required Day 2</div>
+                <strong style="font-size: 0.88rem; color: #0f172a;">${escapeHtml(reqDay2)}</strong>
+              </div>
+              <span class="badge" style="background: ${day2Completed ? '#10b981' : (day2Unlocked ? '#fff7ed' : '#f1f5f9')}; color: ${day2Completed ? '#fff' : (day2Unlocked ? '#c2410c' : '#64748b')}; border: 1px solid ${day2Completed ? '#059669' : (day2Unlocked ? '#fed7aa' : '#e2e8f0')}; font-size: 0.72rem; font-weight: 700;">
+                ${day2Completed 
+                  ? `<i class="fa-solid fa-check"></i> Completed (${day2Count})` 
+                  : (day2Unlocked 
+                    ? `<i class="fa-solid fa-lock-open"></i> Available (${day2Count})` 
+                    : `<i class="fa-solid fa-lock"></i> Locked`)}
+              </span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // 2. Render Dynamic Rule 4 Selection Guidance Banner
   const guidanceContainer = document.getElementById('wizard-rule4-guidance-container');
   if (guidanceContainer) {
     if (!isRule4Enabled) {
@@ -4030,6 +4166,11 @@ function renderWizardPeriodCards(day, containerId) {
     }
   }
 
+  // Check Rule 5 Day 2 Lock status for current teacher
+  const reqDay1 = rule5 ? (rule5.day1 || rule5.required_day_1) : null;
+  const reqDay2 = rule5 ? (rule5.day2 || rule5.required_day_2) : null;
+  const isDay2LockedForMe = isRule5Enabled && (day === reqDay2) && !rule5.day2_unlocked;
+
   let html = '';
 
   for (let p = 1; p <= 9; p++) {
@@ -4048,6 +4189,7 @@ function renderWizardPeriodCards(day, containerId) {
             <span class="period-badge">Period ${p}</span>
             <span style="font-size:0.95rem; font-weight:700;">${day}</span>
             ${!isPeriodEnabled ? '<span class="badge badge-danger" style="font-size:0.75rem;"><i class="fa-solid fa-ban"></i> Disabled by Admin</span>' : ''}
+            ${isDay2LockedForMe ? '<span class="badge" style="background:#f97316; color:#fff; font-size:0.75rem;"><i class="fa-solid fa-lock"></i> Locked (Pick ' + escapeHtml(reqDay1) + ' First)</span>' : ''}
           </div>
           <div class="period-card-time">
             <i class="fa-regular fa-clock"></i> ${timeSlot || '—'}
@@ -4093,6 +4235,10 @@ function renderWizardPeriodCards(day, containerId) {
           statusBadge = `
             <span class="slot-chip-status"><i class="fa-solid fa-lock"></i> Taken by <strong>${escapeHtml(slot.selected_by_name || 'Teacher')}</strong></span>
           `;
+        } else if (isDay2LockedForMe) {
+          chipClass += ' locked';
+          statusBadge = `<span class="slot-chip-status text-muted" style="color:#ea580c; font-weight:700;"><i class="fa-solid fa-lock"></i> Locked by Rule 5 (Pick ${escapeHtml(reqDay1)} first)</span>`;
+          clickHandler = `onclick="alert('⚠️ Required Day 2 Locked:\\n\\nComplete at least one selection on ${escapeHtml(reqDay1)} before selecting ${escapeHtml(day)}.')"`;
         } else {
           // Available slot
           chipClass += ' available';
@@ -4153,9 +4299,21 @@ async function handleTeacherPickSlot(timetableId) {
   const slot = (teacherSelectionState.slots || []).find(s => s.id === timetableId);
   if (!slot) return;
 
+  // Proactive client-side Rule 5 check
+  const rule5 = teacherSelectionState.rule_5 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_5);
+  const isRule5Enabled = rule5 && (rule5.enabled || rule5.rule_5_enabled);
+  const reqDay1 = rule5 ? (rule5.day1 || rule5.required_day_1) : null;
+  const reqDay2 = rule5 ? (rule5.day2 || rule5.required_day_2) : null;
+
+  if (isRule5Enabled && slot.day === reqDay2 && !rule5.day2_unlocked) {
+    alert(`⚠️ Selection Blocked by Rule 5:\n\nComplete at least one selection on ${reqDay1} before selecting ${reqDay2}.`);
+    return;
+  }
+
   // Snapshot for rollback in case of conflict or network failure
   const prevSlots = JSON.parse(JSON.stringify(teacherSelectionState.slots || []));
   const prevMySelections = JSON.parse(JSON.stringify(teacherSelectionState.mySelections || []));
+  const prevRule5 = rule5 ? JSON.parse(JSON.stringify(rule5)) : null;
 
   const tempSelectionId = 'opt_' + Date.now();
 
@@ -4176,6 +4334,28 @@ async function handleTeacherPickSlot(timetableId) {
   };
 
   teacherSelectionState.mySelections.push(newSelectionItem);
+
+  // Optimistic Rule 5 progression update
+  if (isRule5Enabled && rule5) {
+    if (slot.day === reqDay1) {
+      rule5.day1_count = (rule5.day1_count || 0) + 1;
+      rule5.day1_completed = true;
+      rule5.day2_unlocked = true;
+      if (rule5.day2_count > 0) {
+        rule5.is_completed = true;
+        rule5.status = 'COMPLETED';
+      } else {
+        rule5.status = 'PARTIALLY_COMPLETED';
+      }
+    } else if (slot.day === reqDay2) {
+      rule5.day2_count = (rule5.day2_count || 0) + 1;
+      rule5.day2_completed = true;
+      if (rule5.day1_count > 0) {
+        rule5.is_completed = true;
+        rule5.status = 'COMPLETED';
+      }
+    }
+  }
 
   // Immediately reflect in UI
   updateWizardCounters();
@@ -4203,6 +4383,7 @@ async function handleTeacherPickSlot(timetableId) {
       // Rollback on server rejection
       teacherSelectionState.slots = prevSlots;
       teacherSelectionState.mySelections = prevMySelections;
+      if (prevRule5) teacherSelectionState.rule_5 = prevRule5;
       updateWizardCounters();
       updateWizardDayCounters();
       if (teacherSelectionState.currentStep === 1) {
@@ -4233,6 +4414,7 @@ async function handleTeacherPickSlot(timetableId) {
     // Rollback on network error
     teacherSelectionState.slots = prevSlots;
     teacherSelectionState.mySelections = prevMySelections;
+    if (prevRule5) teacherSelectionState.rule_5 = prevRule5;
     updateWizardCounters();
     updateWizardDayCounters();
     if (teacherSelectionState.currentStep === 1) {
@@ -4251,6 +4433,9 @@ async function removeTeacherSelection(selectionId) {
   // Snapshot for rollback
   const prevSlots = JSON.parse(JSON.stringify(teacherSelectionState.slots || []));
   const prevMySelections = JSON.parse(JSON.stringify(teacherSelectionState.mySelections || []));
+  const rule5 = teacherSelectionState.rule_5 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_5);
+  const isRule5Enabled = rule5 && (rule5.enabled || rule5.rule_5_enabled);
+  const prevRule5 = rule5 ? JSON.parse(JSON.stringify(rule5)) : null;
 
   // 1. Optimistic Local State Update (0ms Instant UI)
   const targetSelection = teacherSelectionState.mySelections.find(s => s.id === selectionId);
@@ -4264,6 +4449,28 @@ async function removeTeacherSelection(selectionId) {
   if (matchedSlot) {
     matchedSlot.status = 'available';
     matchedSlot.my_selection_id = null;
+  }
+
+  // Recalculate Rule 5 dynamic status
+  if (isRule5Enabled && rule5) {
+    const reqDay1 = rule5.day1 || rule5.required_day_1;
+    const reqDay2 = rule5.day2 || rule5.required_day_2;
+    const d1Count = teacherSelectionState.mySelections.filter(s => s.day === reqDay1).length;
+    const d2Count = teacherSelectionState.mySelections.filter(s => s.day === reqDay2).length;
+    rule5.day1_count = d1Count;
+    rule5.day2_count = d2Count;
+    rule5.day1_completed = d1Count > 0;
+    rule5.day2_completed = d2Count > 0;
+    // Section 18: Once unlocked or selected, Day 2 remains unlocked
+    rule5.day2_unlocked = Boolean(d1Count > 0 || d2Count > 0 || rule5.has_override);
+    rule5.is_completed = (d1Count > 0) && (d2Count > 0);
+    if (rule5.is_completed) {
+      rule5.status = 'COMPLETED';
+    } else if (rule5.day2_unlocked) {
+      rule5.status = 'PARTIALLY_COMPLETED';
+    } else {
+      rule5.status = 'NOT_STARTED';
+    }
   }
 
   updateWizardCounters();
@@ -4290,6 +4497,7 @@ async function removeTeacherSelection(selectionId) {
       // Rollback on failure
       teacherSelectionState.slots = prevSlots;
       teacherSelectionState.mySelections = prevMySelections;
+      if (prevRule5) teacherSelectionState.rule_5 = prevRule5;
       updateWizardCounters();
       updateWizardDayCounters();
       if (teacherSelectionState.currentStep === 1) {
@@ -4312,6 +4520,7 @@ async function removeTeacherSelection(selectionId) {
   } catch (err) {
     teacherSelectionState.slots = prevSlots;
     teacherSelectionState.mySelections = prevMySelections;
+    if (prevRule5) teacherSelectionState.rule_5 = prevRule5;
     updateWizardCounters();
     updateWizardDayCounters();
     if (teacherSelectionState.currentStep === 1) {
@@ -4321,7 +4530,7 @@ async function removeTeacherSelection(selectionId) {
   }
 }
 
-// Render Review Table in Step 3
+// Render Review Table in Step 2
 function renderWizardReviewTable() {
   const tbody = document.getElementById('table-teacher-review-selections');
   const validationBox = document.getElementById('review-validation-box');
@@ -4363,14 +4572,34 @@ function renderWizardReviewTable() {
   }
 
   if (validationBox && submitBtn) {
+    const rule5 = teacherSelectionState.rule_5 || (teacherSelectionState.settings && teacherSelectionState.settings.rule_5);
+    const isRule5Enabled = rule5 && (rule5.enabled || rule5.rule_5_enabled);
+    const reqDay1 = rule5 ? (rule5.day1 || rule5.required_day_1) : null;
+    const reqDay2 = rule5 ? (rule5.day2 || rule5.required_day_2) : null;
+
     if (count < min) {
       validationBox.className = 'alert-box alert-error mt-4 mb-4';
       validationBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Selection Incomplete:</strong> You have selected <strong>${count}</strong> period(s). You must select at least <strong>${min} periods</strong> before final submission.`;
       validationBox.classList.remove('hidden');
       submitBtn.disabled = true;
+    } else if (isRule5Enabled && (!rule5.is_completed && !rule5.has_override)) {
+      const d1Missing = (rule5.day1_count || 0) === 0;
+      const d2Missing = (rule5.day2_count || 0) === 0;
+      let missingText = '';
+      if (d1Missing && d2Missing) {
+        missingText = `both ${reqDay1} and ${reqDay2}`;
+      } else if (d1Missing) {
+        missingText = `${reqDay1}`;
+      } else {
+        missingText = `${reqDay2}`;
+      }
+      validationBox.className = 'alert-box alert-error mt-4 mb-4';
+      validationBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Rule 5 Requirement Incomplete:</strong> You must have at least one teaching period selection on <strong>${missingText}</strong> before submitting.`;
+      validationBox.classList.remove('hidden');
+      submitBtn.disabled = true;
     } else {
       validationBox.className = 'alert-box alert-success mt-4 mb-4';
-      validationBox.innerHTML = `<i class="fa-solid fa-circle-check"></i> <strong>Ready to Submit:</strong> You have selected <strong>${count}</strong> periods (${count >= min && count <= max ? 'Valid' : 'Warning'}). All clash prevention checks passed.`;
+      validationBox.innerHTML = `<i class="fa-solid fa-circle-check"></i> <strong>Ready to Submit:</strong> You have selected <strong>${count}</strong> periods (${count >= min && count <= max ? 'Valid' : 'Warning'}). All clash prevention and multi-day requirements passed.`;
       validationBox.classList.remove('hidden');
       submitBtn.disabled = false;
     }
@@ -6499,6 +6728,27 @@ async function loadAdminTeachingRules(isSilent = false) {
     onRule4ToggleChanged(isEnabled);
 
     updateRule4LivePreview();
+
+    // Populate Rule 5 settings
+    const rule5DeptInput = document.getElementById('rule5-dept-id');
+    if (rule5DeptInput) rule5DeptInput.value = deptId;
+
+    const rule5Data = (rulesData && rulesData.rule_5) ? rulesData.rule_5 : null;
+    const isRule5Enabled = rule5Data ? Boolean(rule5Data.enabled) : (rulesData ? Boolean(rulesData.rule_5_enabled) : false);
+    const rule5Toggle = document.getElementById('rule5-enabled-toggle');
+    if (rule5Toggle) rule5Toggle.checked = isRule5Enabled;
+
+    const reqDay1 = (rule5Data && rule5Data.day1) || (rulesData && rulesData.rule_5_day_1) || 'Monday';
+    const reqDay2 = (rule5Data && rule5Data.day2) || (rulesData && rulesData.rule_5_day_2) || 'Tuesday';
+
+    const selectDay1 = document.getElementById('rule5-required-day-1');
+    const selectDay2 = document.getElementById('rule5-required-day-2');
+    if (selectDay1) selectDay1.value = reqDay1;
+    if (selectDay2) selectDay2.value = reqDay2;
+
+    onRule5ToggleChanged(isRule5Enabled);
+    updateRule5LivePreview();
+    loadAdminRule5Progress(true);
   } catch (err) {
     console.error('Error loading selection rules view:', err);
   }
@@ -6663,6 +6913,307 @@ async function saveRule4SettingsForm(e) {
   } catch (err) {
     alert('Error saving selection rules.');
     if (btn) btn.disabled = false;
+  }
+}
+
+// 5.2 RULE 5: MANDATORY MULTI-DAY TEACHER SELECTION CONTROLLERS
+function onRule5ToggleChanged(isChecked) {
+  const labelEl = document.getElementById('rule5-toggle-label');
+  const badgeEl = document.getElementById('preview-rule5-status-badge');
+  const daysContainer = document.getElementById('rule5-days-container');
+
+  if (labelEl) {
+    labelEl.textContent = isChecked ? 'Enabled' : 'Disabled';
+    labelEl.style.color = isChecked ? '#ea580c' : '#64748b';
+  }
+
+  if (badgeEl) {
+    badgeEl.textContent = isChecked ? 'ENABLED' : 'DISABLED';
+    badgeEl.style.background = isChecked ? '#10b981' : '#ef4444';
+  }
+
+  if (daysContainer) {
+    daysContainer.style.opacity = isChecked ? '1' : '0.65';
+  }
+
+  updateRule5LivePreview();
+}
+
+function updateRule5LivePreview() {
+  const isEnabled = document.getElementById('rule5-enabled-toggle')?.checked || false;
+  const deptSelect = document.getElementById('rules-department-select');
+  const deptName = deptSelect ? deptSelect.options[deptSelect.selectedIndex]?.text || 'MEDIA' : 'MEDIA';
+
+  const day1 = document.getElementById('rule5-required-day-1')?.value || 'Monday';
+  const day2 = document.getElementById('rule5-required-day-2')?.value || 'Tuesday';
+
+  const previewEl = document.getElementById('rule5-preview-content');
+  if (!previewEl) return;
+
+  if (!isEnabled) {
+    previewEl.innerHTML = `
+      <div style="color: #94a3b8;">
+        <span style="color: #ef4444; font-weight: 700;">● RULE 5 IS CURRENTLY DISABLED FOR ${escapeHtml(deptName.toUpperCase())}</span><br>
+        Teachers can select subjects freely across all enabled operating days without mandatory multi-day sequential progression locks.
+      </div>
+    `;
+    return;
+  }
+
+  const isSameDay = (day1 === day2);
+
+  previewEl.innerHTML = `
+    <div style="color: #fb923c; font-weight: 700; margin-bottom: 6px;">
+      DEPARTMENT: ${escapeHtml(deptName)} | RULE 5: MANDATORY MULTI-DAY SELECTION ENABLED
+    </div>
+    <div style="color: #cbd5e1; margin-bottom: 10px;">
+      <span style="color: #60a5fa; font-weight: 700;">Required Day 1:</span> ${escapeHtml(day1)} (Unlocked initially for each teacher)<br>
+      <span style="color: #f97316; font-weight: 700;">Required Day 2:</span> ${escapeHtml(day2)} (Locked until teacher saves ≥1 selection on Day 1)
+      ${isSameDay ? '<br><span style="color: #ef4444; font-weight: 700;">⚠️ ERROR: Required Day 1 and Day 2 must be different days!</span>' : ''}
+    </div>
+    <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border-left: 3px solid #fb923c;">
+      <strong style="color: #f1f5f9;">Enforced Teacher Progression Flow:</strong><br>
+      <span style="color: #bae6fd;">1. Initial State: ${escapeHtml(day1)} available, ${escapeHtml(day2)} locked.</span><br>
+      <span style="color: #bae6fd;">2. Upon saving at least 1 selection on ${escapeHtml(day1)} → ${escapeHtml(day2)} unlocks instantly (0ms UI, no submit needed).</span><br>
+      <span style="color: #fed7aa;">3. Once both ${escapeHtml(day1)} and ${escapeHtml(day2)} have ≥1 selection → Multi-Day Requirement Completed.</span><br>
+      <span style="color: #86efac;">4. Additional selections (3rd slot, etc.) may be selected from either required day.</span>
+    </div>
+  `;
+}
+
+async function saveRule5SettingsForm(e) {
+  e.preventDefault();
+  const deptId = parseInt(document.getElementById('rule5-dept-id').value || 1);
+  const rule_5_enabled = document.getElementById('rule5-enabled-toggle').checked;
+  const rule_5_day_1 = document.getElementById('rule5-required-day-1').value;
+  const rule_5_day_2 = document.getElementById('rule5-required-day-2').value;
+
+  if (rule_5_enabled && rule_5_day_1 === rule_5_day_2) {
+    alert('⚠️ Configuration Error:\n\nRequired Day 1 and Required Day 2 cannot be the same day. Please choose two different days.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-rule5');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/rules/rule5'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        rule_5_enabled,
+        rule_5_day_1,
+        rule_5_day_2,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(`⚠️ Validation Error:\n\n${data.error || 'Failed to save Rule 5 settings'}`);
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert(`✓ Rule 5 Saved Successfully!\n\nMandatory Multi-Day Selection is now ${rule_5_enabled ? 'ENABLED' : 'DISABLED'} for this department.`);
+    if (btn) btn.disabled = false;
+    loadAdminTeachingRules(true);
+    loadAdminRule5Progress(true);
+    loadAdminTeachingDashboard(true);
+  } catch (err) {
+    alert('Error saving Rule 5 settings.');
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function loadAdminRule5Progress(isSilent = false) {
+  const deptId = parseInt(document.getElementById('rules-department-select')?.value || teacherSelectionState.currentDepartmentId || 1);
+  const tbody = document.getElementById('table-rule5-teacher-progress');
+  if (!tbody) return;
+
+  if (!isSilent && tbody.children.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading Rule 5 progress...</td></tr>';
+  }
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/admin/rule5-progress?department_id=${deptId}`));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load progress');
+
+    const statNotStarted = document.getElementById('rule5-stat-not-started');
+    const statDay1 = document.getElementById('rule5-stat-day1');
+    const statBoth = document.getElementById('rule5-stat-both');
+    const statOverrides = document.getElementById('rule5-stat-overrides');
+    const thDay1 = document.getElementById('th-rule5-day1');
+    const thDay2 = document.getElementById('th-rule5-day2');
+
+    const d1 = data.rule_5_day_1 || 'Monday';
+    const d2 = data.rule_5_day_2 || 'Tuesday';
+
+    if (thDay1) thDay1.textContent = `Day 1 (${d1})`;
+    if (thDay2) thDay2.textContent = `Day 2 (${d2})`;
+
+    if (statNotStarted) statNotStarted.textContent = data.stats?.not_started || 0;
+    if (statDay1) statDay1.textContent = data.stats?.day1_completed || 0;
+    if (statBoth) statBoth.textContent = data.stats?.both_completed || 0;
+    if (statOverrides) statOverrides.textContent = data.stats?.overrides || 0;
+
+    const teachers = data.teachers || [];
+    if (teachers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-4">No teachers in this department.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = teachers.map(t => {
+      const isCompleted = t.rule5_status === 'COMPLETED';
+      const isDay1 = t.day1_count > 0;
+      const isDay2 = t.day2_count > 0;
+      const hasOverride = Boolean(t.has_override);
+
+      let statusBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;"><i class="fa-regular fa-clock"></i> Not Started</span>';
+      if (isCompleted) {
+        statusBadge = '<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;"><i class="fa-solid fa-circle-check"></i> Completed</span>';
+      } else if (t.day2_unlocked) {
+        statusBadge = '<span class="badge badge-warning" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a;"><i class="fa-solid fa-lock-open"></i> Day 2 Unlocked (In Progress)</span>';
+      }
+
+      let overrideBtnHtml = '';
+      if (hasOverride) {
+        overrideBtnHtml = `
+          <div style="display:flex; align-items:center; justify-content:flex-end; gap:6px;">
+            <span class="badge" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5;" title="${escapeHtml(t.override_reason || '')}">
+              <i class="fa-solid fa-key"></i> Day 2 Overridden
+            </span>
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="removeRule5EmergencyUnlock(${t.teacher_id}, '${escapeHtml(t.full_name)}')" title="Remove Emergency Override">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        `;
+      } else if (!t.day2_unlocked) {
+        overrideBtnHtml = `
+          <button type="button" class="btn btn-sm btn-outline" style="color:#ea580c; border-color:#fed7aa; background:#fff7ed;" onclick="openRule5EmergencyUnlockModal(${t.teacher_id}, '${escapeHtml(t.full_name)}', ${deptId}, '${d2}')">
+            <i class="fa-solid fa-unlock-keyhole"></i> Emergency Unlock
+          </button>
+        `;
+      } else {
+        overrideBtnHtml = `<span class="text-muted" style="font-size:0.8rem;"><i class="fa-solid fa-check text-success"></i> Unlocked</span>`;
+      }
+
+      return `
+        <tr>
+          <td>
+            <strong style="color:#0f172a;">${escapeHtml(t.full_name)}</strong>
+            <span style="font-size:0.75rem; color:#64748b; display:block;">@${escapeHtml(t.username)}</span>
+          </td>
+          <td>
+            ${isDay1 
+              ? `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;"><i class="fa-solid fa-check"></i> ${t.day1_count} selected</span>`
+              : `<span class="badge" style="background:#f8fafc; color:#94a3b8; border:1px solid #e2e8f0;">0 selections</span>`
+            }
+          </td>
+          <td>
+            ${isDay2
+              ? `<span class="badge badge-success" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;"><i class="fa-solid fa-check"></i> ${t.day2_count} selected</span>`
+              : (t.day2_unlocked 
+                  ? `<span class="badge badge-warning" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a;"><i class="fa-solid fa-lock-open"></i> Unlocked (0)</span>`
+                  : `<span class="badge" style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca;"><i class="fa-solid fa-lock"></i> Locked</span>`
+                )
+            }
+          </td>
+          <td>${statusBadge}</td>
+          <td class="text-right">${overrideBtnHtml}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Error loading Rule 5 progress:', err);
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger p-3">Failed to load progress.</td></tr>';
+  }
+}
+
+function openRule5EmergencyUnlockModal(teacherId, teacherName, deptId, day) {
+  document.getElementById('emergency-unlock-teacher-id').value = teacherId;
+  document.getElementById('emergency-unlock-dept-id').value = deptId;
+  document.getElementById('emergency-unlock-day').value = day;
+  document.getElementById('emergency-unlock-teacher-name').textContent = teacherName;
+  document.getElementById('emergency-unlock-day-label').textContent = day;
+  document.getElementById('emergency-unlock-reason').value = '';
+  openModal('modal-rule5-emergency-unlock');
+}
+
+async function submitRule5EmergencyUnlock(e) {
+  e.preventDefault();
+  const teacherId = parseInt(document.getElementById('emergency-unlock-teacher-id').value);
+  const deptId = parseInt(document.getElementById('emergency-unlock-dept-id').value);
+  const day = document.getElementById('emergency-unlock-day').value;
+  const reason = document.getElementById('emergency-unlock-reason').value.trim();
+
+  if (!reason) {
+    alert('Please enter a reason for the emergency unlock.');
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/admin/rule5-emergency-unlock'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teacher_id: teacherId,
+        department_id: deptId,
+        day,
+        reason,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to apply emergency unlock');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    closeModal('modal-rule5-emergency-unlock');
+    alert('✓ Emergency day unlock granted successfully.');
+    loadAdminRule5Progress(true);
+  } catch (err) {
+    alert('Error connecting to server.');
+  }
+}
+
+async function removeRule5EmergencyUnlock(teacherId, teacherName) {
+  if (!confirm(`Remove emergency override for ${teacherName}?\n\nIf they do not have Day 1 selected, Day 2 will return to locked status.`)) {
+    return;
+  }
+
+  try {
+    const deptId = parseInt(document.getElementById('rules-department-select')?.value || teacherSelectionState.currentDepartmentId || 1);
+    const res = await fetch(apiUrl('/api/teaching/admin/rule5-remove-override'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teacher_id: teacherId,
+        department_id: deptId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to remove override');
+      return;
+    }
+
+    clearClientCache('/api/teaching');
+    alert('Override removed.');
+    loadAdminRule5Progress(true);
+  } catch (err) {
+    alert('Error connecting to server.');
   }
 }
 

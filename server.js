@@ -2107,6 +2107,118 @@ async function getDepartmentRule4Settings(departmentId) {
   return result;
 }
 
+// Helper to retrieve and evaluate Department Rule 5 (Mandatory Multi-Day Teacher Selection)
+async function getDepartmentRule5Settings(departmentId) {
+  const deptId = departmentId ? parseInt(departmentId) : 1;
+  const cacheKey = `dept_rule5_${deptId}`;
+  const cached = getCache(cacheKey, 15000);
+  if (cached) return cached;
+
+  const [settings, dept] = await Promise.all([
+    db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]),
+    db.get(`SELECT id, name, code, active_days FROM departments WHERE id = $1`, [deptId])
+  ]);
+
+  const rule_5_enabled = settings ? Boolean(settings.rule_5_enabled) : false;
+  const required_day_1 = settings && (settings.rule_5_day_1 || settings.required_day_1) ? (settings.rule_5_day_1 || settings.required_day_1).trim() : null;
+  const required_day_2 = settings && (settings.rule_5_day_2 || settings.required_day_2) ? (settings.rule_5_day_2 || settings.required_day_2).trim() : null;
+
+  const result = {
+    department_id: deptId,
+    department_name: dept ? dept.name : 'MEDIA',
+    department_code: dept ? dept.code : 'MEDIA',
+    enabled: rule_5_enabled,
+    rule_5_enabled,
+    day1: required_day_1,
+    day2: required_day_2,
+    required_day_1,
+    required_day_2,
+    active_days: (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday'
+  };
+
+  setCache(cacheKey, result);
+  return result;
+}
+
+// Helper to compute dynamic Rule 5 state for a teacher
+async function getTeacherRule5Status(teacherId, departmentId, preloadedSelections = null) {
+  const deptId = departmentId ? parseInt(departmentId) : 1;
+  const rule5 = await getDepartmentRule5Settings(deptId);
+
+  if (!rule5.rule_5_enabled || !rule5.required_day_1 || !rule5.required_day_2) {
+    return {
+      enabled: false,
+      is_completed: true,
+      day1: rule5.required_day_1,
+      day2: rule5.required_day_2,
+      day1_count: 0,
+      day2_count: 0,
+      day1_completed: true,
+      day2_unlocked: true,
+      day2_completed: true,
+      status: 'DISABLED',
+      message: 'Rule 5 is currently disabled.'
+    };
+  }
+
+  const day1 = rule5.required_day_1;
+  const day2 = rule5.required_day_2;
+
+  let selections = preloadedSelections;
+  if (!selections && teacherId) {
+    selections = await db.all(`SELECT id, day, period, class_name, subject FROM teacher_selections WHERE teacher_id = $1`, [teacherId]);
+  }
+
+  // Check emergency override for day2
+  let override = null;
+  if (teacherId) {
+    override = await db.get(`
+      SELECT * FROM teacher_selection_rule5_overrides 
+      WHERE teacher_id = $1 AND (day = $2 OR day = 'ALL')
+    `, [teacherId, day2]);
+  }
+
+  const hasOverride = Boolean(override);
+
+  const day1Count = (selections || []).filter(s => s.day === day1).length;
+  const day2Count = (selections || []).filter(s => s.day === day2).length;
+
+  const day1Completed = day1Count > 0;
+  const day2Completed = day2Count > 0;
+  // Unlock behavior: Day 2 is unlocked if Day 1 has at least 1 selection, or if Day 2 already has selections, or if admin emergency override exists
+  const day2Unlocked = day1Completed || day2Count > 0 || hasOverride;
+  const bothCompleted = day1Completed && day2Completed;
+
+  let status = 'NOT_STARTED';
+  let message = `Complete your ${day1} selection to unlock ${day2}.`;
+
+  if (bothCompleted) {
+    status = 'COMPLETED';
+    message = 'Required 2-Day Selection Completed ✓. You can continue selecting additional subjects from either day.';
+  } else if (day2Unlocked) {
+    status = 'PARTIALLY_COMPLETED';
+    message = `1 of 2 required days completed. ${day2} is now unlocked.`;
+  }
+
+  return {
+    enabled: true,
+    is_completed: bothCompleted,
+    day1,
+    day2,
+    day1_count: day1Count,
+    day2_count: day2Count,
+    day1_completed: day1Completed,
+    day2_unlocked: day2Unlocked,
+    day2_completed: day2Completed,
+    has_override: hasOverride,
+    override_reason: override ? override.reason : null,
+    override_by: override ? override.unlocked_by_name : null,
+    override_date: override ? override.created_at : null,
+    status,
+    message
+  };
+}
+
 async function getDepartmentSelectionStatus(departmentId) {
   const deptId = departmentId ? parseInt(departmentId) : 1;
   const settings = await db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
@@ -2159,9 +2271,9 @@ async function getDepartmentSelectionStatus(departmentId) {
       isClosed: true,
       isLocked,
       is_locked: isLocked,
-      code: 'SELECTION_CLOSED',
+      code: 'NOT_STARTED',
       reason: 'NOT_STARTED',
-      message: 'Subject selection has not opened yet.',
+      message: `Subject selection will open at ${new Date(settings.start_datetime).toLocaleString()}.`,
       startDatetime: settings.start_datetime,
       endDatetime: settings.end_datetime,
       settings
@@ -2174,9 +2286,9 @@ async function getDepartmentSelectionStatus(departmentId) {
       isClosed: true,
       isLocked,
       is_locked: isLocked,
-      code: 'SELECTION_CLOSED',
+      code: 'EXPIRED',
       reason: 'DEADLINE_PASSED',
-      message: 'Subject selection deadline has passed.',
+      message: 'Subject selection deadline has passed. Selections are closed.',
       startDatetime: settings.start_datetime,
       endDatetime: settings.end_datetime,
       settings
@@ -2204,14 +2316,17 @@ async function getDepartmentSelectionStatus(departmentId) {
     isLocked,
     is_locked: isLocked,
     code: 'SELECTION_OPEN',
-    reason: 'OPEN',
-    message: 'Subject selection is currently open.',
+    reason: 'ACTIVE',
+    message: 'Subject selection is open.',
     startDatetime: settings.start_datetime,
     endDatetime: settings.end_datetime,
     settings
   };
 }
 
+// -------------------------------------------------------------
+// 1. SELECTION SETTINGS (DEPARTMENT-SCOPED)
+// -------------------------------------------------------------
 app.get('/api/teaching/settings', async (req, res) => {
   try {
     let departmentId = req.query.department_id ? parseInt(req.query.department_id) : null;
@@ -2225,10 +2340,13 @@ app.get('/api/teaching/settings', async (req, res) => {
     }
     if (!departmentId) departmentId = 1;
 
-    const status = await getDepartmentSelectionStatus(departmentId);
+    const [status, dept, rule4, rule5] = await Promise.all([
+      getDepartmentSelectionStatus(departmentId),
+      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId]),
+      getDepartmentRule4Settings(departmentId),
+      getDepartmentRule5Settings(departmentId)
+    ]);
     let settings = status.settings;
-    const dept = await db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [departmentId]);
-    const rule4 = await getDepartmentRule4Settings(departmentId);
 
     const activeDays = (settings && settings.active_days) || (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
 
@@ -2243,6 +2361,7 @@ app.get('/api/teaching/settings', async (req, res) => {
       start_datetime: status.startDatetime,
       end_datetime: status.endDatetime,
       rule_4: rule4,
+      rule_5: rule5,
       active_days: activeDays,
       department_name: dept ? dept.name : 'MEDIA',
       department_code: dept ? dept.code : 'MEDIA',
@@ -2253,12 +2372,262 @@ app.get('/api/teaching/settings', async (req, res) => {
   }
 });
 
-// Dedicated GET Endpoint for Selection Rules (Rule 1, 2, 3, 4)
+// Dedicated GET Endpoint for Selection Rules (Rule 1, 2, 3, 4, 5)
 app.get('/api/teaching/rules', async (req, res) => {
   try {
     const departmentId = req.query.department_id ? parseInt(req.query.department_id) : 1;
-    const rule4 = await getDepartmentRule4Settings(departmentId);
-    res.json(rule4);
+    const [rule4, rule5] = await Promise.all([
+      getDepartmentRule4Settings(departmentId),
+      getDepartmentRule5Settings(departmentId)
+    ]);
+    res.json({
+      ...rule4,
+      rule_4: rule4,
+      rule_5: rule5
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dedicated POST Endpoint for Rule 5 Configuration (Mandatory Multi-Day Selection)
+app.post('/api/teaching/admin/rules/rule5', async (req, res) => {
+  const {
+    department_id,
+    rule_5_enabled,
+    required_day_1,
+    required_day_2,
+    rule_5_day_1,
+    rule_5_day_2,
+    admin_id,
+    admin_name
+  } = req.body;
+
+  const deptId = department_id ? parseInt(department_id) : 1;
+  const isEnabled = Boolean(rule_5_enabled);
+
+  try {
+    const dept = await db.get(`SELECT id, name, code, active_days FROM departments WHERE id = $1`, [deptId]);
+    if (!dept) {
+      return res.status(404).json({ error: 'Department not found.' });
+    }
+
+    const rawDay1 = required_day_1 || rule_5_day_1;
+    const rawDay2 = required_day_2 || rule_5_day_2;
+    let day1 = rawDay1 ? rawDay1.trim() : null;
+    let day2 = rawDay2 ? rawDay2.trim() : null;
+
+    if (isEnabled) {
+      if (!day1 || !day2) {
+        return res.status(400).json({ error: 'Please configure both Required Selection Day 1 and Required Selection Day 2.' });
+      }
+
+      if (day1.toLowerCase() === day2.toLowerCase()) {
+        return res.status(400).json({ error: 'Required selection days must be different days.' });
+      }
+
+      const validDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      if (!validDays.includes(day1) || !validDays.includes(day2)) {
+        return res.status(400).json({ error: 'Invalid day of week selected.' });
+      }
+
+      // Verify configured teaching days if active_days exists
+      const activeDaysStr = dept.active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+      const activeDaysList = activeDaysStr.split(',').map(d => d.trim().toLowerCase());
+      if (!activeDaysList.includes(day1.toLowerCase()) || !activeDaysList.includes(day2.toLowerCase())) {
+        return res.status(400).json({ error: `Selected required days must exist in ${dept.name} department's configured teaching days (${activeDaysStr}).` });
+      }
+    }
+
+    const existing = await db.get(`SELECT id FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
+    if (existing) {
+      await db.query(`
+        UPDATE teacher_selection_settings
+        SET rule_5_enabled = $1,
+            rule_5_day_1 = $2,
+            rule_5_day_2 = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+      `, [isEnabled, day1, day2, existing.id]);
+    } else {
+      await db.query(`
+        INSERT INTO teacher_selection_settings (department_id, rule_5_enabled, rule_5_day_1, rule_5_day_2)
+        VALUES ($1, $2, $3, $4)
+      `, [deptId, isEnabled, day1, day2]);
+    }
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Updated Rule 5 for Dept ${dept.name} (Rule 5: ${isEnabled ? 'ON' : 'OFF'}, Day 1: ${day1}, Day 2: ${day2})`, {
+      department_id: deptId,
+      rule_5_enabled: isEnabled,
+      required_day_1: day1,
+      required_day_2: day2
+    }, deptId);
+
+    const updatedRule5 = await getDepartmentRule5Settings(deptId);
+    res.json({ message: 'Rule 5 configuration saved successfully', rule_5: updatedRule5 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Rule 5 Teacher Progress & Emergency Overrides Table
+app.get('/api/teaching/admin/rule5-progress', async (req, res) => {
+  try {
+    const departmentId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const [dept, rule5, teachers, overrides, allSelections] = await Promise.all([
+      db.get(`SELECT id, name, code FROM departments WHERE id = $1`, [departmentId]),
+      getDepartmentRule5Settings(departmentId),
+      db.all(`SELECT id, username, full_name, email, phone, is_active FROM users WHERE role = 'teacher' AND department_id = $1 ORDER BY full_name ASC`, [departmentId]),
+      db.all(`SELECT * FROM teacher_selection_rule5_overrides WHERE department_id = $1`, [departmentId]),
+      db.all(`SELECT teacher_id, day, count(*)::int as count FROM teacher_selections WHERE department_id = $1 GROUP BY teacher_id, day`, [departmentId])
+    ]);
+
+    const overrideMap = new Map();
+    (overrides || []).forEach(o => overrideMap.set(o.teacher_id, o));
+
+    const selectionsByTeacher = new Map();
+    (allSelections || []).forEach(s => {
+      if (!selectionsByTeacher.has(s.teacher_id)) selectionsByTeacher.set(s.teacher_id, {});
+      selectionsByTeacher.get(s.teacher_id)[s.day] = s.count;
+    });
+
+    const day1 = rule5.required_day_1 || 'Monday';
+    const day2 = rule5.required_day_2 || 'Tuesday';
+
+    let countNotStarted = 0;
+    let countDay1Completed = 0;
+    let countBothCompleted = 0;
+    let countEmergencyOverrides = 0;
+
+    const teacherProgress = teachers.map(t => {
+      const tSelections = selectionsByTeacher.get(t.id) || {};
+      const day1Count = tSelections[day1] || 0;
+      const day2Count = tSelections[day2] || 0;
+      const override = overrideMap.get(t.id);
+      const hasOverride = Boolean(override);
+
+      if (hasOverride) countEmergencyOverrides++;
+
+      const day1Completed = day1Count > 0;
+      const day2Completed = day2Count > 0;
+      const day2Unlocked = day1Completed || day2Count > 0 || hasOverride;
+      const bothCompleted = day1Completed && day2Completed;
+
+      let status = 'Not Started';
+      if (bothCompleted) {
+        status = 'Completed';
+        countBothCompleted++;
+      } else if (day1Completed) {
+        status = '1/2 Days';
+        countDay1Completed++;
+      } else if (hasOverride) {
+        status = 'Emergency Override';
+      } else {
+        countNotStarted++;
+      }
+
+      return {
+        teacher_id: t.id,
+        username: t.username,
+        full_name: t.full_name,
+        is_active: t.is_active,
+        day1,
+        day2,
+        day1_count: day1Count,
+        day1_completed: day1Completed,
+        day2_count: day2Count,
+        day2_unlocked: day2Unlocked,
+        day2_completed: day2Completed,
+        has_override: hasOverride,
+        override_reason: override ? override.reason : null,
+        override_by: override ? override.unlocked_by_name : null,
+        override_date: override ? override.created_at : null,
+        status
+      };
+    });
+
+    res.json({
+      department_id: departmentId,
+      department_name: dept ? dept.name : 'MEDIA',
+      rule_5: rule5,
+      rule_5_day_1: day1,
+      rule_5_day_2: day2,
+      stats: {
+        total_teachers: teachers.length,
+        not_started: countNotStarted,
+        day1_completed: countDay1Completed,
+        both_completed: countBothCompleted,
+        emergency_overrides: countEmergencyOverrides,
+        overrides: countEmergencyOverrides
+      },
+      teachers: teacherProgress
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Emergency Unlock Required Day 2 for a specific teacher
+app.post('/api/teaching/admin/rule5-emergency-unlock', async (req, res) => {
+  const { teacher_id, department_id, day, reason, admin_id, admin_name } = req.body;
+  if (!teacher_id) return res.status(400).json({ error: 'Teacher ID is required' });
+  if (!reason || !reason.trim()) return res.status(400).json({ error: 'Reason for emergency unlock is mandatory.' });
+
+  try {
+    const teacher = await db.get(`SELECT id, full_name, department_id FROM users WHERE id = $1 AND role = 'teacher'`, [teacher_id]);
+    if (!teacher) return res.status(404).json({ error: 'Teacher not found' });
+
+    const deptId = department_id ? parseInt(department_id) : (teacher.department_id || 1);
+    const rule5 = await getDepartmentRule5Settings(deptId);
+    const unlockDay = day ? day.trim() : (rule5.required_day_2 || 'Tuesday');
+
+    await db.query(`
+      INSERT INTO teacher_selection_rule5_overrides (department_id, teacher_id, day, unlocked_by, unlocked_by_name, reason)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (teacher_id, day)
+      DO UPDATE SET
+        reason = EXCLUDED.reason,
+        unlocked_by = EXCLUDED.unlocked_by,
+        unlocked_by_name = EXCLUDED.unlocked_by_name,
+        created_at = CURRENT_TIMESTAMP
+    `, [deptId, teacher_id, unlockDay, admin_id || null, admin_name || 'Admin', reason.trim()]);
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Emergency Unlocked ${unlockDay} for Teacher: ${teacher.full_name}`, {
+      teacher_id: teacher.id,
+      teacher_name: teacher.full_name,
+      department_id: deptId,
+      day: unlockDay,
+      reason: reason.trim()
+    }, deptId);
+
+    res.json({
+      success: true,
+      message: `Successfully granted emergency unlock on ${unlockDay} for ${teacher.full_name}.`,
+      teacher_id,
+      day: unlockDay
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Remove Emergency Unlock Override
+app.post('/api/teaching/admin/rule5-remove-override', async (req, res) => {
+  const { teacher_id, admin_id, admin_name } = req.body;
+  if (!teacher_id) return res.status(400).json({ error: 'Teacher ID is required' });
+  try {
+    const teacher = await db.get(`SELECT id, full_name, department_id FROM users WHERE id = $1`, [teacher_id]);
+    await db.query(`DELETE FROM teacher_selection_rule5_overrides WHERE teacher_id = $1`, [teacher_id]);
+
+    invalidateCache('/api/teaching');
+    await logTeacherAction(admin_id, admin_name || 'Admin', `Removed emergency unlock for Teacher: ${teacher ? teacher.full_name : teacher_id}`, {
+      teacher_id,
+      department_id: teacher ? teacher.department_id : null
+    }, teacher ? teacher.department_id : null);
+
+    res.json({ success: true, message: 'Emergency unlock override removed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3569,7 +3938,7 @@ app.get('/api/teaching/slots', async (req, res) => {
 
     const assignedNamesSet = new Set(assignedClasses.map(c => c.name.trim().toLowerCase()));
 
-    const [slots, periodSettings, settings, dept, rule4] = await Promise.all([
+    const [slots, periodSettings, settings, dept, rule4, rule5Status] = await Promise.all([
       db.all(`
         SELECT 
           t.id, 
@@ -3603,7 +3972,8 @@ app.get('/api/teaching/slots', async (req, res) => {
       db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [departmentId]),
       db.get(`SELECT * FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [departmentId]),
       db.get(`SELECT name, code FROM departments WHERE id = $1`, [departmentId]),
-      getDepartmentRule4Settings(departmentId)
+      getDepartmentRule4Settings(departmentId),
+      teacherId ? getTeacherRule5Status(teacherId, departmentId) : getDepartmentRule5Settings(departmentId)
     ]);
 
     // Only return timetable slots for assigned classes
@@ -3621,6 +3991,8 @@ app.get('/api/teaching/slots', async (req, res) => {
         } else {
           status = 'locked_by_other';
         }
+      } else if (rule5Status && (rule5Status.enabled || rule5Status.rule_5_enabled) && s.day === (rule5Status.day2 || rule5Status.required_day_2) && !rule5Status.day2_unlocked) {
+        status = 'day_locked_rule5';
       }
 
       return {
@@ -3652,6 +4024,7 @@ app.get('/api/teaching/slots', async (req, res) => {
       slots: formattedSlots,
       period_settings: periodSettings,
       rule_4: rule4,
+      rule_5: rule5Status,
       settings: {
         ...(settings || {}),
         is_open: true,
@@ -3662,7 +4035,10 @@ app.get('/api/teaching/slots', async (req, res) => {
         group_a_start_class_id: rule4 ? rule4.group_a_start_class_id : null,
         group_a_end_class_id: rule4 ? rule4.group_a_end_class_id : null,
         group_b_start_class_id: rule4 ? rule4.group_b_start_class_id : null,
-        group_b_end_class_id: rule4 ? rule4.group_b_end_class_id : null
+        group_b_end_class_id: rule4 ? rule4.group_b_end_class_id : null,
+        rule_5_enabled: rule5Status ? rule5Status.enabled : false,
+        rule_5_day_1: rule5Status ? rule5Status.day1 : null,
+        rule_5_day_2: rule5Status ? rule5Status.day2 : null
       }
     });
   } catch (err) {
@@ -3804,6 +4180,24 @@ app.post('/api/teaching/select', async (req, res) => {
         if (firstGroup === 'B' && candidateGroup !== 'A') {
           return res.status(400).json({
             error: 'Your first selection is from Group B.\nFor your second selection, please choose a subject from Group A.'
+          });
+        }
+      }
+    }
+
+    // 8.5 RULE 5 — MANDATORY MULTI-DAY TEACHER SELECTION
+    const rule5 = await getDepartmentRule5Settings(teacherDeptId);
+    if (rule5 && rule5.rule_5_enabled && rule5.required_day_1 && rule5.required_day_2) {
+      const day1 = rule5.required_day_1;
+      const day2 = rule5.required_day_2;
+
+      if (slot.day === day2) {
+        const teacherStatus = await getTeacherRule5Status(teacher_id, teacherDeptId, existingSelections);
+        if (!teacherStatus.day2_unlocked) {
+          return res.status(403).json({
+            code: 'RULE5_DAY_LOCKED',
+            error: `Complete at least one selection on ${day1} before selecting ${day2}.`,
+            message: `Complete at least one selection on ${day1} before selecting ${day2}.`
           });
         }
       }
@@ -4024,6 +4418,17 @@ app.post('/api/teaching/submit', async (req, res) => {
 
     if (count < minPeriods) {
       return res.status(400).json({ error: `Please select at least ${minPeriods} periods before submitting (Current: ${count}).` });
+    }
+
+    // Verify Rule 5 requirement if enabled
+    const rule5 = await getDepartmentRule5Settings(deptId);
+    if (rule5 && rule5.rule_5_enabled && rule5.required_day_1 && rule5.required_day_2) {
+      const teacherStatus = await getTeacherRule5Status(teacher_id, deptId);
+      if (!teacherStatus.is_completed && !teacherStatus.has_override) {
+        return res.status(400).json({
+          error: `Rule 5 Requirement Incomplete: You must have at least one valid selection on both ${rule5.required_day_1} and ${rule5.required_day_2} before final submission.`
+        });
+      }
     }
 
     await db.query(`
@@ -4377,7 +4782,7 @@ app.get('/api/teaching/admin/reports/timetable-grid', async (req, res) => {
 });
 
 // Audit Logs (Department-scoped)
-app.get('/api/teaching/admin/audit-logs', async (req, res) => {
+app.get(['/api/teaching/admin/audit-logs', '/api/teaching/admin/logs'], async (req, res) => {
   try {
     const departmentId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
     let sql = `

@@ -1693,6 +1693,184 @@
                   </div>
                 </form>
               </div>
+
+              <!-- RULE 5 CONFIGURATION CARD (MANDATORY MULTI-DAY TEACHER SELECTION) -->
+              <div class="modern-section-card"
+                style="border: 2px solid #fed7aa; background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 4px 14px rgba(249, 115, 22, 0.05); margin-top: 24px;">
+                <div
+                  style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; border-bottom:1.5px solid #f1f5f9; padding-bottom:16px; margin-bottom:18px;">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                      <span class="badge"
+                        style="background:#f97316; color:#fff; font-size:0.75rem; font-weight:800; padding:3px 8px;">RULE 5</span>
+                      <h4 style="margin:0; font-size:1.15rem; color:#7c2d12; font-weight:800;">Mandatory Multi-Day Teacher Selection
+                      </h4>
+                    </div>
+                    <p style="margin:0; font-size:0.85rem; color:#64748b;">
+                      When enabled, each teacher <strong>MUST</strong> have at least one valid selection on both Admin-configured required days. Day 2 is locked initially and unlocks immediately upon saving Day 1 selection. Previous unlocked days remain accessible, and additional selections may be chosen from either required day according to limit rules.
+                    </p>
+                  </div>
+
+                  <!-- ON/OFF TOGGLE SWITCH -->
+                  <div
+                    style="display:flex; align-items:center; gap:10px; background:#f8fafc; padding:6px 14px; border-radius:30px; border:1px solid #e2e8f0;">
+                    <span id="rule5-toggle-label"
+                      style="font-size:0.85rem; font-weight:700; color:#64748b;">Disabled</span>
+                    <label class="switch-toggle" style="margin:0;">
+                      <input type="checkbox" id="rule5-enabled-toggle" onchange="onRule5ToggleChanged(this.checked)">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <form id="form-rule5-settings" onsubmit="saveRule5SettingsForm(event)">
+                  <input type="hidden" id="rule5-dept-id" value="1">
+
+                  <!-- REQUIRED DAYS CONFIGURATION GRID -->
+                  <div id="rule5-days-container"
+                    style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:18px; margin-bottom:20px;">
+                    <!-- REQUIRED DAY 1 CONFIG -->
+                    <div
+                      style="background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border:1.5px solid #bfdbfe; border-radius:14px; padding:16px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                        <h5 style="margin:0; color:#1e40af; font-size:0.95rem; font-weight:800;">
+                          <i class="fa-solid fa-calendar-day" style="color:#3b82f6;"></i> Required Selection Day 1
+                        </h5>
+                        <span class="badge"
+                          style="background:#3b82f6; color:#fff; font-size:0.72rem; font-weight:700;">Initial Open</span>
+                      </div>
+
+                      <div class="form-group" style="margin:0;">
+                        <label style="font-size:0.8rem; font-weight:700; color:#1e3a8a; margin-bottom:4px;">Day of Week</label>
+                        <select id="rule5-required-day-1" class="form-control"
+                          style="background:#fff; font-size:0.88rem; font-weight:600;" onchange="updateRule5LivePreview()" required>
+                          <option value="Sunday">Sunday</option>
+                          <option value="Monday" selected>Monday</option>
+                          <option value="Tuesday">Tuesday</option>
+                          <option value="Wednesday">Wednesday</option>
+                          <option value="Thursday">Thursday</option>
+                          <option value="Friday">Friday</option>
+                          <option value="Saturday">Saturday</option>
+                        </select>
+                      </div>
+                      <small class="text-muted" style="display:block; margin-top:8px; font-size:0.78rem; color:#2563eb; font-weight:600;">
+                        Teacher must make at least 1 selection on this day first.
+                      </small>
+                    </div>
+
+                    <!-- REQUIRED DAY 2 CONFIG -->
+                    <div
+                      style="background:linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border:1.5px solid #fed7aa; border-radius:14px; padding:16px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                        <h5 style="margin:0; color:#9a3412; font-size:0.95rem; font-weight:800;">
+                          <i class="fa-solid fa-lock" style="color:#ea580c;"></i> Required Selection Day 2
+                        </h5>
+                        <span class="badge"
+                          style="background:#ea580c; color:#fff; font-size:0.72rem; font-weight:700;">Progression Lock</span>
+                      </div>
+
+                      <div class="form-group" style="margin:0;">
+                        <label style="font-size:0.8rem; font-weight:700; color:#7c2d12; margin-bottom:4px;">Day of Week</label>
+                        <select id="rule5-required-day-2" class="form-control"
+                          style="background:#fff; font-size:0.88rem; font-weight:600;" onchange="updateRule5LivePreview()" required>
+                          <option value="Sunday">Sunday</option>
+                          <option value="Monday">Monday</option>
+                          <option value="Tuesday" selected>Tuesday</option>
+                          <option value="Wednesday">Wednesday</option>
+                          <option value="Thursday">Thursday</option>
+                          <option value="Friday">Friday</option>
+                          <option value="Saturday">Saturday</option>
+                        </select>
+                      </div>
+                      <small class="text-muted" style="display:block; margin-top:8px; font-size:0.78rem; color:#c2410c; font-weight:600;">
+                        Initially locked for each teacher. Unlocks once Day 1 has a selection.
+                      </small>
+                    </div>
+                  </div>
+
+                  <!-- DYNAMIC RULE 5 PREVIEW BOX -->
+                  <div id="rule5-preview-card"
+                    style="background:#0f172a; color:#f8fafc; border-radius:12px; padding:18px; margin-bottom:20px; box-shadow:0 4px 12px rgba(15, 23, 42, 0.15);">
+                    <div
+                      style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #334155; padding-bottom:8px;">
+                      <div
+                        style="font-size:0.82rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">
+                        <i class="fa-solid fa-wand-magic-sparkles" style="color:#fb923c;"></i> Dynamic Multi-Day Execution Preview
+                      </div>
+                      <span id="preview-rule5-status-badge" class="badge"
+                        style="background:#10b981; color:#fff; font-size:0.75rem;">ENABLED</span>
+                    </div>
+
+                    <div id="rule5-preview-content" style="font-family:monospace; font-size:0.88rem; line-height:1.6;">
+                      <!-- Dynamically rendered preview text -->
+                    </div>
+                  </div>
+
+                  <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="submit" class="btn btn-primary" id="btn-save-rule5" style="background:#ea580c; border-color:#c2410c;">
+                      <i class="fa-solid fa-floppy-disk"></i> Save Rule 5 Configuration
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- RULE 5 TEACHER PROGRESS & EMERGENCY OVERRIDE DASHBOARD -->
+              <div class="modern-section-card" id="rule5-progress-section"
+                style="border: 2px solid #e2e8f0; background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04); margin-top: 24px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; border-bottom:1.5px solid #f1f5f9; padding-bottom:14px;">
+                  <div>
+                    <h4 style="margin:0; font-size:1.1rem; color:#0f172a; font-weight:800;">
+                      <i class="fa-solid fa-users-gear" style="color:#ea580c;"></i> Rule 5 Teacher Multi-Day Progress & Emergency Overrides
+                    </h4>
+                    <p class="text-muted" style="margin:4px 0 0 0; font-size:0.82rem;">
+                      Live Department-level teacher progress tracking, day unlock statuses, and individual emergency unlock controls.
+                    </p>
+                  </div>
+                  <button type="button" class="btn btn-outline btn-sm" onclick="loadAdminRule5Progress(false)">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh Progress
+                  </button>
+                </div>
+
+                <!-- STATS COUNTERS -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:18px;">
+                  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px;">
+                    <span style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Not Started</span>
+                    <h3 style="margin:4px 0 0 0; font-size:1.35rem; color:#64748b; font-weight:800;" id="rule5-stat-not-started">0</h3>
+                  </div>
+                  <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px;">
+                    <span style="font-size:0.75rem; color:#1e40af; font-weight:700; text-transform:uppercase;">Day 1 Completed</span>
+                    <h3 style="margin:4px 0 0 0; font-size:1.35rem; color:#2563eb; font-weight:800;" id="rule5-stat-day1">0</h3>
+                  </div>
+                  <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:12px 16px;">
+                    <span style="font-size:0.75rem; color:#065f46; font-weight:700; text-transform:uppercase;">Both Days Completed</span>
+                    <h3 style="margin:4px 0 0 0; font-size:1.35rem; color:#059669; font-weight:800;" id="rule5-stat-both">0</h3>
+                  </div>
+                  <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:12px 16px;">
+                    <span style="font-size:0.75rem; color:#9a3412; font-weight:700; text-transform:uppercase;">Emergency Overrides</span>
+                    <h3 style="margin:4px 0 0 0; font-size:1.35rem; color:#ea580c; font-weight:800;" id="rule5-stat-overrides">0</h3>
+                  </div>
+                </div>
+
+                <!-- TEACHER PROGRESS TABLE -->
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Teacher Name</th>
+                        <th id="th-rule5-day1">Required Day 1</th>
+                        <th id="th-rule5-day2">Required Day 2</th>
+                        <th>Rule 5 Status</th>
+                        <th class="text-right">Emergency Override</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-rule5-teacher-progress">
+                      <tr>
+                        <td colspan="5" class="text-center text-muted">Loading Rule 5 teacher progress...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -2726,6 +2904,9 @@
                   </button>
                 </div>
               </div>
+
+              <!-- DYNAMIC RULE 5 MULTI-DAY SELECTION GUIDANCE BANNER -->
+              <div id="wizard-rule5-guidance-container" style="display:none; margin-bottom: 16px;"></div>
 
               <!-- DYNAMIC RULE 4 SELECTION GUIDANCE BANNER -->
               <div id="wizard-rule4-guidance-container" style="display:none; margin-bottom: 16px;"></div>
@@ -4464,6 +4645,49 @@
       <div class="modal-footer" style="padding: 12px 20px;">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-teacher-schedule')">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RULE 5 EMERGENCY DAY UNLOCK -->
+  <div id="modal-rule5-emergency-unlock" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 480px;">
+      <div class="modal-header" style="background:#fff7ed; color:#9a3412; border-bottom:1.5px solid #fed7aa;">
+        <h3 style="color:#9a3412; margin:0;"><i class="fa-solid fa-lock-open" style="color:#ea580c;"></i> Emergency Day Unlock (Rule 5)</h3>
+        <button class="btn-close" onclick="closeModal('modal-rule5-emergency-unlock')">&times;</button>
+      </div>
+      <form id="form-rule5-emergency-unlock" onsubmit="submitRule5EmergencyUnlock(event)">
+        <input type="hidden" id="emergency-unlock-teacher-id">
+        <input type="hidden" id="emergency-unlock-dept-id">
+        <input type="hidden" id="emergency-unlock-day">
+
+        <div class="modal-body" style="padding: 20px;">
+          <p style="font-size:0.88rem; color:#475569; margin-top:0;">
+            Grant an immediate administrative override to unlock <strong id="emergency-unlock-day-label" style="color:#ea580c;">Required Day 2</strong> for <strong id="emergency-unlock-teacher-name">Teacher</strong> without requiring prior Day 1 selection.
+          </p>
+
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem; color:#0f172a;">
+              Reason for Emergency Unlock <span class="text-danger">*</span>
+            </label>
+            <textarea id="emergency-unlock-reason" class="form-control" rows="3" 
+              placeholder="e.g. Teacher had technical issue during Day 1 selection / authorized special dispensation" 
+              style="font-size:0.85rem;" required></textarea>
+            <small class="text-muted" style="display:block; margin-top:4px; font-size:0.75rem;">
+              A permanent audit log entry will be recorded with your Admin ID and timestamp.
+            </small>
+          </div>
+
+          <div style="background:#fffbeb; padding:12px; border-radius:8px; border:1px solid #fde68a; font-size:0.8rem; color:#92400e;">
+            <i class="fa-solid fa-shield-halved"></i> <strong>Note:</strong> This override is strictly teacher-specific and does not modify the global Rule 5 multi-day requirement for other teachers.
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-rule5-emergency-unlock')">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:#ea580c; border-color:#c2410c;">
+            <i class="fa-solid fa-key"></i> Confirm Emergency Unlock
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

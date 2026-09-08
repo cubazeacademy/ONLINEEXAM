@@ -5760,3 +5760,32 @@ canvas {
     width: 100%;
   }
 }
+
+/* ==========================================================================
+   RULE 5: MANDATORY MULTI-DAY TEACHER SELECTION STYLES
+   ========================================================================== */
+.rule5-banner-glow {
+  animation: subtlePulse 3s infinite ease-in-out;
+}
+
+@keyframes subtlePulse {
+  0%, 100% {
+    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.08);
+  }
+  50% {
+    box-shadow: 0 4px 20px rgba(234, 88, 12, 0.18);
+  }
+}
+
+.rule5-day-locked-tab {
+  position: relative;
+  opacity: 0.85;
+}
+
+.rule5-day-locked-tab:hover {
+  filter: brightness(0.96);
+}
+
+.rule5-unlocked-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}

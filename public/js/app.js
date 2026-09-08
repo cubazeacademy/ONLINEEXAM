@@ -403,7 +403,9 @@ function switchTab(tabId) {
     'admin-teaching-reports': 'Teaching Allocation Reports & Exports',
     'admin-teaching-logs': 'Subject Selection Audit Logs',
     'admin-observer': 'Observer Duty Management',
-    'teacher-dashboard': 'Teacher Subject Selection Portal',
+    'teacher-dashboard': 'Today\'s Schedule & Duty Overview',
+    'teacher-observer-duties': 'My Observer Duties & Monitoring',
+    'teacher-movement': 'My Daily Movement Roster',
     'teacher-subject-selection': 'Period Selection Wizard',
     'teacher-my-selections': 'My Teaching Period Allocations',
     'teacher-profile': 'Teacher Profile Settings',
@@ -443,6 +445,8 @@ function switchTab(tabId) {
 
   // Teacher Portal Views
   if (tabId === 'teacher-dashboard') loadTeacherDashboard();
+  if (tabId === 'teacher-observer-duties') loadTeacherObserverDutiesView();
+  if (tabId === 'teacher-movement') loadTeacherMovementView();
   if (tabId === 'teacher-subject-selection') initTeacherSelectionWizard();
   if (tabId === 'teacher-my-selections') loadTeacherMySelectionsSlip();
   if (tabId === 'teacher-profile') loadTeacherProfile();
@@ -3085,6 +3089,11 @@ function showCSVError(containerId, message) {
 // 1. TEACHER PORTAL LOGIC & WIZARD
 // -------------------------------------------------------------
 
+let teacherTodayScheduleData = null;
+let teacherLiveTickerInterval = null;
+let teacherLiveTickerLastPeriod = null;
+let teacherMovementSelectedDay = null;
+
 async function loadTeacherDashboard(isSilent = false) {
   if (!currentUser || currentUser.role !== 'teacher') return;
 
@@ -3094,16 +3103,21 @@ async function loadTeacherDashboard(isSilent = false) {
     if (welcomeEl.innerHTML !== welcomeHtml) welcomeEl.innerHTML = welcomeHtml;
   }
 
+  // Initialize live ticking clock
+  initTeacherPeriodLiveTicker();
+
   try {
-    const [slotsData, mySelData] = await Promise.all([
+    const [slotsData, mySelData, todayData] = await Promise.all([
       fetchJsonWithCache(`/api/teaching/slots?teacher_id=${currentUser.id}`, 3000, !isSilent),
-      fetchJsonWithCache(`/api/teaching/my-selections?teacher_id=${currentUser.id}`, 3000, !isSilent)
+      fetchJsonWithCache(`/api/teaching/my-selections?teacher_id=${currentUser.id}`, 3000, !isSilent),
+      fetchJsonWithCache(`/api/teaching/teacher/today-schedule?teacher_id=${currentUser.id}`, 2000, !isSilent)
     ]);
 
     teacherSelectionState.slots = slotsData.slots || [];
     teacherSelectionState.periodSettings = slotsData.period_settings || [];
     teacherSelectionState.settings = slotsData.settings || {};
     teacherSelectionState.mySelections = mySelData.selections || [];
+    teacherTodayScheduleData = todayData || null;
 
     const deptName = slotsData.department_name || currentUser.department_name || 'MEDIA';
     const deptPill = document.getElementById('teacher-dash-dept-name');
@@ -3114,7 +3128,12 @@ async function loadTeacherDashboard(isSilent = false) {
     if (deptDesc && deptDesc.textContent !== `${deptName} Department`) deptDesc.textContent = `${deptName} Department`;
     if (chipDept && chipDept.textContent !== `Department: ${deptName}`) chipDept.textContent = `Department: ${deptName}`;
 
-    // Update Dashboard UI Elements
+    // 1. RENDER TODAY'S SCHEDULE HERO OVERVIEW PANEL (LIVE PERIOD + NEXT PERIOD + COMPACT DUTY BAR)
+    if (todayData) {
+      renderTeacherTodayHeroPanel(todayData);
+    }
+
+    // 2. Update Dashboard Selection UI Elements
     const countDisplay = document.getElementById('teacher-dash-count-display');
     const progressFill = document.getElementById('teacher-dash-progress-fill');
     const statusText = document.getElementById('teacher-dash-status-text');
@@ -3240,6 +3259,443 @@ async function loadTeacherDashboard(isSilent = false) {
   } catch (err) {
     console.error('Error loading teacher dashboard:', err);
   }
+}
+
+// 1.1 RENDER TODAY'S SCHEDULE HERO OVERVIEW PANEL
+function renderTeacherTodayHeroPanel(data) {
+  if (!data) return;
+
+  // Day Badge
+  const dayBadge = document.getElementById('text-live-day-badge');
+  if (dayBadge) {
+    dayBadge.textContent = `${data.today_day || 'Sunday'}, ${data.today_date || ''}`;
+  }
+
+  // Schedule Not Ready Banner
+  const notReadyBanner = document.getElementById('banner-today-schedule-not-ready');
+  if (notReadyBanner) {
+    notReadyBanner.style.display = data.is_ready ? 'none' : 'block';
+  }
+
+  // CARD 1: ONGOING PERIOD
+  const ongoing = data.ongoing_period || {};
+  const ongoingCard = document.getElementById('card-ongoing-period');
+  const badgeOngoingRole = document.getElementById('badge-ongoing-role');
+  const textOngoingNum = document.getElementById('text-ongoing-period-num');
+  const textOngoingTime = document.getElementById('text-ongoing-period-time');
+  const textOngoingTitle = document.getElementById('text-ongoing-duty-title');
+  const textOngoingClass = document.getElementById('text-ongoing-class');
+  const textOngoingSubject = document.getElementById('text-ongoing-subject');
+  const textOngoingTeacher = document.getElementById('text-ongoing-teacher');
+
+  if (ongoingCard) {
+    ongoingCard.classList.remove('is-active-duty', 'is-observer-duty', 'is-leader-duty');
+    if (ongoing.duty_status === 'TEACHING') ongoingCard.classList.add('is-active-duty');
+    else if (ongoing.duty_status === 'OBSERVER' || ongoing.duty_status === 'MANUAL_OBSERVER') ongoingCard.classList.add('is-observer-duty');
+    else if (ongoing.duty_status === 'LEADER_STANDBY') ongoingCard.classList.add('is-leader-duty');
+  }
+
+  if (badgeOngoingRole) {
+    let roleText = 'FREE PERIOD';
+    let roleBadgeCls = 'card-badge card-badge-free';
+
+    if (ongoing.duty_status === 'TEACHING') {
+      roleText = 'TEACHING';
+      roleBadgeCls = 'card-badge card-badge-teaching';
+    } else if (ongoing.duty_status === 'OBSERVER' || ongoing.duty_status === 'MANUAL_OBSERVER') {
+      roleText = ongoing.duty_status === 'MANUAL_OBSERVER' ? 'MANUAL OBSERVER' : 'OBSERVER DUTY';
+      roleBadgeCls = 'card-badge card-badge-observer';
+    } else if (ongoing.duty_status === 'LEADER_STANDBY') {
+      roleText = 'LEADER / STANDBY';
+      roleBadgeCls = 'card-badge card-badge-leader';
+    } else if (ongoing.is_active_school_period === false) {
+      roleText = 'SCHOOL CLOSED';
+      roleBadgeCls = 'card-badge card-badge-free';
+    }
+
+    badgeOngoingRole.textContent = roleText;
+    badgeOngoingRole.className = roleBadgeCls;
+  }
+
+  if (textOngoingNum) {
+    textOngoingNum.textContent = ongoing.period ? `P${ongoing.period}` : '--';
+  }
+  if (textOngoingTime) {
+    textOngoingTime.textContent = ongoing.time_slot || 'Off-Hours';
+  }
+  if (textOngoingTitle) {
+    textOngoingTitle.textContent = ongoing.title || 'No active school period right now';
+  }
+  if (textOngoingClass) {
+    textOngoingClass.textContent = ongoing.class_name || '—';
+  }
+  if (textOngoingSubject) {
+    textOngoingSubject.textContent = ongoing.subject || (ongoing.duty_status === 'OBSERVER' ? 'Observer Monitoring' : '—');
+  }
+  if (textOngoingTeacher) {
+    let tVal = '—';
+    if (ongoing.duty_status === 'TEACHING') tVal = currentUser.full_name + ' (You)';
+    else if (ongoing.duty_status === 'OBSERVER') {
+      tVal = `${ongoing.class_teacher_name || 'Teacher'} (Co-Obs: ${ongoing.co_observer_name || 'None'})`;
+    } else if (ongoing.duty_status === 'LEADER_STANDBY') {
+      tVal = `${currentUser.full_name} (Dept Lead)`;
+    }
+    textOngoingTeacher.textContent = tVal;
+  }
+
+  // CARD 2: NEXT PERIOD
+  const next = data.next_period || {};
+  const badgeNextRole = document.getElementById('badge-next-role');
+  const textNextNum = document.getElementById('text-next-period-num');
+  const textNextTime = document.getElementById('text-next-period-time');
+  const textNextTitle = document.getElementById('text-next-duty-title');
+  const textNextClass = document.getElementById('text-next-class');
+  const textNextSubject = document.getElementById('text-next-subject');
+  const textNextTeacher = document.getElementById('text-next-teacher');
+
+  if (badgeNextRole) {
+    let nextText = 'UPCOMING FREE';
+    let nextCls = 'card-badge card-badge-free';
+    if (next.duty_status === 'TEACHING') {
+      nextText = 'NEXT: TEACHING';
+      nextCls = 'card-badge card-badge-teaching';
+    } else if (next.duty_status === 'OBSERVER' || next.duty_status === 'MANUAL_OBSERVER') {
+      nextText = 'NEXT: OBSERVER';
+      nextCls = 'card-badge card-badge-observer';
+    } else if (next.duty_status === 'LEADER_STANDBY') {
+      nextText = 'NEXT: STANDBY';
+      nextCls = 'card-badge card-badge-leader';
+    } else if (next.is_end_of_day) {
+      nextText = 'DAY COMPLETE';
+      nextCls = 'card-badge card-badge-free';
+    }
+    badgeNextRole.textContent = nextText;
+    badgeNextRole.className = nextCls;
+  }
+
+  if (textNextNum) {
+    textNextNum.textContent = next.period ? `P${next.period}` : '--';
+  }
+  if (textNextTime) {
+    textNextTime.textContent = next.time_slot || 'End of Day';
+  }
+  if (textNextTitle) {
+    textNextTitle.textContent = next.title || (next.is_end_of_day ? 'No more periods scheduled today' : 'Free / Available Period');
+  }
+  if (textNextClass) {
+    textNextClass.textContent = next.class_name || '—';
+  }
+  if (textNextSubject) {
+    textNextSubject.textContent = next.subject || (next.duty_status === 'OBSERVER' ? 'Observer Monitoring' : '—');
+  }
+  if (textNextTeacher) {
+    let tNextVal = '—';
+    if (next.duty_status === 'TEACHING') tNextVal = currentUser.full_name + ' (You)';
+    else if (next.duty_status === 'OBSERVER') {
+      tNextVal = `${next.class_teacher_name || 'Teacher'} (Co-Obs: ${next.co_observer_name || 'None'})`;
+    } else if (next.duty_status === 'LEADER_STANDBY') {
+      tNextVal = `${currentUser.full_name} (Dept Lead)`;
+    }
+    textNextTeacher.textContent = tNextVal;
+  }
+
+  // COMPACT CURRENT DUTY STATUS BAR
+  const compact = data.current_duty_status || {};
+  const textCompactRole = document.getElementById('text-compact-role');
+  const textCompactPeriod = document.getElementById('text-compact-period');
+  const textCompactAssignment = document.getElementById('text-compact-assignment');
+  const textCompactLeader = document.getElementById('text-compact-leader-status');
+
+  if (textCompactRole) {
+    textCompactRole.textContent = compact.role || 'FREE PERIOD';
+    textCompactRole.className = `duty-pill-val ${compact.duty_type === 'TEACHING' ? 'text-success' : compact.duty_type === 'OBSERVER' ? 'text-primary' : compact.duty_type === 'LEADER_STANDBY' ? 'text-warning' : ''}`;
+  }
+  if (textCompactPeriod) {
+    textCompactPeriod.textContent = compact.period_label || 'Off-Hours';
+  }
+  if (textCompactAssignment) {
+    textCompactAssignment.textContent = compact.assignment_summary || 'No active assignment';
+  }
+  if (textCompactLeader) {
+    textCompactLeader.textContent = compact.leader_label || (data.is_leader ? 'Department Leader' : 'Regular Educator');
+  }
+}
+
+// 1.2 TEACHER: MY OBSERVER DUTIES VIEW
+async function loadTeacherObserverDutiesView(isSilent = false) {
+  if (!currentUser || currentUser.role !== 'teacher') return;
+
+  try {
+    const data = await fetchJsonWithCache(`/api/teaching/teacher/today-schedule?teacher_id=${currentUser.id}`, 2000, !isSilent);
+    teacherTodayScheduleData = data;
+
+    // Department Badge
+    const deptBadge = document.getElementById('badge-observer-dept-name');
+    if (deptBadge) {
+      deptBadge.innerHTML = `<i class="fa-solid fa-building"></i> Dept: ${escapeHtml(data.department_name || 'MEDIA')}`;
+    }
+
+    // Schedule Readiness Notice
+    const notReadyBanner = document.getElementById('banner-observer-not-ready');
+    if (notReadyBanner) {
+      notReadyBanner.style.display = data.observer_locked ? 'none' : 'block';
+    }
+
+    // Leader / Standby Banner
+    const leaderBanner = document.getElementById('card-leader-standby-banner');
+    if (leaderBanner) {
+      leaderBanner.style.display = data.is_leader ? 'block' : 'none';
+    }
+
+    // ONGOING OBSERVER DUTY HIGHLIGHT CARD
+    const ongoingObsCard = document.getElementById('card-ongoing-observer-duty');
+    if (ongoingObsCard) {
+      if (data.ongoing_observer_duty) {
+        const o = data.ongoing_observer_duty;
+        document.getElementById('text-hero-obs-period').textContent = `P${o.period}`;
+        document.getElementById('text-hero-obs-time').textContent = o.time_slot || '';
+        document.getElementById('text-hero-obs-class').textContent = o.class_name || '—';
+        document.getElementById('text-hero-obs-teacher').textContent = o.class_teacher_name || '—';
+        document.getElementById('text-hero-obs-subject').textContent = o.subject || '—';
+        document.getElementById('text-hero-obs-co-observer').textContent = o.co_observer_name || 'None (Solo Duty)';
+        ongoingObsCard.style.display = 'block';
+      } else {
+        ongoingObsCard.style.display = 'none';
+      }
+    }
+
+    // NEXT OBSERVER DUTY ALERT
+    const nextObsCard = document.getElementById('card-next-observer-duty');
+    if (nextObsCard) {
+      if (data.next_observer_duty) {
+        const no = data.next_observer_duty;
+        document.getElementById('text-next-obs-main').textContent = `${no.day} Period ${no.period} (${no.class_name})`;
+        document.getElementById('text-next-obs-meta').textContent = `Time: ${no.time_slot || '—'} | Subject: ${no.subject || '—'} | Class Teacher: ${no.class_teacher_name || '—'} | Co-Observer: ${no.co_observer_name || 'None'}`;
+        document.getElementById('badge-next-obs-countdown').textContent = `${no.day} P${no.period}`;
+        nextObsCard.style.display = 'flex';
+      } else {
+        nextObsCard.style.display = 'none';
+      }
+    }
+
+    // TODAY'S OBSERVER DUTIES TABLE
+    const todayDuties = data.today_observer_duties || [];
+    const countTodayBadge = document.getElementById('badge-today-obs-count');
+    const tbodyToday = document.getElementById('table-today-observer-duties');
+
+    if (countTodayBadge) countTodayBadge.textContent = `${todayDuties.length} Duties`;
+    if (tbodyToday) {
+      if (todayDuties.length === 0) {
+        tbodyToday.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:24px;">No observer duties scheduled for today (${escapeHtml(data.today_day)}).</td></tr>`;
+      } else {
+        tbodyToday.innerHTML = todayDuties.map(d => `
+          <tr class="${d.is_ongoing ? 'bg-primary-50 font-weight-bold' : ''}">
+            <td><strong>Period ${d.period}</strong></td>
+            <td><span class="font-mono text-muted">${escapeHtml(d.time_slot || '—')}</span></td>
+            <td><span class="badge" style="background:#f1f5f9; color:#0f172a; font-weight:700;">${escapeHtml(d.class_name)}</span></td>
+            <td><strong>${escapeHtml(d.subject || '—')}</strong></td>
+            <td><span class="obs-badge-teaching"><i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(d.class_teacher_name)}</span></td>
+            <td><span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(d.co_observer_name || 'None')}</span></td>
+            <td>
+              ${d.is_ongoing ?
+                '<span class="badge badge-success"><i class="fa-solid fa-circle-dot"></i> Active Now</span>' :
+                '<span class="badge badge-info">Scheduled</span>'}
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // FULL OBSERVER SCHEDULE (ALL DAYS)
+    const fullDuties = data.full_observer_schedule || [];
+    const countFullBadge = document.getElementById('badge-full-obs-count');
+    const tbodyFull = document.getElementById('table-full-observer-duties');
+
+    if (countFullBadge) countFullBadge.textContent = `${fullDuties.length} Total`;
+    if (tbodyFull) {
+      if (fullDuties.length === 0) {
+        tbodyFull.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:24px;">No observer duties allocated yet.</td></tr>`;
+      } else {
+        tbodyFull.innerHTML = fullDuties.map(fd => `
+          <tr>
+            <td>${getDayBadgeHtml(fd.day)}</td>
+            <td><strong>Period ${fd.period}</strong></td>
+            <td><span class="font-mono text-muted">${escapeHtml(fd.time_slot || '—')}</span></td>
+            <td><span class="badge" style="background:#f1f5f9; color:#0f172a; font-weight:700;">${escapeHtml(fd.class_name)}</span></td>
+            <td><strong>${escapeHtml(fd.subject || '—')}</strong></td>
+            <td><span class="obs-badge-teaching"><i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(fd.class_teacher_name)}</span></td>
+            <td><span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(fd.co_observer_name || 'None')}</span></td>
+            <td>
+              <span class="badge badge-primary">${escapeHtml(fd.duty_type || 'Observer')}</span>
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Error loading teacher observer duties:', err);
+  }
+}
+
+// 1.3 TEACHER: MY MOVEMENT VIEW
+async function loadTeacherMovementView(isSilent = false) {
+  if (!currentUser || currentUser.role !== 'teacher') return;
+
+  try {
+    const data = await fetchJsonWithCache(`/api/teaching/teacher/today-schedule?teacher_id=${currentUser.id}`, 2000, !isSilent);
+    teacherTodayScheduleData = data;
+
+    const activeDays = (data.active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday').split(',').map(d => d.trim());
+    const initialDay = teacherMovementSelectedDay || (activeDays.includes(data.today_day) ? data.today_day : activeDays[0] || 'Sunday');
+
+    // Setup day buttons
+    const tabsContainer = document.getElementById('container-movement-day-tabs');
+    if (tabsContainer) {
+      tabsContainer.innerHTML = activeDays.map(d => `
+        <button type="button" class="btn btn-sm ${d === initialDay ? 'btn-primary' : 'btn-outline'} mvt-day-tab" data-day="${d}" onclick="switchMovementDay('${d}')">
+          ${getDayBadgeHtml(d)}
+        </button>
+      `).join('');
+    }
+
+    switchMovementDay(initialDay);
+  } catch (err) {
+    console.error('Error loading teacher movement view:', err);
+  }
+}
+
+function switchMovementDay(day) {
+  teacherMovementSelectedDay = day;
+
+  // Update day buttons state
+  document.querySelectorAll('.mvt-day-tab').forEach(btn => {
+    const d = btn.getAttribute('data-day');
+    btn.className = `btn btn-sm ${d === day ? 'btn-primary' : 'btn-outline'} mvt-day-tab`;
+  });
+
+  const data = teacherTodayScheduleData;
+  if (!data) return;
+
+  const movementList = data.my_movement || [];
+  const dayMovement = movementList.filter(m => m.day === day);
+
+  // Compute metrics for selected day
+  let teachingCount = 0;
+  let observerCount = 0;
+  let freeCount = 0;
+
+  dayMovement.forEach(m => {
+    if (m.duty_type === 'TEACHING') teachingCount++;
+    else if (m.duty_type === 'OBSERVER' || m.duty_type === 'MANUAL_OBSERVER') observerCount++;
+    else freeCount++;
+  });
+
+  const elTeach = document.getElementById('text-mvt-teaching-count');
+  const elObs = document.getElementById('text-mvt-observer-count');
+  const elFree = document.getElementById('text-mvt-free-count');
+
+  if (elTeach) elTeach.textContent = teachingCount;
+  if (elObs) elObs.textContent = observerCount;
+  if (elFree) elFree.textContent = freeCount;
+
+  // Render period cards
+  const container = document.getElementById('container-movement-timeline');
+  if (!container) return;
+
+  if (dayMovement.length === 0) {
+    container.innerHTML = `<div class="text-center text-muted p-6">No schedule entries found for ${escapeHtml(day)}.</div>`;
+    return;
+  }
+
+  const isTodayDay = (day === data.today_day);
+
+  container.innerHTML = dayMovement.map(p => {
+    const isCurrentActivePeriod = isTodayDay && (p.is_ongoing || (data.ongoing_period && data.ongoing_period.period === p.period));
+    let badgeHtml = '<span class="obs-badge-free"><i class="fa-solid fa-mug-hot"></i> Free Period</span>';
+    let detailMain = 'Available / Preparation Period';
+    let detailSub = 'No teaching class or observer assignment for this period';
+
+    if (p.duty_type === 'TEACHING') {
+      badgeHtml = '<span class="obs-badge-teaching"><i class="fa-solid fa-chalkboard-user"></i> Teaching</span>';
+      detailMain = `Teaching in <strong>${escapeHtml(p.class_name)}</strong> — ${escapeHtml(p.subject)}`;
+      detailSub = `Assigned Educator: ${currentUser.full_name} (You)`;
+    } else if (p.duty_type === 'OBSERVER' || p.duty_type === 'MANUAL_OBSERVER') {
+      badgeHtml = `<span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${p.duty_type === 'MANUAL_OBSERVER' ? 'Manual Observer' : 'Observer Duty'}</span>`;
+      detailMain = `Observer Duty in <strong>${escapeHtml(p.class_name)}</strong> (${escapeHtml(p.subject || 'Monitoring')})`;
+      detailSub = `Class Teacher: ${escapeHtml(p.class_teacher_name || 'Educator')} | Co-Observer: ${escapeHtml(p.co_observer_name || 'None')}`;
+    } else if (p.duty_type === 'LEADER_STANDBY') {
+      badgeHtml = '<span class="obs-badge-leader"><i class="fa-solid fa-crown"></i> Leader Standby</span>';
+      detailMain = 'Department Leader Duty & Operations Standby';
+      detailSub = 'Available in department to support invigilators and oversee monitoring';
+    }
+
+    return `
+      <div class="movement-period-card ${isCurrentActivePeriod ? 'is-current-period' : ''}">
+        <div class="mvt-col-period">
+          <div class="mvt-period-num">P${p.period}</div>
+          <div class="mvt-period-time">${escapeHtml(p.time_slot || '—')}</div>
+        </div>
+        <div class="mvt-col-role">
+          ${badgeHtml}
+        </div>
+        <div class="mvt-col-details">
+          <div class="mvt-detail-main">${detailMain}</div>
+          <div class="mvt-detail-sub">${detailSub}</div>
+        </div>
+        <div class="mvt-col-status">
+          ${isCurrentActivePeriod ?
+            '<span class="badge badge-success"><i class="fa-solid fa-circle-dot"></i> ACTIVE NOW</span>' :
+            (isTodayDay && data.ongoing_period && p.period < data.ongoing_period.period ?
+              '<span class="badge badge-muted">Completed</span>' :
+              '<span class="badge badge-secondary">Scheduled</span>')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 1.4 LIVE TICKING CLOCK & AUTO PERIOD TRANSITION DETECTOR
+function initTeacherPeriodLiveTicker() {
+  if (teacherLiveTickerInterval) return;
+
+  const updateClock = () => {
+    const clockEl = document.getElementById('text-live-clock');
+    if (clockEl) {
+      const now = new Date();
+      clockEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+  };
+
+  updateClock();
+  teacherLiveTickerInterval = setInterval(updateClock, 1000);
+
+  // Periodic check every 30 seconds for period transitions
+  setInterval(async () => {
+    if (!currentUser || currentUser.role !== 'teacher') return;
+    const dashboardView = document.getElementById('view-teacher-dashboard');
+    const observerView = document.getElementById('view-teacher-observer-duties');
+    const movementView = document.getElementById('view-teacher-movement');
+
+    const isAnyTeacherViewActive = (dashboardView && !dashboardView.classList.contains('hidden')) ||
+      (observerView && !observerView.classList.contains('hidden')) ||
+      (movementView && !movementView.classList.contains('hidden'));
+
+    if (isAnyTeacherViewActive) {
+      try {
+        const freshData = await fetchJsonWithCache(`/api/teaching/teacher/today-schedule?teacher_id=${currentUser.id}`, 0, true);
+        if (freshData) {
+          const currentPeriodNum = freshData.ongoing_period ? freshData.ongoing_period.period : null;
+          if (teacherLiveTickerLastPeriod !== currentPeriodNum) {
+            teacherLiveTickerLastPeriod = currentPeriodNum;
+            teacherTodayScheduleData = freshData;
+            if (dashboardView && !dashboardView.classList.contains('hidden')) renderTeacherTodayHeroPanel(freshData);
+            if (observerView && !observerView.classList.contains('hidden')) loadTeacherObserverDutiesView(true);
+            if (movementView && !movementView.classList.contains('hidden')) loadTeacherMovementView(true);
+          }
+        }
+      } catch (e) {}
+    }
+  }, 30000);
 }
 
 // Start Wizard from Navigation or Dashboard button

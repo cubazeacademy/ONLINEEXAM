@@ -4981,16 +4981,751 @@ canvas {
   body * {
     visibility: hidden;
   }
-  #view-admin-observer, #view-admin-observer * {
+  #view-admin-observer, #view-admin-observer *,
+  #view-teacher-movement, #view-teacher-movement *,
+  #view-teacher-observer-duties, #view-teacher-observer-duties *,
+  #view-teacher-my-selections, #view-teacher-my-selections * {
     visibility: visible;
   }
-  #view-admin-observer {
+  #view-admin-observer, #view-teacher-movement, #view-teacher-observer-duties, #view-teacher-my-selections {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
   }
-  .sidebar, .top-header, .btn, button {
+  .sidebar, .top-header, .btn, button, .wizard-footer-bar, .movement-day-bar {
     display: none !important;
+  }
+}
+
+/* ==========================================================================
+   TEACHER PORTAL — TODAY'S SCHEDULE + OBSERVER + MOVEMENT VIEW STYLES
+   ========================================================================== */
+
+/* Hero Panel & Live Indicator */
+.today-schedule-hero-panel {
+  background: linear-gradient(135deg, #0b132b 0%, #1c2541 60%, #1e1b4b 100%);
+  border-radius: 20px;
+  padding: 24px 28px;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 36px -6px rgba(11, 19, 43, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.today-schedule-hero-panel::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.today-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.today-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.today-title-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  color: #38bdf8;
+}
+
+.today-hero-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.today-hero-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 0.84rem;
+  color: #94a3b8;
+}
+
+.today-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.live-clock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.3px;
+  backdrop-filter: blur(8px);
+}
+
+.live-pulsing-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: live-pulse 1.8s infinite;
+}
+
+@keyframes live-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.8);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 7px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+/* Today Cards Grid */
+.today-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.period-status-card {
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.period-status-card:hover {
+  transform: translateY(-2px);
+}
+
+.ongoing-card {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border: 1.5px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.ongoing-card.is-active-duty {
+  border-color: #38bdf8;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+}
+
+.ongoing-card.is-observer-duty {
+  border-color: #a855f7;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.25);
+}
+
+.ongoing-card.is-leader-duty {
+  border-color: #f59e0b;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
+}
+
+.next-card {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.65) 0%, rgba(15, 23, 42, 0.85) 100%);
+  border: 1.5px solid rgba(148, 163, 184, 0.25);
+}
+
+.card-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-status-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #cbd5e1;
+}
+
+.card-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.card-badge-teaching {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.card-badge-observer {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.card-badge-leader {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.card-badge-free {
+  background: rgba(148, 163, 184, 0.18);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.card-period-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.period-id-box {
+  font-size: 2.2rem;
+  font-weight: 900;
+  line-height: 1;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  font-family: monospace;
+}
+
+.next-card .period-id-box {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.period-time-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.period-time-label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f8fafc;
+  font-family: monospace;
+}
+
+.period-time-status {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.card-details-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.detail-label {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-value {
+  color: #ffffff;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* Compact Duty Bar */
+.current-duty-compact-bar {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.duty-pill-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.duty-pill-label {
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.72rem;
+}
+
+.duty-pill-val {
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+/* Leader / Standby Banner */
+.leader-standby-banner {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #fde68a;
+  border-radius: 16px;
+  padding: 20px 24px;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.08);
+}
+
+.leader-standby-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.leader-badge-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #92400e;
+  letter-spacing: 0.3px;
+}
+
+.leader-desc {
+  margin: 0;
+  color: #78350f;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* Ongoing Observer Duty Highlight Card */
+.ongoing-duty-highlight-card {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  border: 2px solid #818cf8;
+  border-radius: 18px;
+  padding: 24px;
+  color: #ffffff;
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+  position: relative;
+}
+
+.duty-highlight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  font-weight: 800;
+  font-size: 0.76rem;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 16px;
+}
+
+.duty-highlight-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.duty-highlight-period {
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #38bdf8;
+  line-height: 1;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 10px 18px;
+  border-radius: 14px;
+}
+
+.duty-time-clock {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: monospace;
+}
+
+.duty-time-label {
+  font-size: 0.82rem;
+  color: #a5b4fc;
+}
+
+.duty-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.duty-grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+.duty-grid-label {
+  font-size: 0.74rem;
+  color: #c7d2fe;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.duty-grid-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* Next Observer Duty Alert Card */
+.next-duty-card {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-left: 5px solid #38bdf8;
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.next-duty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #e0f2fe;
+  color: #0284c7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.next-duty-info {
+  flex: 1;
+}
+
+.next-duty-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #0284c7;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.next-duty-main {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.next-duty-meta {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.next-duty-badge {
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+/* Duty Section Header */
+.duty-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.duty-section-header h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Movement View Styles */
+.movement-day-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 18px;
+  flex-wrap: wrap;
+}
+
+.movement-day-label {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.movement-day-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.movement-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.mvt-summary-card {
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.mvt-teaching-card {
+  background: #ecfdf5;
+  border: 1.5px solid #a7f3d0;
+  color: #065f46;
+}
+
+.mvt-teaching-card .mvt-summary-icon {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.mvt-observer-card {
+  background: #f5f3ff;
+  border: 1.5px solid #ddd6fe;
+  color: #5b21b6;
+}
+
+.mvt-observer-card .mvt-summary-icon {
+  background: #ede9fe;
+  color: #7c3aed;
+}
+
+.mvt-free-card {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  color: #334155;
+}
+
+.mvt-free-card .mvt-summary-icon {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.mvt-summary-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.mvt-summary-data {
+  display: flex;
+  flex-direction: column;
+}
+
+.mvt-summary-num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mvt-summary-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-top: 4px;
+}
+
+/* Movement Timeline Cards */
+.movement-timeline-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.movement-period-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 20px;
+  transition: all 0.2s ease;
+}
+
+.movement-period-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+}
+
+.movement-period-card.is-current-period {
+  border-color: #38bdf8;
+  background: #f0f9ff;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);
+}
+
+.mvt-col-period {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 65px;
+  border-right: 1px solid #e2e8f0;
+  padding-right: 16px;
+}
+
+.mvt-period-num {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1;
+}
+
+.mvt-period-time {
+  font-size: 0.74rem;
+  color: #64748b;
+  font-weight: 600;
+  font-family: monospace;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.mvt-col-role {
+  min-width: 140px;
+}
+
+.mvt-col-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mvt-detail-main {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mvt-detail-sub {
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.mvt-col-status {
+  text-align: right;
+}
+
+/* Responsive Rules */
+@media (max-width: 860px) {
+  .today-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .movement-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .movement-period-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .mvt-col-period {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+    padding-right: 0;
+    padding-bottom: 8px;
+    width: 100%;
   }
 }

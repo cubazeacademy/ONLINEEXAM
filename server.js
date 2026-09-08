@@ -5900,13 +5900,447 @@ app.get('/api/observer/export/:type', async (req, res) => {
   }
 });
 
+// =========================================================================
+// 10. TEACHER PORTAL: TODAY'S SCHEDULE, ONGOING/NEXT PERIOD & OBSERVER VIEW
+// =========================================================================
+
+app.get(['/api/teaching/teacher/today-schedule', '/api/teaching/teacher/duty-overview'], async (req, res) => {
+  try {
+    const teacherId = req.query.teacher_id ? parseInt(req.query.teacher_id) : null;
+    if (!teacherId) {
+      return res.status(400).json({ error: 'Teacher ID is required.' });
+    }
+
+    // 1. Fetch Teacher Info & Department
+    const teacher = await db.get(`SELECT id, full_name, username, phone, email, department_id, is_active FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher not found.' });
+    }
+
+    const deptId = teacher.department_id || 1;
+
+    // 2. Fetch Department Info & Settings in Parallel
+    const [dept, selectionSettings, latestObserverGen, leaderRecord, periodSettings, timetableAll] = await Promise.all([
+      db.get(`SELECT id, name, code, active_days FROM departments WHERE id = $1`, [deptId]),
+      db.get(`SELECT is_locked FROM teacher_selection_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]),
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.get(`SELECT * FROM department_observer_leaders WHERE department_id = $1 AND teacher_id = $2 AND status = 'active'`, [deptId, teacherId]),
+      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [deptId]),
+      db.all(`
+        SELECT t.id, t.day, t.period, t.class_name, t.subject, t.time_slot,
+               ts.teacher_id as assigned_teacher_id, u.full_name as assigned_teacher_name
+        FROM teacher_selection_timetable t
+        LEFT JOIN teacher_selections ts ON ts.timetable_id = t.id
+        LEFT JOIN users u ON ts.teacher_id = u.id
+        WHERE t.department_id = $1 AND t.status = 'active'
+      `, [deptId])
+    ]);
+
+    const isFinalScheduleReady = Boolean(selectionSettings && selectionSettings.is_locked);
+    const isObserverLocked = Boolean(latestObserverGen && latestObserverGen.status === 'locked');
+    const isLeader = Boolean(leaderRecord);
+    const observerVersion = latestObserverGen ? latestObserverGen.generation_version : 1;
+
+    // 3. Fetch Teacher's Teaching Selections
+    const teachingSelections = await db.all(`
+      SELECT ts.id, ts.day, ts.period, ts.class_name, ts.subject, t.time_slot, ts.selected_at
+      FROM teacher_selections ts
+      LEFT JOIN teacher_selection_timetable t ON ts.timetable_id = t.id
+      WHERE ts.teacher_id = $1 AND ts.department_id = $2
+      ORDER BY 
+        CASE ts.day 
+          WHEN 'Sunday' THEN 1 WHEN 'Monday' THEN 2 WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 WHEN 'Thursday' THEN 5 WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 ELSE 8 
+        END, ts.period ASC
+    `, [teacherId, deptId]);
+
+    // 4. Fetch Teacher's Locked Observer Duty Allocations & All Dept Observer Allocations (for co-observer lookup)
+    const observerAllocations = isObserverLocked ? await db.all(`
+      SELECT a.id, a.day, a.period, a.class_name, a.subject, a.observer_slot_number,
+             a.class_teacher_id, u_teacher.full_name as class_teacher_name,
+             t.time_slot
+      FROM observer_duty_allocations a
+      LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+      LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      WHERE a.observer_teacher_id = $1 AND a.department_id = $2 AND a.generation_version = $3 AND a.status = 'locked'
+      ORDER BY 
+        CASE a.day 
+          WHEN 'Sunday' THEN 1 WHEN 'Monday' THEN 2 WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 WHEN 'Thursday' THEN 5 WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 ELSE 8 
+        END, a.period ASC
+    `, [teacherId, deptId, observerVersion]) : [];
+
+    const allDeptObserverAllocations = isObserverLocked ? await db.all(`
+      SELECT a.day, a.period, a.class_name, a.observer_slot_number, a.observer_teacher_id, u_obs.full_name as observer_teacher_name
+      FROM observer_duty_allocations a
+      JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 AND a.status = 'locked'
+    `, [deptId, observerVersion]) : [];
+
+    // Map co-observers: key: `${day}_${period}_${className.toLowerCase()}`
+    const coObserverMap = new Map();
+    (allDeptObserverAllocations || []).forEach(oa => {
+      const k = `${oa.day}_${oa.period}_${oa.class_name.trim().toLowerCase()}`;
+      if (!coObserverMap.has(k)) coObserverMap.set(k, { slot1: null, slot2: null });
+      const entry = coObserverMap.get(k);
+      if (oa.observer_slot_number === 1) entry.slot1 = { id: oa.observer_teacher_id, name: oa.observer_teacher_name };
+      if (oa.observer_slot_number === 2) entry.slot2 = { id: oa.observer_teacher_id, name: oa.observer_teacher_name };
+    });
+
+    function getCoObserverFor(day, period, className, currentTeacherId) {
+      const k = `${day}_${period}_${(className || '').trim().toLowerCase()}`;
+      const entry = coObserverMap.get(k);
+      if (!entry) return null;
+      if (entry.slot1 && entry.slot1.id === currentTeacherId) {
+        return entry.slot2 ? entry.slot2.name : null;
+      }
+      if (entry.slot2 && entry.slot2.id === currentTeacherId) {
+        return entry.slot1 ? entry.slot1.name : null;
+      }
+      return null;
+    }
+
+    // 5. Fetch Manual Leader Assignments if any
+    const manualAssignments = await db.all(`
+      SELECT ma.*, t.time_slot, u_teacher.full_name as class_teacher_name
+      FROM observer_manual_assignments ma
+      LEFT JOIN teacher_selection_timetable t ON (t.department_id = ma.department_id AND t.day = ma.day AND t.period = ma.period AND LOWER(t.class_name) = LOWER(ma.class_name))
+      LEFT JOIN teacher_selections ts ON ts.timetable_id = t.id
+      LEFT JOIN users u_teacher ON ts.teacher_id = u_teacher.id
+      WHERE ma.teacher_id = $1 AND ma.department_id = $2
+    `, [teacherId, deptId]);
+
+    // Map all timetable slots for fast class teacher lookup: key: `${day}_${period}_${className.toLowerCase()}`
+    const classTeacherLookupMap = new Map();
+    (timetableAll || []).forEach(t => {
+      const k = `${t.day}_${t.period}_${t.class_name.trim().toLowerCase()}`;
+      classTeacherLookupMap.set(k, {
+        teacher_id: t.assigned_teacher_id,
+        teacher_name: t.assigned_teacher_name || 'Unassigned',
+        subject: t.subject,
+        time_slot: t.time_slot
+      });
+    });
+
+    // 6. Current Server Time & Day in IST (+05:30)
+    const nowUtc = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const nowIst = new Date(nowUtc.getTime() + istOffset);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDay = dayNames[nowIst.getUTCDay()];
+    const currentHour = nowIst.getUTCHours();
+    const currentMin = nowIst.getUTCMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMin;
+
+    // Helper: Parse period times
+    function getPeriodTimes(periodNum, day) {
+      const ps = (periodSettings || []).find(p => p.day === day && p.period === periodNum);
+      let timeLabel = ps && ps.time_slot ? ps.time_slot : (STANDARD_PERIOD_TIMES[periodNum]?.label || `P${periodNum}`);
+      let startMin = 0, endMin = 0;
+
+      if (STANDARD_PERIOD_TIMES[periodNum]) {
+        const [sh, sm] = STANDARD_PERIOD_TIMES[periodNum].start.split(':').map(Number);
+        const [eh, em] = STANDARD_PERIOD_TIMES[periodNum].end.split(':').map(Number);
+        startMin = sh * 60 + sm;
+        endMin = eh * 60 + em;
+      }
+
+      if (ps && ps.time_slot && ps.time_slot.includes('–')) {
+        const parts = ps.time_slot.split('–').map(s => s.trim());
+        if (parts.length === 2) {
+          function parseTimeString(tStr) {
+            let isPm = tStr.toUpperCase().includes('PM');
+            let isAm = tStr.toUpperCase().includes('AM');
+            let clean = tStr.replace(/AM|PM/gi, '').trim();
+            const [hStr, mStr] = clean.split(':');
+            let h = parseInt(hStr) || 0;
+            let m = parseInt(mStr) || 0;
+            if (isPm && h < 12) h += 12;
+            if (isAm && h === 12) h = 0;
+            if (!isAm && !isPm && h >= 1 && h <= 5) h += 12;
+            return h * 60 + m;
+          }
+          const parsedStart = parseTimeString(parts[0]);
+          const parsedEnd = parseTimeString(parts[1]);
+          if (parsedStart > 0 && parsedEnd > parsedStart) {
+            startMin = parsedStart;
+            endMin = parsedEnd;
+          }
+        }
+      }
+
+      function formatMinutesToAmPm(mins) {
+        let h = Math.floor(mins / 60);
+        let m = mins % 60;
+        let ampm = h >= 12 ? 'PM' : 'AM';
+        let dispH = h % 12;
+        if (dispH === 0) dispH = 12;
+        let dispM = m < 10 ? `0${m}` : `${m}`;
+        return `${dispH}:${dispM} ${ampm}`;
+      }
+
+      const formattedTimeSlot = `${formatMinutesToAmPm(startMin)} – ${formatMinutesToAmPm(endMin)}`;
+
+      return {
+        period: periodNum,
+        time_slot: timeLabel,
+        formatted_time_slot: formattedTimeSlot,
+        start_minutes: startMin,
+        end_minutes: endMin
+      };
+    }
+
+    // 7. Determine 7-Day Complete Movement Schedule & Detect Today's Periods
+    const allMovement = [];
+    const ALL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let detectedOngoingPeriod = null;
+
+    ALL_DAYS.forEach(dayName => {
+      for (let p = 1; p <= 9; p++) {
+        const periodMeta = getPeriodTimes(p, dayName);
+        const isTodayDay = (dayName === currentDay);
+        const isOngoing = isTodayDay && (currentTimeInMinutes >= periodMeta.start_minutes && currentTimeInMinutes < periodMeta.end_minutes);
+
+        // Check duties
+        const manualDuty = manualAssignments.find(ma => ma.day === dayName && ma.period === p);
+        const obsDuty = observerAllocations.find(oa => oa.day === dayName && oa.period === p);
+        const teachDuty = teachingSelections.find(ts => ts.day === dayName && ts.period === p);
+
+        let dutyType = 'FREE';
+        let roleLabel = 'Free Period';
+        let className = null;
+        let subject = null;
+        let classTeacherName = null;
+        let coObserverName = null;
+        let isManual = false;
+        let observerSlot = null;
+
+        if (manualDuty) {
+          dutyType = 'MANUAL_OBSERVER';
+          roleLabel = 'Manually Assigned Observer Duty';
+          className = manualDuty.class_name;
+          subject = manualDuty.subject || 'Observation';
+          classTeacherName = manualDuty.class_teacher_name || classTeacherLookupMap.get(`${dayName}_${p}_${manualDuty.class_name.toLowerCase()}`)?.teacher_name || 'Class Teacher';
+          coObserverName = getCoObserverFor(dayName, p, manualDuty.class_name, teacherId);
+          isManual = true;
+        } else if (obsDuty) {
+          dutyType = 'OBSERVER';
+          roleLabel = 'Observer Duty';
+          className = obsDuty.class_name;
+          subject = obsDuty.subject;
+          classTeacherName = obsDuty.class_teacher_name || classTeacherLookupMap.get(`${dayName}_${p}_${obsDuty.class_name.toLowerCase()}`)?.teacher_name || 'Class Teacher';
+          coObserverName = getCoObserverFor(dayName, p, obsDuty.class_name, teacherId);
+          observerSlot = obsDuty.observer_slot_number;
+        } else if (teachDuty) {
+          dutyType = 'TEACHING';
+          roleLabel = 'Teaching';
+          className = teachDuty.class_name;
+          subject = teachDuty.subject;
+          classTeacherName = teacher.full_name;
+        } else if (isLeader) {
+          dutyType = 'LEADER_STANDBY';
+          roleLabel = 'Leader / Standby';
+        }
+
+        const slotObj = {
+          period: p,
+          day: dayName,
+          time_slot: periodMeta.formatted_time_slot,
+          raw_time_slot: periodMeta.time_slot,
+          start_minutes: periodMeta.start_minutes,
+          end_minutes: periodMeta.end_minutes,
+          is_ongoing: isOngoing,
+          duty_type: dutyType,
+          role: dutyType,
+          role_label: roleLabel,
+          class_name: className,
+          subject,
+          class_teacher_name: classTeacherName,
+          co_observer_name: coObserverName,
+          observer_slot: observerSlot,
+          is_manual: isManual
+        };
+
+        allMovement.push(slotObj);
+
+        if (isTodayDay && isOngoing && !detectedOngoingPeriod) {
+          detectedOngoingPeriod = slotObj;
+        }
+      }
+    });
+
+    const periodsToday = allMovement.filter(m => m.day === currentDay);
+    const ongoingPeriod = detectedOngoingPeriod || null;
+
+    // NEXT PERIOD: STRICTLY the immediately following school period
+    let nextPeriod = null;
+    if (ongoingPeriod && ongoingPeriod.period < 9) {
+      nextPeriod = periodsToday.find(p => p.period === ongoingPeriod.period + 1) || null;
+    } else if (!ongoingPeriod) {
+      if (periodsToday.length > 0 && currentTimeInMinutes < periodsToday[0].start_minutes) {
+        nextPeriod = periodsToday[0];
+      } else {
+        nextPeriod = null;
+      }
+    }
+
+    // ONGOING OBSERVER DUTY (Prominent live card)
+    const ongoingObserverDuty = (ongoingPeriod && (ongoingPeriod.duty_type === 'OBSERVER' || ongoingPeriod.duty_type === 'MANUAL_OBSERVER'))
+      ? {
+          period: ongoingPeriod.period,
+          time_slot: ongoingPeriod.time_slot,
+          class_name: ongoingPeriod.class_name,
+          subject: ongoingPeriod.subject,
+          class_teacher_name: ongoingPeriod.class_teacher_name,
+          co_observer_name: ongoingPeriod.co_observer_name,
+          role_label: 'OBSERVER',
+          is_manual: ongoingPeriod.is_manual
+        }
+      : null;
+
+    // NEXT OBSERVER DUTY (Next upcoming observer slot)
+    let nextObserverDuty = null;
+    const currentPeriodNum = ongoingPeriod ? ongoingPeriod.period : (periodsToday.length > 0 && currentTimeInMinutes < periodsToday[0].start_minutes ? 0 : 9);
+    const upcomingTodayObserverSlots = periodsToday.filter(p => p.period > currentPeriodNum && (p.duty_type === 'OBSERVER' || p.duty_type === 'MANUAL_OBSERVER'));
+
+    if (upcomingTodayObserverSlots.length > 0) {
+      const targetSlot = upcomingTodayObserverSlots[0];
+      const minsRemaining = Math.max(0, targetSlot.start_minutes - currentTimeInMinutes);
+      let startsInLabel = minsRemaining > 60 ? `${Math.floor(minsRemaining / 60)}h ${minsRemaining % 60}m` : `${minsRemaining} mins`;
+
+      nextObserverDuty = {
+        day: targetSlot.day,
+        period: targetSlot.period,
+        time_slot: targetSlot.time_slot,
+        class_name: targetSlot.class_name,
+        subject: targetSlot.subject,
+        class_teacher_name: targetSlot.class_teacher_name,
+        co_observer_name: targetSlot.co_observer_name,
+        starts_in_minutes: minsRemaining,
+        starts_in_label: startsInLabel
+      };
+    } else {
+      // Look for first observer slot on next available day
+      const futureObserverSlots = allMovement.filter(p => p.day !== currentDay && (p.duty_type === 'OBSERVER' || p.duty_type === 'MANUAL_OBSERVER'));
+      if (futureObserverSlots.length > 0) {
+        const targetSlot = futureObserverSlots[0];
+        nextObserverDuty = {
+          day: targetSlot.day,
+          period: targetSlot.period,
+          time_slot: targetSlot.time_slot,
+          class_name: targetSlot.class_name,
+          subject: targetSlot.subject,
+          class_teacher_name: targetSlot.class_teacher_name,
+          co_observer_name: targetSlot.co_observer_name,
+          starts_in_minutes: null,
+          starts_in_label: `${targetSlot.day} P${targetSlot.period}`
+        };
+      }
+    }
+
+    // TODAY'S OBSERVER DUTIES LIST
+    const todayObserverDuties = periodsToday
+      .filter(p => p.duty_type === 'OBSERVER' || p.duty_type === 'MANUAL_OBSERVER')
+      .map(p => {
+        let status = 'UPCOMING';
+        if (p.is_ongoing) status = 'ONGOING';
+        else if (currentTimeInMinutes >= p.end_minutes) status = 'COMPLETED';
+
+        return {
+          id: p.period,
+          period: p.period,
+          time_slot: p.time_slot,
+          class_name: p.class_name,
+          subject: p.subject,
+          class_teacher_name: p.class_teacher_name,
+          co_observer_name: p.co_observer_name,
+          observer_slot: p.observer_slot,
+          is_manual: p.is_manual,
+          is_ongoing: p.is_ongoing,
+          status
+        };
+      });
+
+    // FULL OBSERVER DUTY LIST (All Days)
+    const fullObserverSchedule = observerAllocations.map(oa => {
+      const pMeta = getPeriodTimes(oa.period, oa.day);
+      return {
+        id: oa.id,
+        day: oa.day,
+        period: oa.period,
+        time_slot: pMeta.formatted_time_slot,
+        class_name: oa.class_name,
+        subject: oa.subject,
+        class_teacher_name: oa.class_teacher_name || 'Class Teacher',
+        co_observer_name: getCoObserverFor(oa.day, oa.period, oa.class_name, teacherId),
+        observer_slot: oa.observer_slot_number,
+        duty_type: 'Regular Observer',
+        status: isObserverLocked ? 'Official' : 'Draft'
+      };
+    });
+
+    res.json({
+      success: true,
+      teacher: {
+        id: teacher.id,
+        full_name: teacher.full_name,
+        username: teacher.username,
+        email: teacher.email,
+        phone: teacher.phone,
+        department_id: deptId,
+        department_name: dept ? dept.name : 'MEDIA',
+        is_leader: isLeader,
+        leader_role: isLeader ? 'Department Leader (Standby / Control Person)' : null
+      },
+      department_name: dept ? dept.name : 'MEDIA',
+      active_days: (dept && dept.active_days) ? dept.active_days : 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+      today_day: currentDay,
+      today_date: nowIst.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      server_time: {
+        iso: nowUtc.toISOString(),
+        ist_time: nowIst.toTimeString().split(' ')[0],
+        current_day: currentDay,
+        current_minutes: currentTimeInMinutes,
+        formatted_time: `${currentHour % 12 || 12}:${currentMin < 10 ? '0' : ''}${currentMin} ${currentHour >= 12 ? 'PM' : 'AM'}`
+      },
+      is_ready: isFinalScheduleReady,
+      observer_locked: isObserverLocked,
+      is_leader: isLeader,
+      readiness: {
+        is_final_schedule_ready: isFinalScheduleReady,
+        is_observer_locked: isObserverLocked,
+        schedule_message: isFinalScheduleReady ? 'Official Final Schedule Ready' : 'SCHEDULE NOT AVAILABLE: Your schedule is being finalized by the administrator. Please check back later.',
+        observer_message: isObserverLocked ? 'Official Observer Schedule Active' : 'OBSERVER SCHEDULE NOT AVAILABLE: Your observer duty schedule is being finalized by the administrator.'
+      },
+      ongoing_period: ongoingPeriod,
+      next_period: nextPeriod,
+      current_duty_status: {
+        role: ongoingPeriod ? ongoingPeriod.role_label : (isLeader ? 'Leader Standby' : 'Free Period'),
+        duty_type: ongoingPeriod ? ongoingPeriod.duty_type : (isLeader ? 'LEADER_STANDBY' : 'FREE'),
+        period_label: ongoingPeriod ? `Period ${ongoingPeriod.period} (${ongoingPeriod.time_slot})` : 'No Active Period',
+        assignment_summary: ongoingPeriod ? (ongoingPeriod.duty_type === 'TEACHING' ? `Teaching in ${ongoingPeriod.class_name} (${ongoingPeriod.subject})` : (ongoingPeriod.duty_type === 'OBSERVER' ? `Observer in ${ongoingPeriod.class_name} (Teacher: ${ongoingPeriod.class_teacher_name})` : 'Standby / Support')) : (isLeader ? 'On Standby for Operations' : 'Free / Available'),
+        leader_label: isLeader ? 'Department Leader (Standby)' : 'Regular Educator'
+      },
+      ongoing_observer_duty: ongoingObserverDuty,
+      next_observer_duty: nextObserverDuty,
+      today_observer_duties: todayObserverDuties,
+      full_observer_schedule: fullObserverSchedule,
+      my_movement: allMovement
+    });
+  } catch (err) {
+    console.error('Teacher Today Schedule API Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Fallback to index.html for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`=================================================`);
     console.log(` Online Exam Website Server running on port ${PORT}`);
@@ -5917,4 +6351,5 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
 }
 
 module.exports = app;
+
 

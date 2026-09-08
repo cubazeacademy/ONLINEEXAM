@@ -155,15 +155,21 @@
 
       <!-- TEACHER SIDEBAR NAVIGATION -->
       <nav id="nav-teacher" class="nav-menu hidden">
-        <div class="nav-category">TEACHING PORTAL <i class="fa-solid fa-chevron-down"></i></div>
+        <div class="nav-category">TEACHING &amp; DUTY <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#teacher-dashboard" class="nav-item active" onclick="switchTab('teacher-dashboard')">
-          <i class="fa-solid fa-house"></i> <span>Dashboard</span>
+          <i class="fa-solid fa-gauge-high"></i> <span>Today's Schedule &amp; Duty</span>
+        </a>
+        <a href="#teacher-observer-duties" class="nav-item" onclick="switchTab('teacher-observer-duties')">
+          <i class="fa-solid fa-user-shield"></i> <span>My Observer Duties</span>
+        </a>
+        <a href="#teacher-movement" class="nav-item" onclick="switchTab('teacher-movement')">
+          <i class="fa-solid fa-route"></i> <span>My Movement</span>
         </a>
         <a href="#teacher-subject-selection" class="nav-item" onclick="switchTab('teacher-subject-selection')">
           <i class="fa-solid fa-calendar-check"></i> <span>Subject Selection</span>
         </a>
         <a href="#teacher-my-selections" class="nav-item" onclick="switchTab('teacher-my-selections')">
-          <i class="fa-solid fa-clipboard-check"></i> <span>My Selected Periods</span>
+          <i class="fa-solid fa-receipt"></i> <span>Official Teaching Slip</span>
         </a>
 
         <div class="nav-category">ACCOUNT <i class="fa-solid fa-chevron-down"></i></div>
@@ -2296,6 +2302,129 @@
 
         <!-- TEACHER 1: DASHBOARD -->
         <section id="view-teacher-dashboard" class="tab-view hidden">
+
+          <!-- ========================================================= -->
+          <!-- 1. TODAY'S SCHEDULE OVERVIEW (LIVE ONGOING & NEXT PERIOD)  -->
+          <!-- ========================================================= -->
+          <div class="today-schedule-hero-panel mb-6">
+            <div class="today-schedule-header">
+              <div class="today-schedule-title-group">
+                <div class="live-clock-pill">
+                  <span class="live-pulsing-dot"></span>
+                  <span class="live-tag-text">LIVE</span>
+                  <span class="live-separator">|</span>
+                  <span id="td-live-time-display">--:-- --</span>
+                  <span class="live-day-tag" id="td-live-day-display">TODAY</span>
+                </div>
+                <h3 class="today-schedule-main-heading">Today's Schedule Overview</h3>
+              </div>
+              <div class="today-schedule-header-actions">
+                <button type="button" class="btn btn-sm btn-outline-light" onclick="loadTeacherDashboard(true)" title="Refresh Live Schedule">
+                  <i class="fa-solid fa-arrows-rotate"></i> <span class="hide-mobile">Sync Status</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('teacher-movement')">
+                  <i class="fa-solid fa-route"></i> Full Movement
+                </button>
+              </div>
+            </div>
+
+            <!-- DYNAMIC UNLOCKED / NOT READY ALERT (Graceful Fallback) -->
+            <div id="td-schedule-readiness-banner" class="readiness-banner hidden"></div>
+
+            <!-- ONGOING & NEXT PERIOD CARDS GRID -->
+            <div class="today-cards-grid">
+              
+              <!-- CARD 1: ONGOING PERIOD -->
+              <div class="period-status-card ongoing-card" id="card-ongoing-period">
+                <div class="card-status-header">
+                  <div class="card-status-label">
+                    <span class="status-indicator-dot dot-ongoing"></span>
+                    <span>ONGOING PERIOD</span>
+                  </div>
+                  <span class="card-badge" id="badge-ongoing-role">CALCULATING...</span>
+                </div>
+
+                <div class="card-period-hero">
+                  <div class="period-id-box" id="text-ongoing-period-num">--</div>
+                  <div class="period-time-box">
+                    <div class="period-time-label" id="text-ongoing-period-time">--:-- -- – --:-- --</div>
+                    <div class="period-time-status" id="text-ongoing-duty-title">No class or duty scheduled</div>
+                  </div>
+                </div>
+
+                <div class="card-details-box" id="box-ongoing-details">
+                  <div class="detail-row">
+                    <span class="detail-label"><i class="fa-solid fa-graduation-cap"></i> Class:</span>
+                    <span class="detail-value" id="text-ongoing-class">—</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label"><i class="fa-solid fa-book"></i> Subject:</span>
+                    <span class="detail-value" id="text-ongoing-subject">—</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label"><i class="fa-solid fa-chalkboard-user"></i> Class Teacher:</span>
+                    <span class="detail-value" id="text-ongoing-teacher">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CARD 2: NEXT PERIOD -->
+              <div class="period-status-card next-card" id="card-next-period">
+                <div class="card-status-header">
+                  <div class="card-status-label">
+                    <i class="fa-solid fa-arrow-right-long text-primary"></i>
+                    <span>NEXT PERIOD</span>
+                  </div>
+                  <span class="card-badge" id="badge-next-role">UPCOMING</span>
+                </div>
+
+                <div class="card-period-hero">
+                  <div class="period-id-box" id="text-next-period-num">--</div>
+                  <div class="period-time-box">
+                    <div class="period-time-label" id="text-next-period-time">--:-- -- – --:-- --</div>
+                    <div class="period-time-status" id="text-next-duty-title">Immediately following period</div>
+                  </div>
+                </div>
+
+                <div class="card-details-box" id="box-next-details">
+                  <div class="detail-row">
+                    <span class="detail-label"><i class="fa-solid fa-graduation-cap"></i> Class:</span>
+                    <span class="detail-value" id="text-next-class">—</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label"><i class="fa-solid fa-book"></i> Subject:</span>
+                    <span class="detail-value" id="text-next-subject">—</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label"><i class="fa-solid fa-chalkboard-user"></i> Class Teacher:</span>
+                    <span class="detail-value" id="text-next-teacher">—</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- COMPACT CURRENT DUTY STATUS BAR -->
+            <div class="current-duty-compact-bar" id="bar-current-duty-status">
+              <div class="duty-pill-item">
+                <span class="duty-pill-label">CURRENT ROLE:</span>
+                <span class="duty-pill-val" id="text-compact-role">FREE PERIOD</span>
+              </div>
+              <div class="duty-pill-item">
+                <span class="duty-pill-label">ACTIVE PERIOD:</span>
+                <span class="duty-pill-val text-primary" id="text-compact-period">None</span>
+              </div>
+              <div class="duty-pill-item">
+                <span class="duty-pill-label">ASSIGNMENT:</span>
+                <span class="duty-pill-val" id="text-compact-assignment">—</span>
+              </div>
+              <div class="duty-pill-item">
+                <span class="duty-pill-label">LEADER STATUS:</span>
+                <span class="duty-pill-val text-warning" id="text-compact-leader-status">Regular Educator</span>
+              </div>
+            </div>
+          </div>
+
           <!-- MODERN AURORA HERO BANNER -->
           <div class="teacher-hero-card">
             <div class="teacher-hero-glow-orb teacher-hero-glow-1"></div>
@@ -2725,6 +2854,223 @@
                 style="font-size: 0.84rem; background: #f0fdf4; border-color: #bbf7d0; color: #166534;">
                 <i class="fa-solid fa-circle-check" style="color: #16a34a;"></i> All allocations are locked with
                 real-time zero-clash verification in the central database. Please report to the assigned class on time.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TEACHER: MY OBSERVER DUTIES VIEW -->
+        <section id="view-teacher-observer-duties" class="tab-view hidden">
+          <div class="panel-card mb-6">
+            <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h3 style="color: #fff; margin: 0;"><i class="fa-solid fa-user-shield" style="color: #38bdf8;"></i> My Observer Duties</h3>
+                <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.85rem;">Official duty allocation and monitoring roster assigned by Department Administration</p>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="badge badge-info" id="badge-observer-dept-name"><i class="fa-solid fa-building"></i> Dept: MEDIA</span>
+                <button type="button" class="btn btn-sm btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.3);" onclick="loadTeacherObserverDutiesView()">
+                  <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+
+            <div class="panel-body" style="padding: 24px;">
+              <!-- SCHEDULE NOT READY NOTICE -->
+              <div id="banner-observer-not-ready" class="alert-box alert-warning mb-6" style="display: none;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                  <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.4rem; color: #d97706; margin-top: 2px;"></i>
+                  <div>
+                    <h4 style="margin: 0 0 4px 0; color: #92400e; font-weight: 700;">OBSERVER SCHEDULE NOT AVAILABLE YET</h4>
+                    <p style="margin: 0; color: #b45309; font-size: 0.88rem;">Observer duties for your department have not been generated or locked by administration yet. Once locked, your official duty roster will be displayed here automatically.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- DEPARTMENT LEADER / STANDBY BANNER -->
+              <div id="card-leader-standby-banner" class="leader-standby-banner mb-6" style="display: none;">
+                <div class="leader-standby-header">
+                  <div class="leader-badge-pill">
+                    <i class="fa-solid fa-crown text-warning"></i>
+                    <span>DEPARTMENT LEADER / STANDBY DUTY</span>
+                  </div>
+                  <span class="badge badge-warning" id="badge-leader-dept-tag">Assigned Lead</span>
+                </div>
+                <div class="leader-standby-body">
+                  <p class="leader-desc" id="text-leader-role-desc">
+                    You are designated as the <strong>Department Leader</strong>. You are exempt from automatic regular observer duties and remain on standby during all active periods to oversee operations, assist invigilators, and manage emergency coverage.
+                  </p>
+                </div>
+              </div>
+
+              <!-- ONGOING OBSERVER DUTY HIGHLIGHT CARD -->
+              <div id="card-ongoing-observer-duty" class="ongoing-duty-highlight-card mb-6" style="display: none;">
+                <div class="duty-highlight-badge">
+                  <span class="live-pulsing-dot"></span>
+                  <span>ONGOING OBSERVER DUTY NOW</span>
+                </div>
+                <div class="duty-highlight-content">
+                  <div class="duty-highlight-hero">
+                    <div class="duty-highlight-period" id="text-hero-obs-period">P--</div>
+                    <div class="duty-highlight-time">
+                      <div class="duty-time-clock" id="text-hero-obs-time">--:-- – --:--</div>
+                      <div class="duty-time-label">Active Period Monitoring</div>
+                    </div>
+                  </div>
+                  <div class="duty-highlight-grid">
+                    <div class="duty-grid-item">
+                      <span class="duty-grid-label"><i class="fa-solid fa-graduation-cap"></i> Assigned Class</span>
+                      <span class="duty-grid-value" id="text-hero-obs-class">—</span>
+                    </div>
+                    <div class="duty-grid-item">
+                      <span class="duty-grid-label"><i class="fa-solid fa-chalkboard-user"></i> Class Teacher</span>
+                      <span class="duty-grid-value" id="text-hero-obs-teacher">—</span>
+                    </div>
+                    <div class="duty-grid-item">
+                      <span class="duty-grid-label"><i class="fa-solid fa-book"></i> Subject</span>
+                      <span class="duty-grid-value" id="text-hero-obs-subject">—</span>
+                    </div>
+                    <div class="duty-grid-item">
+                      <span class="duty-grid-label"><i class="fa-solid fa-users"></i> Co-Observer</span>
+                      <span class="duty-grid-value" id="text-hero-obs-co-observer">—</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- NEXT OBSERVER DUTY ALERT -->
+              <div id="card-next-observer-duty" class="next-duty-card mb-6" style="display: none;">
+                <div class="next-duty-icon"><i class="fa-solid fa-user-shield"></i></div>
+                <div class="next-duty-info">
+                  <div class="next-duty-tag">NEXT OBSERVER DUTY</div>
+                  <div class="next-duty-main" id="text-next-obs-main">Period -- (Class --)</div>
+                  <div class="next-duty-meta" id="text-next-obs-meta">Time: --:-- | Class Teacher: -- | Subject: --</div>
+                </div>
+                <div class="next-duty-badge" id="badge-next-obs-countdown">Upcoming</div>
+              </div>
+
+              <!-- TODAY'S OBSERVER DUTIES SECTION -->
+              <div class="duty-section-block mb-6">
+                <div class="duty-section-header">
+                  <h4><i class="fa-solid fa-calendar-day text-primary"></i> Today's Observer Schedule</h4>
+                  <span class="badge badge-info" id="badge-today-obs-count">0 Duties</span>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Period</th>
+                        <th>Time</th>
+                        <th>Class</th>
+                        <th>Subject</th>
+                        <th>Class Teacher</th>
+                        <th>Co-Observer</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-today-observer-duties">
+                      <tr>
+                        <td colspan="7" class="text-center text-muted" style="padding: 24px;">No observer duties scheduled for today.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- FULL OBSERVER SCHEDULE (ALL DAYS) -->
+              <div class="duty-section-block">
+                <div class="duty-section-header">
+                  <h4><i class="fa-solid fa-calendar-week text-primary"></i> Complete Allocated Observer Duties</h4>
+                  <span class="badge badge-secondary" id="badge-full-obs-count">0 Total</span>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Day</th>
+                        <th>Period</th>
+                        <th>Time</th>
+                        <th>Class</th>
+                        <th>Subject</th>
+                        <th>Class Teacher</th>
+                        <th>Co-Observer</th>
+                        <th>Duty Type</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-full-observer-duties">
+                      <tr>
+                        <td colspan="8" class="text-center text-muted" style="padding: 24px;">Loading observer duty roster...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- TEACHER: MY MOVEMENT VIEW -->
+        <section id="view-teacher-movement" class="tab-view hidden">
+          <div class="panel-card mb-6">
+            <div class="panel-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h3 style="color: #fff; margin: 0;"><i class="fa-solid fa-route" style="color: #38bdf8;"></i> My Daily Movement Roster</h3>
+                <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.85rem;">Period-by-period movement sequence across Teaching, Observer Duty, and Standby periods</p>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn btn-sm btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.3);" onclick="window.print()">
+                  <i class="fa-solid fa-print"></i> Print Roster
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.3);" onclick="loadTeacherMovementView()">
+                  <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+
+            <div class="panel-body" style="padding: 24px;">
+              <!-- DAY SELECTOR STRIP -->
+              <div class="movement-day-bar mb-6">
+                <div class="movement-day-label"><i class="fa-solid fa-calendar-day"></i> View Schedule For:</div>
+                <div class="movement-day-tabs" id="container-movement-day-tabs">
+                  <button type="button" class="btn btn-sm btn-primary mvt-day-tab" data-day="Sunday" onclick="switchMovementDay('Sunday')">Sunday</button>
+                  <button type="button" class="btn btn-sm btn-outline mvt-day-tab" data-day="Monday" onclick="switchMovementDay('Monday')">Monday</button>
+                  <button type="button" class="btn btn-sm btn-outline mvt-day-tab" data-day="Tuesday" onclick="switchMovementDay('Tuesday')">Tuesday</button>
+                  <button type="button" class="btn btn-sm btn-outline mvt-day-tab" data-day="Wednesday" onclick="switchMovementDay('Wednesday')">Wednesday</button>
+                  <button type="button" class="btn btn-sm btn-outline mvt-day-tab" data-day="Thursday" onclick="switchMovementDay('Thursday')">Thursday</button>
+                  <button type="button" class="btn btn-sm btn-outline mvt-day-tab" data-day="Friday" onclick="switchMovementDay('Friday')">Friday</button>
+                  <button type="button" class="btn btn-sm btn-outline mvt-day-tab" data-day="Saturday" onclick="switchMovementDay('Saturday')">Saturday</button>
+                </div>
+              </div>
+
+              <!-- MOVEMENT SUMMARY METRICS -->
+              <div class="movement-summary-grid mb-6">
+                <div class="mvt-summary-card mvt-teaching-card">
+                  <div class="mvt-summary-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
+                  <div class="mvt-summary-data">
+                    <span class="mvt-summary-num" id="text-mvt-teaching-count">0</span>
+                    <span class="mvt-summary-title">Teaching Periods</span>
+                  </div>
+                </div>
+                <div class="mvt-summary-card mvt-observer-card">
+                  <div class="mvt-summary-icon"><i class="fa-solid fa-user-shield"></i></div>
+                  <div class="mvt-summary-data">
+                    <span class="mvt-summary-num" id="text-mvt-observer-count">0</span>
+                    <span class="mvt-summary-title">Observer Duties</span>
+                  </div>
+                </div>
+                <div class="mvt-summary-card mvt-free-card">
+                  <div class="mvt-summary-icon"><i class="fa-solid fa-mug-hot"></i></div>
+                  <div class="mvt-summary-data">
+                    <span class="mvt-summary-num" id="text-mvt-free-count">0</span>
+                    <span class="mvt-summary-title">Free / Standby</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PERIOD-BY-PERIOD TIMELINE ROSTER -->
+              <div class="movement-timeline-container" id="container-movement-timeline">
+                <!-- Dynamically populated periods 1 to 9 -->
               </div>
             </div>
           </div>

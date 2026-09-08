@@ -139,6 +139,11 @@
           <i class="fa-solid fa-list-check"></i> <span>Audit Logs</span>
         </a>
 
+        <div class="nav-category">OBSERVER MANAGEMENT <i class="fa-solid fa-chevron-down"></i></div>
+        <a href="#admin-observer" class="nav-item" onclick="switchTab('admin-observer')">
+          <i class="fa-solid fa-user-shield"></i> <span>Observer Duty</span>
+        </a>
+
         <div class="nav-category">SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
           <i class="fa-solid fa-sliders"></i> <span>Exam Settings</span>
@@ -1822,8 +1827,468 @@
         </section>
 
         <!-- ========================================================================= -->
-        <!-- TEACHER SELECTION: TEACHER PORTAL VIEWS                                   -->
+        <!-- ADMIN 8: OBSERVER DUTY MANAGEMENT MODULE                                  -->
         <!-- ========================================================================= -->
+        <section id="view-admin-observer" class="tab-view hidden">
+          <!-- HERO BANNER -->
+          <div class="hero-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                <span class="badge" id="observer-status-badge"
+                  style="background:#6366f1; color:#fff; font-size: 0.8rem; padding: 4px 12px; border-radius: 20px;">
+                  <i class="fa-solid fa-user-shield"></i> Status: <span id="observer-status-badge-text">READY</span>
+                </span>
+                <span id="observer-lock-badge" class="badge" style="background:rgba(255,255,255,0.15); color:#e0e7ff; font-size:0.8rem; padding:4px 12px; border-radius:20px;">
+                  <i class="fa-solid fa-lock-open" id="icon-observer-lock-badge"></i> <span id="text-observer-lock-badge">UNLOCKED</span>
+                </span>
+                <span class="badge" id="observer-sel-status-badge" style="background:#e0e7ff; color:#3730a3; font-size:0.8rem; padding:4px 12px; border-radius:20px;">
+                  <i class="fa-solid fa-clipboard-check"></i> Subject Selection: <span id="text-observer-sel-status">CHECKING...</span>
+                </span>
+              </div>
+              <h2 style="color: #fff; margin: 0 0 6px 0;">Observer Duty Management</h2>
+              <p style="color: #c7d2fe; margin: 0; max-width: 720px;">
+                Automated, fair, department-isolated teacher observer assignment (2 observers per class), standby leader controls, and real-time movement monitoring.
+              </p>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <div style="display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.12); padding:5px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.2);">
+                <label style="color:#e0e7ff; font-size:0.82rem; font-weight:700; margin:0;"><i class="fa-solid fa-building"></i> Dept:</label>
+                <select id="observer-dept-select" class="form-control" style="padding:4px 10px; font-weight:700; font-size:0.85rem; background:#fff; color:#0f172a; border-radius:6px; min-width:140px;" onchange="onObserverDepartmentChanged(this.value)">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" id="btn-observer-generate" onclick="generateObserverSchedule()" style="box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Observers
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="btn-observer-lock-toggle" onclick="toggleObserverLock()" style="color:#fff; border-color:rgba(255,255,255,0.4); background:rgba(255,255,255,0.08);">
+                <i class="fa-solid fa-lock" id="icon-observer-lock-btn"></i> <span id="btn-observer-lock-text">Lock Schedule</span>
+              </button>
+              <button type="button" class="btn btn-sm btn-light" style="background:#fff; color:#1e1b4b; font-weight:600;" onclick="exportObserverCSV('schedule')">
+                <i class="fa-solid fa-file-csv"></i> Export CSV
+              </button>
+              <button type="button" class="btn btn-sm btn-light" style="background:#fff; color:#1e1b4b; font-weight:600;" onclick="printObserverSchedule()">
+                <i class="fa-solid fa-print"></i> Print
+              </button>
+            </div>
+            <i class="fa-solid fa-user-shield hero-watermark"></i>
+          </div>
+
+          <!-- TOP METRICS / SUMMARY CARDS -->
+          <div class="stats-grid mt-6">
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #e0e7ff; color: #4338ca;"><i class="fa-solid fa-graduation-cap"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Assigned Classes</div>
+                <div class="stat-value" id="stat-obs-classes-count">0</div>
+                <div class="stat-meta text-muted" id="stat-obs-classes-meta">In selected department</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #dcfce7; color: #15803d;"><i class="fa-solid fa-user-check"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Class Teachers</div>
+                <div class="stat-value text-success" id="stat-obs-teachers-duty">0</div>
+                <div class="stat-meta text-muted">Teaching current period</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #ede9fe; color: #7c3aed;"><i class="fa-solid fa-user-shield"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Required Observers</div>
+                <div class="stat-value" id="stat-obs-required-count">0</div>
+                <div class="stat-meta text-muted" id="stat-obs-calc-formula">0 classes × 2 = 0 / period</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #fef3c7; color: #b45309;"><i class="fa-solid fa-user-tie"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Department Leader</div>
+                <div class="stat-value text-warning" id="stat-obs-leader-name" style="font-size:1.15rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Not Selected</div>
+                <div class="stat-meta text-muted">Standby / Control Person</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #e0f2fe; color: #0284c7;"><i class="fa-solid fa-users"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Total Department Teachers</div>
+                <div class="stat-value" id="stat-obs-total-teachers">0</div>
+                <div class="stat-meta text-muted" id="stat-obs-active-meta">Active pool</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: #f1f5f9; color: #475569;"><i class="fa-solid fa-couch"></i></div>
+              <div class="stat-content">
+                <div class="stat-label">Standby / Free Teachers</div>
+                <div class="stat-value text-muted" id="stat-obs-free-teachers">0</div>
+                <div class="stat-meta text-muted">Per active period</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TOP CONFIG CARDS: SETTINGS & LEADER -->
+          <div class="grid-2-cols mt-6" style="gap:18px;">
+            <!-- OBSERVER SETTINGS CARD -->
+            <div class="panel-card" style="margin:0;">
+              <div class="panel-header" style="padding:14px 20px;">
+                <h4 style="margin:0; font-size:1rem; color:#1e293b;"><i class="fa-solid fa-sliders" style="color:var(--primary);"></i> Observer Allocation Rules</h4>
+                <span class="badge badge-primary" style="font-size:0.75rem;">Department Config</span>
+              </div>
+              <div class="panel-body" style="padding:18px 20px;">
+                <form id="form-observer-settings" onsubmit="saveObserverSettingsForm(event)">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <label style="font-weight:700; font-size:0.88rem; color:#334155; margin:0;">Observers per Active Class:</label>
+                    <input type="number" id="obs-setting-num-per-class" class="form-control" value="2" min="1" max="4" style="width:75px; text-align:center; font-weight:700;" required>
+                  </div>
+
+                  <div style="background:#f8fafc; padding:12px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin:0; cursor:pointer;">
+                      <input type="checkbox" id="obs-setting-curr-period" checked style="accent-color:var(--primary); width:18px; height:18px;">
+                      <span><strong>Rule 1:</strong> Exclude Current Period Teaching Teachers</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin:0; cursor:pointer;">
+                      <input type="checkbox" id="obs-setting-next-period" checked style="accent-color:var(--primary); width:18px; height:18px;">
+                      <span><strong>Rule 2:</strong> Exclude Next Period Teaching Teachers</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin:0; cursor:pointer;">
+                      <input type="checkbox" id="obs-setting-balanced" checked style="accent-color:var(--primary); width:18px; height:18px;">
+                      <span><strong>Rule 6:</strong> Fair Balanced Duty Allocation (Prioritize lower duties)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin:0; cursor:pointer;">
+                      <input type="checkbox" id="obs-setting-leader-req" checked style="accent-color:var(--primary); width:18px; height:18px;">
+                      <span><strong>Rule 5:</strong> Department Leader on Standby (No auto duties)</span>
+                    </label>
+                  </div>
+
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span id="obs-calc-summary-text" style="font-size:0.8rem; color:#64748b;">Formula: 7 classes × 2 = 14 Observers</span>
+                    <button type="submit" class="btn btn-sm btn-primary" id="btn-save-obs-settings">
+                      <i class="fa-solid fa-floppy-disk"></i> Save Rules
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- DEPARTMENT LEADER CARD -->
+            <div class="panel-card" style="margin:0;">
+              <div class="panel-header" style="padding:14px 20px;">
+                <h4 style="margin:0; font-size:1rem; color:#1e293b;"><i class="fa-solid fa-user-tie" style="color:#f59e0b;"></i> Department Leader (Standby / Control)</h4>
+                <button type="button" class="btn btn-sm btn-outline" id="btn-obs-change-leader-open" onclick="openModalChangeObserverLeader()">
+                  <i class="fa-solid fa-user-pen"></i> Change Leader
+                </button>
+              </div>
+              <div class="panel-body" style="padding:18px 20px;">
+                <div id="observer-leader-profile-box" style="display:flex; gap:14px; align-items:center; background:linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border:1.5px solid #fde68a; border-radius:12px; padding:14px;">
+                  <div style="width:48px; height:48px; border-radius:50%; background:#f59e0b; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:800;" id="obs-leader-avatar">
+                    L
+                  </div>
+                  <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <h4 style="margin:0; font-size:1.05rem; color:#92400e; font-weight:800;" id="obs-leader-display-name">Sinan MP</h4>
+                      <span class="badge" style="background:#f59e0b; color:#fff; font-size:0.72rem; font-weight:700;">LEADER</span>
+                    </div>
+                    <div style="font-size:0.82rem; color:#b45309; margin-top:2px;">
+                      <i class="fa-solid fa-shield-halved"></i> <strong>Status:</strong> STANDBY / CONTROL PERSON (No automatic observer duties)
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:8px;">
+                  <div style="font-size:0.8rem; color:#64748b;">
+                    <i class="fa-solid fa-circle-info"></i> Available for emergency replacements and supervision.
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline" onclick="openModalManualAssignLeader()" style="border-color:#f59e0b; color:#b45309; background:#fff;">
+                    <i class="fa-solid fa-hand-point-right"></i> Manually Assign to Class
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-TABS NAVIGATION BAR -->
+          <div class="panel-card mt-6">
+            <div style="padding: 12px 20px; background: #f8fafc; border-bottom: 1.5px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div class="role-selector" style="margin: 0; max-width: 600px;">
+                <button type="button" class="role-tab active" id="btn-obs-tab-schedule" onclick="switchObserverSubTab('schedule')">
+                  <i class="fa-solid fa-calendar-days"></i> Observer Schedule
+                </button>
+                <button type="button" class="role-tab" id="btn-obs-tab-movement" onclick="switchObserverSubTab('movement')">
+                  <i class="fa-solid fa-person-walking"></i> Observer Movement & Live
+                </button>
+                <button type="button" class="role-tab" id="btn-obs-tab-balance" onclick="switchObserverSubTab('balance')">
+                  <i class="fa-solid fa-scale-balanced"></i> Duty Balance
+                </button>
+                <button type="button" class="role-tab" id="btn-obs-tab-logs" onclick="switchObserverSubTab('logs')">
+                  <i class="fa-solid fa-list-check"></i> Audit Logs
+                </button>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:8px;" id="obs-subtab-actions">
+                <input type="text" id="search-obs-table" class="form-control" placeholder="Search teacher, class..." style="font-size:0.85rem; padding:6px 12px; width:220px;" oninput="debouncedFilterObserverView()">
+              </div>
+            </div>
+
+            <div class="panel-body" style="padding:20px;">
+              <!-- 1. SUB-TAB: OBSERVER SCHEDULE OVERVIEW -->
+              <div id="obs-subview-schedule">
+                <!-- DAY SELECTOR TABS -->
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;" id="obs-schedule-day-tabs">
+                    <!-- Dynamically populated day tabs (Sunday..Saturday) -->
+                  </div>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="exportObserverCSV('schedule')">
+                      <i class="fa-solid fa-file-csv"></i> Export Day CSV
+                    </button>
+                  </div>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th style="white-space:nowrap;">Period & Time</th>
+                        <th>Class</th>
+                        <th>Subject</th>
+                        <th>Class Teacher (Teaching)</th>
+                        <th>Observer 1</th>
+                        <th>Observer 2</th>
+                        <th>Leader (Standby)</th>
+                        <th class="text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-obs-schedule-body">
+                      <tr>
+                        <td colspan="8" class="text-center p-6 text-muted">Loading observer schedule...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 2. SUB-TAB: OBSERVER MOVEMENT & LIVE MONITORING -->
+              <div id="obs-subview-movement" class="hidden">
+                <!-- LIVE REAL-TIME BAR -->
+                <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; border-radius:14px; padding:18px 22px; margin-bottom:20px; box-shadow:0 4px 14px rgba(15, 23, 42, 0.15);">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                        <span class="badge" style="background:#10b981; color:#fff; font-size:0.75rem; padding:4px 10px; font-weight:800;">
+                          <span class="pulse-beacon" style="display:inline-block; width:8px; height:8px; background:#fff; border-radius:50%; margin-right:4px;"></span> LIVE MONITORING
+                        </span>
+                        <h3 style="color:#fff; margin:0; font-size:1.2rem; font-weight:800;" id="live-movement-period-title">CURRENT PERIOD: P4</h3>
+                        <span id="live-movement-time-badge" class="badge" style="background:#334155; color:#94a3b8; font-size:0.85rem;">11:35 – 12:25</span>
+                      </div>
+                      <p style="color:#94a3b8; margin:0; font-size:0.85rem;">
+                        Real-time location and duty status of every department educator for the selected period.
+                      </p>
+                    </div>
+
+                    <!-- PERIOD SWITCHER PILL -->
+                    <div style="display:flex; align-items:center; gap:8px; background:#1e293b; padding:6px 12px; border-radius:10px; border:1px solid #334155;">
+                      <label style="color:#94a3b8; font-size:0.82rem; font-weight:700; margin:0;">Period:</label>
+                      <select id="select-live-movement-period" class="form-control" style="background:#0f172a; color:#fff; border-color:#475569; font-weight:700; padding:4px 10px; font-size:0.85rem;" onchange="fetchLiveObserverMovement()">
+                        <option value="1">P1 (07:30–08:15)</option>
+                        <option value="2">P2 (08:15–09:00)</option>
+                        <option value="3">P3 (09:00–09:45)</option>
+                        <option value="4" selected>P4 (10:30–11:15)</option>
+                        <option value="5">P5 (11:25–12:10)</option>
+                        <option value="6">P6 (12:10–12:55)</option>
+                        <option value="7">P7 (14:00–14:40)</option>
+                        <option value="8">P8 (14:40–15:20)</option>
+                        <option value="9">P9 (15:30–16:10)</option>
+                      </select>
+                      <button type="button" class="btn btn-sm btn-primary" onclick="resetLiveMovementToCurrentTime()" title="Sync to live server clock">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4 CATEGORY LIVE COLUMNS -->
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:24px;">
+                  <!-- TEACHING -->
+                  <div class="panel-card" style="margin:0; border-top:4px solid #10b981; background:#f0fdf4;">
+                    <div class="panel-header" style="padding:12px 16px; background:#f0fdf4; border-bottom:1px solid #bbf7d0;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="badge badge-success"><i class="fa-solid fa-chalkboard-user"></i> TEACHING</span>
+                        <h4 style="margin:0; font-size:0.95rem; color:#14532d;" id="live-count-teaching">(0)</h4>
+                      </div>
+                    </div>
+                    <div class="panel-body" style="padding:14px; max-height:360px; overflow-y:auto;" id="live-list-teaching">
+                      <!-- Dynamically rendered list -->
+                    </div>
+                  </div>
+
+                  <!-- OBSERVER -->
+                  <div class="panel-card" style="margin:0; border-top:4px solid #4f46e5; background:#eef2ff;">
+                    <div class="panel-header" style="padding:12px 16px; background:#eef2ff; border-bottom:1px solid #c7d2fe;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="badge badge-primary"><i class="fa-solid fa-user-shield"></i> OBSERVER</span>
+                        <h4 style="margin:0; font-size:0.95rem; color:#312e81;" id="live-count-observers">(0)</h4>
+                      </div>
+                    </div>
+                    <div class="panel-body" style="padding:14px; max-height:360px; overflow-y:auto;" id="live-list-observers">
+                      <!-- Dynamically rendered list -->
+                    </div>
+                  </div>
+
+                  <!-- LEADER / STANDBY -->
+                  <div class="panel-card" style="margin:0; border-top:4px solid #f59e0b; background:#fffbeb;">
+                    <div class="panel-header" style="padding:12px 16px; background:#fffbeb; border-bottom:1px solid #fde68a;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="badge badge-warning"><i class="fa-solid fa-user-tie"></i> LEADER / STANDBY</span>
+                        <h4 style="margin:0; font-size:0.95rem; color:#78350f;" id="live-count-leader">(1)</h4>
+                      </div>
+                    </div>
+                    <div class="panel-body" style="padding:14px; max-height:360px; overflow-y:auto;" id="live-list-leader">
+                      <!-- Dynamically rendered leader status -->
+                    </div>
+                  </div>
+
+                  <!-- FREE -->
+                  <div class="panel-card" style="margin:0; border-top:4px solid #64748b; background:#f8fafc;">
+                    <div class="panel-header" style="padding:12px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="badge" style="background:#64748b; color:#fff;"><i class="fa-solid fa-couch"></i> FREE / STANDBY</span>
+                        <h4 style="margin:0; font-size:0.95rem; color:#334155;" id="live-count-free">(0)</h4>
+                      </div>
+                    </div>
+                    <div class="panel-body" style="padding:14px; max-height:360px; overflow-y:auto;" id="live-list-free">
+                      <!-- Dynamically rendered free teachers -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CLASS SNAPSHOT MATRIX FOR CURRENT PERIOD -->
+                <div class="panel-card" style="margin-bottom:20px;">
+                  <div class="panel-header" style="padding:12px 20px;">
+                    <h4 style="margin:0; font-size:0.95rem; color:#1e293b;"><i class="fa-solid fa-layer-group" style="color:var(--primary);"></i> Class Snapshot: Who is in which class during this period?</h4>
+                  </div>
+                  <div class="panel-body table-responsive p-0">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Class</th>
+                          <th>Subject</th>
+                          <th>Class Teacher</th>
+                          <th>Observer 1</th>
+                          <th>Observer 2</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="table-live-class-snapshot-body">
+                        <!-- Rendered dynamically -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- TEACHER MOVEMENT TRACKER & CLASS MOVEMENT TRACKER TOOLS -->
+                <div class="grid-2-cols" style="gap:18px;">
+                  <!-- SEARCH TEACHER MOVEMENT -->
+                  <div class="panel-card" style="margin:0;">
+                    <div class="panel-header" style="padding:12px 18px;">
+                      <h4 style="margin:0; font-size:0.95rem; color:#1e293b;"><i class="fa-solid fa-person-walking" style="color:#3b82f6;"></i> Teacher Movement Tracker</h4>
+                    </div>
+                    <div class="panel-body" style="padding:18px;">
+                      <div class="form-group mb-3">
+                        <label style="font-weight:700; font-size:0.82rem;">Select Teacher to Track:</label>
+                        <select id="select-track-teacher" class="form-control" onchange="trackSingleTeacherMovement(this.value)">
+                          <option value="">-- Choose a teacher --</option>
+                        </select>
+                      </div>
+                      <div id="container-track-teacher-result" style="background:#f8fafc; padding:14px; border-radius:10px; border:1px solid #e2e8f0; font-size:0.85rem;">
+                        <span class="text-muted">Select a teacher above to inspect their complete movement & duties.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- SEARCH CLASS MOVEMENT -->
+                  <div class="panel-card" style="margin:0;">
+                    <div class="panel-header" style="padding:12px 18px;">
+                      <h4 style="margin:0; font-size:0.95rem; color:#1e293b;"><i class="fa-solid fa-graduation-cap" style="color:#8b5cf6;"></i> Class Movement Tracker</h4>
+                    </div>
+                    <div class="panel-body" style="padding:18px;">
+                      <div class="form-group mb-3">
+                        <label style="font-weight:700; font-size:0.82rem;">Select Class to Track:</label>
+                        <select id="select-track-class" class="form-control" onchange="trackSingleClassMovement(this.value)">
+                          <option value="">-- Choose a class --</option>
+                        </select>
+                      </div>
+                      <div id="container-track-class-result" style="background:#f8fafc; padding:14px; border-radius:10px; border:1px solid #e2e8f0; font-size:0.85rem;">
+                        <span class="text-muted">Select a class above to see the complete day-wise movement of observers.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. SUB-TAB: TEACHER-WISE DUTY BALANCE -->
+              <div id="obs-subview-balance" class="hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                  <div>
+                    <h4 style="margin:0; font-size:1rem; color:#1e293b;"><i class="fa-solid fa-scale-balanced" style="color:var(--primary);"></i> Teacher Duty Balance & Workload</h4>
+                    <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Distribution of Teaching and Observer duties across department faculty.</p>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="exportObserverCSV('balance')">
+                      <i class="fa-solid fa-file-csv"></i> Export Balance CSV
+                    </button>
+                  </div>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Teacher Name</th>
+                        <th>Phone / Username</th>
+                        <th>Role</th>
+                        <th style="text-align:center;">Teaching Duties</th>
+                        <th style="text-align:center;">Observer Duties</th>
+                        <th style="text-align:center;">Total Duties</th>
+                        <th>Duty Balance</th>
+                        <th class="text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-obs-balance-body">
+                      <tr>
+                        <td colspan="8" class="text-center p-6 text-muted">Loading duty balance...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 4. SUB-TAB: AUDIT LOGS -->
+              <div id="obs-subview-logs" class="hidden">
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>User</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-obs-logs-body">
+                      <tr>
+                        <td colspan="4" class="text-center p-6 text-muted">Loading observer audit logs...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <!-- ========================================================================= -->
         <!-- TEACHER SELECTION: TEACHER PORTAL VIEWS                                   -->
@@ -3466,6 +3931,192 @@
         </button>
         <button type="button" class="btn btn-outline"
           onclick="closeModal('modal-view-teacher-allocations')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- OBSERVER DUTY MANAGEMENT MODALS                                           -->
+  <!-- ========================================================================= -->
+
+  <!-- MODAL: OBSERVER GENERATION PREVIEW & CONFLICT VALIDATION -->
+  <div id="modal-observer-preview" class="modal-overlay hidden">
+    <div class="modal-content max-w-2xl" style="max-width: 780px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #fff;">
+        <h3 style="color: #fff; margin:0;"><i class="fa-solid fa-wand-magic-sparkles" style="color: #38bdf8;"></i> Observer Schedule Generation Preview</h3>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-observer-preview')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 22px 24px;">
+        <!-- STATS / SUMMARY BAR -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:18px;">
+          <div style="background:#f8fafc; padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0; text-align:center;">
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Classes</div>
+            <div style="font-size:1.25rem; font-weight:800; color:#0f172a;" id="prev-obs-total-classes">0</div>
+          </div>
+          <div style="background:#eef2ff; padding:10px 14px; border-radius:10px; border:1px solid #c7d2fe; text-align:center;">
+            <div style="font-size:0.75rem; color:#4338ca; font-weight:700; text-transform:uppercase;">Required</div>
+            <div style="font-size:1.25rem; font-weight:800; color:#312e81;" id="prev-obs-required">0</div>
+          </div>
+          <div style="background:#ecfdf5; padding:10px 14px; border-radius:10px; border:1px solid #a7f3d0; text-align:center;">
+            <div style="font-size:0.75rem; color:#065f46; font-weight:700; text-transform:uppercase;">Assigned</div>
+            <div style="font-size:1.25rem; font-weight:800; color:#047857;" id="prev-obs-assigned">0</div>
+          </div>
+          <div style="background:#fef2f2; padding:10px 14px; border-radius:10px; border:1px solid #fecaca; text-align:center;" id="prev-obs-unassigned-box">
+            <div style="font-size:0.75rem; color:#991b1b; font-weight:700; text-transform:uppercase;">Unassigned</div>
+            <div style="font-size:1.25rem; font-weight:800; color:#b91c1c;" id="prev-obs-unassigned">0</div>
+          </div>
+        </div>
+
+        <!-- 7 RULE VALIDATION CHECKLIST -->
+        <div style="background:#f8fafc; padding:14px 18px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:18px;">
+          <h5 style="margin:0 0 10px 0; font-size:0.85rem; text-transform:uppercase; color:#475569; letter-spacing:0.5px;">
+            <i class="fa-solid fa-list-check" style="color:var(--primary);"></i> Strict Eligibility Rules & Validation Checks
+          </h5>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:6px; font-size:0.82rem;" id="prev-obs-checklist-container">
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 1: No current-period teaching teacher assigned</div>
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 2: No next-period teaching teacher assigned</div>
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 3: No class teacher observing own class</div>
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 4: Max 1 observer duty per teacher per period</div>
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 5: Department Leader excluded (Standby)</div>
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 6: 100% Department Isolation verified</div>
+            <div style="display:flex; align-items:center; gap:8px; color:#15803d;"><i class="fa-solid fa-circle-check"></i> Rule 7: Active teachers only</div>
+          </div>
+        </div>
+
+        <!-- INSUFFICIENT OBSERVER CONFLICT ALERT (IF ANY) -->
+        <div id="prev-obs-conflicts-box" class="alert-box alert-error hidden" style="margin-bottom:18px;">
+          <!-- Dynamically filled with reason breakdown if insufficient teachers -->
+        </div>
+
+        <!-- GENERATED PERIOD-BY-PERIOD PREVIEW TABLE -->
+        <h5 style="margin:0 0 8px 0; font-size:0.88rem; color:#1e293b; font-weight:700;">
+          <i class="fa-solid fa-table-cells" style="color:var(--primary);"></i> Generated Allocations Preview (Sample Slots)
+        </h5>
+        <div class="table-responsive" style="max-height: 240px; border:1px solid #e2e8f0; border-radius:10px;">
+          <table class="data-table" style="font-size:0.82rem;">
+            <thead>
+              <tr>
+                <th>Day & Period</th>
+                <th>Class</th>
+                <th>Subject</th>
+                <th>Class Teacher</th>
+                <th>Observer 1</th>
+                <th>Observer 2</th>
+              </tr>
+            </thead>
+            <tbody id="table-prev-obs-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 14px 24px; display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-preview')">Close Preview</button>
+        <div style="display:flex; gap:10px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-preview'); switchObserverSubTab('schedule');">
+            <i class="fa-solid fa-eye"></i> View Full Draft Schedule
+          </button>
+          <button type="button" class="btn btn-success" id="btn-modal-preview-lock" onclick="confirmLockFromPreview()">
+            <i class="fa-solid fa-lock"></i> Lock Observer Schedule Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CHANGE DEPARTMENT LEADER -->
+  <div id="modal-observer-change-leader" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 460px;">
+      <div class="modal-header" style="background:#fef3c7; color:#78350f; border-bottom:1.5px solid #fde68a;">
+        <h3 style="color:#78350f; margin:0;"><i class="fa-solid fa-user-tie" style="color:#f59e0b;"></i> Select Department Leader</h3>
+        <button class="btn-close" onclick="closeModal('modal-observer-change-leader')">&times;</button>
+      </div>
+      <form id="form-observer-change-leader" onsubmit="saveObserverLeaderForm(event)">
+        <div class="modal-body" style="padding: 20px;">
+          <p style="font-size:0.85rem; color:#64748b; margin-top:0;">
+            Select ONE teacher from the department as the <strong>Department Leader</strong>. The leader will act as a Standby / Control Person and will be excluded from automatic observer duties.
+          </p>
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-chalkboard-user"></i> Department Teacher <span class="text-danger">*</span></label>
+            <select id="select-obs-leader-teacher" class="form-control" style="font-weight:700; padding:8px 12px;" required>
+              <!-- Dynamically populated with active teachers in this department -->
+            </select>
+          </div>
+          <div style="background:#fffbeb; padding:12px; border-radius:8px; border:1px solid #fde68a; font-size:0.8rem; color:#92400e;">
+            <i class="fa-solid fa-triangle-exclamation"></i> <strong>Note:</strong> If the Observer Schedule is locked, you must unlock it before changing the Leader.
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-change-leader')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Assign Leader</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: MANUAL LEADER ASSIGNMENT TO A CLASS -->
+  <div id="modal-observer-manual-assign" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 style="margin:0;"><i class="fa-solid fa-hand-point-right" style="color:var(--primary);"></i> Emergency Leader Assignment</h3>
+        <button class="btn-close" onclick="closeModal('modal-observer-manual-assign')">&times;</button>
+      </div>
+      <form id="form-observer-manual-assign" onsubmit="saveObserverManualLeaderAssignForm(event)">
+        <div class="modal-body" style="padding: 20px;">
+          <p style="font-size:0.85rem; color:#64748b; margin-top:0;">
+            Manually dispatch the Department Leader (<strong id="modal-manual-leader-name">Leader</strong>) to a specific class slot for emergency observation or inspection.
+          </p>
+          <div class="form-row">
+            <div class="form-group col-6">
+              <label style="font-weight:700; font-size:0.82rem;">Day <span class="text-danger">*</span></label>
+              <select id="manual-assign-day" class="form-control" required>
+                <option value="Sunday">Sunday</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+              </select>
+            </div>
+            <div class="form-group col-6">
+              <label style="font-weight:700; font-size:0.82rem;">Period <span class="text-danger">*</span></label>
+              <input type="number" id="manual-assign-period" class="form-control" min="1" max="9" value="1" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.82rem;">Target Class <span class="text-danger">*</span></label>
+            <select id="manual-assign-class" class="form-control" required>
+              <!-- Dynamically populated with assigned classes -->
+            </select>
+          </div>
+          <div class="form-group mb-0">
+            <label style="font-weight:700; font-size:0.82rem;">Reason / Note</label>
+            <input type="text" id="manual-assign-reason" class="form-control" placeholder="e.g. Observer unavailable / Emergency check">
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-manual-assign')">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Confirm Assignment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: TEACHER SCHEDULE & WORKLOAD BREAKDOWN -->
+  <div id="modal-observer-teacher-schedule" class="modal-overlay hidden">
+    <div class="modal-content max-w-md" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 id="modal-obs-teacher-title" style="margin:0;"><i class="fa-solid fa-user-shield" style="color:var(--primary);"></i> Teacher Workload & Schedule</h3>
+        <button class="btn-close" onclick="closeModal('modal-observer-teacher-schedule')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div id="container-obs-teacher-workload-content">
+          <!-- Dynamically rendered table of teaching + observer duties -->
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 12px 20px;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-teacher-schedule')">Close</button>
       </div>
     </div>
   </div>

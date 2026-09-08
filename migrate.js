@@ -443,6 +443,141 @@ async function runMigration() {
     }
     console.log('✅ All performance indexes created successfully.');
 
+    // 6. OBSERVER DUTY MANAGEMENT MODULE TABLES
+    console.log('📦 6. Migrating Observer Duty Management tables...');
+
+    // 6.1 Observer Settings
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS observer_settings (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER UNIQUE REFERENCES departments(id) ON DELETE CASCADE,
+        enabled BOOLEAN DEFAULT true,
+        observers_per_class INTEGER DEFAULT 2,
+        current_period_exclusion BOOLEAN DEFAULT true,
+        next_period_exclusion BOOLEAN DEFAULT true,
+        balanced_allocation BOOLEAN DEFAULT true,
+        random_allocation BOOLEAN DEFAULT true,
+        leader_required BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Ensure default settings exist for MEDIA department
+    await client.query(`
+      INSERT INTO observer_settings (department_id, enabled, observers_per_class, current_period_exclusion, next_period_exclusion, balanced_allocation, random_allocation, leader_required)
+      VALUES ($1, true, 2, true, true, true, true, true)
+      ON CONFLICT (department_id) DO NOTHING;
+    `, [mediaDeptId]);
+
+    // 6.2 Department Observer Leaders
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS department_observer_leaders (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER UNIQUE REFERENCES departments(id) ON DELETE CASCADE,
+        teacher_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        status VARCHAR(50) DEFAULT 'active',
+        selected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        selected_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 6.3 Observer Generation Metadata & Lock Status
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS observer_generation (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        generation_version INTEGER DEFAULT 1,
+        status VARCHAR(50) DEFAULT 'draft',
+        total_classes INTEGER DEFAULT 0,
+        required_observers INTEGER DEFAULT 0,
+        assigned_observers INTEGER DEFAULT 0,
+        generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        generated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        locked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        locked_at TIMESTAMPTZ
+      );
+    `);
+
+    // 6.4 Observer Duty Allocations
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS observer_duty_allocations (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        day VARCHAR(20) NOT NULL,
+        period INTEGER NOT NULL,
+        timetable_id INTEGER REFERENCES teacher_selection_timetable(id) ON DELETE CASCADE,
+        class_name VARCHAR(100) NOT NULL,
+        subject VARCHAR(150) NOT NULL,
+        class_teacher_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        observer_teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        observer_slot_number INTEGER NOT NULL DEFAULT 1,
+        allocation_type VARCHAR(50) DEFAULT 'auto',
+        status VARCHAR(50) DEFAULT 'draft',
+        generation_version INTEGER DEFAULT 1,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Constraints on observer_duty_allocations
+    try {
+      await client.query(`ALTER TABLE observer_duty_allocations DROP CONSTRAINT IF EXISTS uq_obs_slot;`);
+      await client.query(`ALTER TABLE observer_duty_allocations DROP CONSTRAINT IF EXISTS uq_obs_teacher_day_period;`);
+      await client.query(`ALTER TABLE observer_duty_allocations ADD CONSTRAINT uq_obs_slot UNIQUE (department_id, day, period, class_name, observer_slot_number, generation_version);`);
+      await client.query(`ALTER TABLE observer_duty_allocations ADD CONSTRAINT uq_obs_teacher_day_period UNIQUE (department_id, day, period, observer_teacher_id, generation_version);`);
+    } catch (e) {
+      console.log('Observer duty allocations constraints note:', e.message);
+    }
+
+    // 6.5 Observer Manual Assignments
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS observer_manual_assignments (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        day VARCHAR(20) NOT NULL,
+        period INTEGER NOT NULL,
+        class_name VARCHAR(100) NOT NULL,
+        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        is_leader BOOLEAN DEFAULT false,
+        reason TEXT,
+        assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 6.6 Observer Audit Logs
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS observer_audit_logs (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        user_name VARCHAR(255),
+        action VARCHAR(255) NOT NULL,
+        details JSONB,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 6.7 Observer Performance Indexes
+    const observerIndexes = [
+      `CREATE INDEX IF NOT EXISTS idx_obs_settings_dept ON observer_settings(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_leaders_dept ON department_observer_leaders(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_leaders_teacher ON department_observer_leaders(teacher_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_alloc_dept ON observer_duty_allocations(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_alloc_dept_day_period ON observer_duty_allocations(department_id, day, period);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_alloc_teacher ON observer_duty_allocations(observer_teacher_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_alloc_class ON observer_duty_allocations(department_id, class_name);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_gen_dept_ver ON observer_generation(department_id, generation_version);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_manual_dept ON observer_manual_assignments(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_audit_dept ON observer_audit_logs(department_id);`
+    ];
+
+    for (const oIdx of observerIndexes) {
+      await client.query(oIdx);
+    }
+    console.log('✅ Observer Duty Management tables and indexes initialized.');
+
     // Seed default Admin user if empty
     const adminCheck = await client.query(`SELECT count(*)::int as count FROM users WHERE role = 'admin'`);
     if (!adminCheck.rows[0] || adminCheck.rows[0].count === 0) {

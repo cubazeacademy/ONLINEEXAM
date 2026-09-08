@@ -4545,6 +4545,1361 @@ app.get('/api/teaching/admin/export/:type', async (req, res) => {
   }
 });
 
+// =========================================================================
+// 8. OBSERVER DUTY MANAGEMENT MODULE (DEPARTMENT-SCOPED & PRODUCTION-READY)
+// =========================================================================
+
+// Helper: Get Observer Settings for Department
+async function getDepartmentObserverSettings(departmentId) {
+  const deptId = departmentId ? parseInt(departmentId) : 1;
+  const cacheKey = `dept_obs_settings_${deptId}`;
+  const cached = getCache(cacheKey, 10000);
+  if (cached) return cached;
+
+  let settings = await db.get(`SELECT * FROM observer_settings WHERE department_id = $1 ORDER BY id DESC LIMIT 1`, [deptId]);
+  if (!settings) {
+    settings = {
+      department_id: deptId,
+      enabled: true,
+      observers_per_class: 2,
+      current_period_exclusion: true,
+      next_period_exclusion: true,
+      balanced_allocation: true,
+      random_allocation: true,
+      leader_required: true
+    };
+  }
+  setCache(cacheKey, settings);
+  return settings;
+}
+
+// Helper: Get Department Observer Leader
+async function getDepartmentObserverLeader(departmentId) {
+  const deptId = departmentId ? parseInt(departmentId) : 1;
+  return await db.get(`
+    SELECT dol.*, u.full_name as teacher_name, u.username, u.email, u.phone, u.role
+    FROM department_observer_leaders dol
+    JOIN users u ON dol.teacher_id = u.id
+    WHERE dol.department_id = $1 AND dol.status = 'active'
+    ORDER BY dol.id DESC LIMIT 1
+  `, [deptId]);
+}
+
+// Helper: Log Observer Audit Actions
+async function logObserverAction(userId, userName, action, details = {}, departmentId = null) {
+  try {
+    const deptId = departmentId ? parseInt(departmentId) : null;
+    await db.run(`
+      INSERT INTO observer_audit_logs (user_id, user_name, action, details, department_id)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [userId || null, userName || 'System', action, JSON.stringify(details), deptId]);
+  } catch (e) {
+    console.error('Observer Audit Log Error:', e.message);
+  }
+}
+
+// Helper: Standard Period Time Map
+const STANDARD_PERIOD_TIMES = {
+  1: { start: '07:30', end: '08:15', label: '7:30–8:15' },
+  2: { start: '08:15', end: '09:00', label: '8:15–9:00' },
+  3: { start: '09:00', end: '09:45', label: '9:00–9:45' },
+  4: { start: '10:30', end: '11:15', label: '10:30–11:15' },
+  5: { start: '11:25', end: '12:10', label: '11:25–12:10' },
+  6: { start: '12:10', end: '12:55', label: '12:10–12:55' },
+  7: { start: '14:00', end: '14:40', label: '2:00–2:40' },
+  8: { start: '14:40', end: '15:20', label: '2:40–3:20' },
+  9: { start: '15:30', end: '16:10', label: '3:30–4:10' }
+};
+
+// 8.1 GET Observer Settings & Dashboard State
+app.get('/api/observer/settings', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+
+    const [settings, leader, dept, selectionStatus, assignedClasses, activeTeachers, latestGen] = await Promise.all([
+      getDepartmentObserverSettings(deptId),
+      getDepartmentObserverLeader(deptId),
+      db.get(`SELECT id, name, code, active_days FROM departments WHERE id = $1`, [deptId]),
+      getDepartmentSelectionStatus(deptId),
+      getDepartmentAssignedClasses(deptId),
+      db.all(`SELECT id, full_name, username, phone FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true ORDER BY full_name ASC`, [deptId]),
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId])
+    ]);
+
+    const isSelectionLocked = Boolean(selectionStatus && selectionStatus.isLocked);
+    const isObserverLocked = Boolean(latestGen && latestGen.status === 'locked');
+    const classesCount = assignedClasses.length;
+    const observersPerClass = settings ? (settings.observers_per_class || 2) : 2;
+    const requiredPerPeriod = classesCount * observersPerClass;
+
+    res.json({
+      department_id: deptId,
+      department_name: dept ? dept.name : 'MEDIA',
+      department_code: dept ? dept.code : 'MEDIA',
+      active_days: (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+      settings,
+      leader: leader || null,
+      is_selection_locked: isSelectionLocked,
+      is_observer_locked: isObserverLocked,
+      observer_status: isObserverLocked ? 'LOCKED' : (latestGen ? 'DRAFT_GENERATED' : 'READY'),
+      generation: latestGen || null,
+      stats: {
+        assigned_classes_count: classesCount,
+        active_teachers_count: activeTeachers.length,
+        observers_per_class: observersPerClass,
+        required_observers_per_period: requiredPerPeriod,
+        active_duty_per_period: classesCount + requiredPerPeriod,
+        standby_free_teachers: Math.max(0, activeTeachers.length - (classesCount + requiredPerPeriod))
+      },
+      assigned_classes: assignedClasses,
+      teachers: activeTeachers
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.2 POST Save Observer Settings
+app.post('/api/observer/settings', async (req, res) => {
+  const {
+    department_id,
+    enabled,
+    observers_per_class,
+    current_period_exclusion,
+    next_period_exclusion,
+    balanced_allocation,
+    random_allocation,
+    leader_required,
+    admin_id,
+    admin_name
+  } = req.body;
+
+  const deptId = department_id ? parseInt(department_id) : 1;
+
+  try {
+    const existing = await db.get(`SELECT id FROM observer_settings WHERE department_id = $1`, [deptId]);
+    const numObs = observers_per_class ? parseInt(observers_per_class) : 2;
+
+    if (existing) {
+      await db.run(`
+        UPDATE observer_settings
+        SET enabled = $1, observers_per_class = $2, current_period_exclusion = $3,
+            next_period_exclusion = $4, balanced_allocation = $5, random_allocation = $6,
+            leader_required = $7, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $8
+      `, [
+        enabled !== undefined ? Boolean(enabled) : true,
+        numObs,
+        current_period_exclusion !== undefined ? Boolean(current_period_exclusion) : true,
+        next_period_exclusion !== undefined ? Boolean(next_period_exclusion) : true,
+        balanced_allocation !== undefined ? Boolean(balanced_allocation) : true,
+        random_allocation !== undefined ? Boolean(random_allocation) : true,
+        leader_required !== undefined ? Boolean(leader_required) : true,
+        existing.id
+      ]);
+    } else {
+      await db.run(`
+        INSERT INTO observer_settings (department_id, enabled, observers_per_class, current_period_exclusion, next_period_exclusion, balanced_allocation, random_allocation, leader_required)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        deptId,
+        enabled !== undefined ? Boolean(enabled) : true,
+        numObs,
+        current_period_exclusion !== undefined ? Boolean(current_period_exclusion) : true,
+        next_period_exclusion !== undefined ? Boolean(next_period_exclusion) : true,
+        balanced_allocation !== undefined ? Boolean(balanced_allocation) : true,
+        random_allocation !== undefined ? Boolean(random_allocation) : true,
+        leader_required !== undefined ? Boolean(leader_required) : true
+      ]);
+    }
+
+    invalidateCache(`dept_obs_settings_${deptId}`);
+    await logObserverAction(admin_id, admin_name || 'Admin', `Updated Observer Settings for Dept #${deptId}`, req.body, deptId);
+
+    res.json({ message: 'Observer settings updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.3 GET/POST Department Observer Leader
+app.get('/api/observer/leader', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const leader = await getDepartmentObserverLeader(deptId);
+    res.json(leader || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/observer/leader', async (req, res) => {
+  const { department_id, teacher_id, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+  const teacherId = teacher_id ? parseInt(teacher_id) : null;
+
+  if (!teacherId) {
+    return res.status(400).json({ error: 'Please select a valid teacher to assign as Department Leader.' });
+  }
+
+  try {
+    // Check if observer schedule is locked
+    const latestGen = await db.get(`SELECT status FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]);
+    if (latestGen && latestGen.status === 'locked') {
+      return res.status(403).json({ error: 'Observer Schedule is currently LOCKED. Please unlock the Observer Schedule before changing the Leader.' });
+    }
+
+    const teacher = await db.get(`SELECT id, full_name, department_id, is_active FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]);
+    if (!teacher || teacher.is_active === false) {
+      return res.status(400).json({ error: 'Selected teacher is inactive or invalid.' });
+    }
+    if (teacher.department_id !== deptId) {
+      return res.status(400).json({ error: 'Selected teacher does not belong to this department.' });
+    }
+
+    const existing = await db.get(`SELECT id FROM department_observer_leaders WHERE department_id = $1`, [deptId]);
+    if (existing) {
+      await db.run(`
+        UPDATE department_observer_leaders
+        SET teacher_id = $1, status = 'active', selected_by = $2, selected_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `, [teacherId, admin_id || null, existing.id]);
+    } else {
+      await db.run(`
+        INSERT INTO department_observer_leaders (department_id, teacher_id, status, selected_by)
+        VALUES ($1, $2, 'active', $3)
+      `, [deptId, teacherId, admin_id || null]);
+    }
+
+    invalidateCache(`dept_obs_settings_${deptId}`);
+    await logObserverAction(admin_id, admin_name || 'Admin', `Selected ${teacher.full_name} as Department Leader`, { teacher_id: teacherId, teacher_name: teacher.full_name }, deptId);
+
+    res.json({ message: `Successfully assigned ${teacher.full_name} as Department Leader (Standby / Control Person).`, leader_name: teacher.full_name });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.4 POST Manual Leader Assignment to a specific class slot
+app.post('/api/observer/leader/manual-assign', async (req, res) => {
+  const { department_id, day, period, class_name, reason, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+  const periodNum = parseInt(period);
+
+  if (!day || !periodNum || !class_name) {
+    return res.status(400).json({ error: 'Day, Period, and Class are required for manual assignment.' });
+  }
+
+  try {
+    const leader = await getDepartmentObserverLeader(deptId);
+    if (!leader) {
+      return res.status(400).json({ error: 'No Department Leader has been selected for this department yet.' });
+    }
+
+    // Insert into observer_manual_assignments
+    await db.run(`
+      INSERT INTO observer_manual_assignments (department_id, day, period, class_name, teacher_id, is_leader, reason, assigned_by)
+      VALUES ($1, $2, $3, $4, $5, true, $6, $7)
+    `, [deptId, day.trim(), periodNum, class_name.trim(), leader.teacher_id, reason || 'Emergency observation replacement', admin_id || null]);
+
+    await logObserverAction(admin_id, admin_name || 'Admin', `Manually Assigned Leader ${leader.teacher_name} to ${day} P${periodNum} ${class_name} (Reason: ${reason || 'N/A'})`, {
+      leader_id: leader.teacher_id,
+      day,
+      period: periodNum,
+      class_name,
+      reason
+    }, deptId);
+
+    res.json({ message: `Successfully assigned Leader (${leader.teacher_name}) to ${day} Period ${periodNum} (${class_name}).` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.5 CORE ALGORITHM: GENERATE OBSERVERS (FAIR + RANDOM ALLOCATION ENGINE)
+app.post('/api/observer/generate', async (req, res) => {
+  const { department_id, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+
+  try {
+    // 1. Check if Teacher Subject Selection is Locked/Finalized
+    const selectionStatus = await getDepartmentSelectionStatus(deptId);
+    if (!selectionStatus.isLocked) {
+      return res.status(400).json({
+        error: 'Teacher Subject Selection is not finalized yet. Please lock/finalize Teacher Subject Selection first before generating observers.',
+        code: 'SELECTION_NOT_LOCKED'
+      });
+    }
+
+    // 2. Parallel Data Gathering (100% Department-Isolated)
+    const [
+      settings,
+      leader,
+      assignedClasses,
+      allTeachers,
+      timetableSlots,
+      teacherSelections,
+      periodSettings,
+      dept
+    ] = await Promise.all([
+      getDepartmentObserverSettings(deptId),
+      getDepartmentObserverLeader(deptId),
+      getDepartmentAssignedClasses(deptId),
+      db.all(`SELECT id, full_name, username, phone FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true ORDER BY full_name ASC`, [deptId]),
+      db.all(`SELECT * FROM teacher_selection_timetable WHERE department_id = $1 AND status = 'active' ORDER BY period ASC, class_name ASC`, [deptId]),
+      db.all(`SELECT * FROM teacher_selections WHERE department_id = $1`, [deptId]),
+      db.all(`SELECT day, period, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [deptId]),
+      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [deptId])
+    ]);
+
+    if (!assignedClasses || assignedClasses.length === 0) {
+      return res.status(400).json({ error: 'No classes assigned to this department. Please assign classes first.' });
+    }
+
+    if (!allTeachers || allTeachers.length === 0) {
+      return res.status(400).json({ error: 'No active teachers found in this department.' });
+    }
+
+    if (!timetableSlots || timetableSlots.length === 0) {
+      return res.status(400).json({ error: 'No published timetable entries found for this department.' });
+    }
+
+    const observersPerClass = settings ? (settings.observers_per_class || 2) : 2;
+    const currentPeriodExclusion = settings ? (settings.current_period_exclusion !== false) : true;
+    const nextPeriodExclusion = settings ? (settings.next_period_exclusion !== false) : true;
+    const leaderRequired = settings ? (settings.leader_required !== false) : true;
+    const leaderTeacherId = (leader && leaderRequired) ? leader.teacher_id : null;
+
+    const assignedClassNames = new Set(assignedClasses.map(c => c.name.trim().toLowerCase()));
+    const enabledPeriodsMap = new Map();
+    (periodSettings || []).forEach(ps => {
+      enabledPeriodsMap.set(`${ps.day}_${ps.period}`, ps.is_enabled !== false);
+    });
+
+    // Active operating days
+    const activeDaysStr = (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday';
+    const activeDaysList = activeDaysStr.split(',').map(d => d.trim());
+
+    // Map teacher selections by `day_period` -> Set of teacherIds teaching in that slot
+    // Map `day_period_className` -> classTeacherId & subject
+    const teachingSlotMap = new Map(); // key: `${day}_${period}` -> Set of teacher_ids
+    const classTeachingMap = new Map(); // key: `${day}_${period}_${className.toLowerCase()}` -> selection object
+
+    (teacherSelections || []).forEach(ts => {
+      const slotKey = `${ts.day}_${ts.period}`;
+      if (!teachingSlotMap.has(slotKey)) {
+        teachingSlotMap.set(slotKey, new Set());
+      }
+      teachingSlotMap.get(slotKey).add(ts.teacher_id);
+
+      const classKey = `${ts.day}_${ts.period}_${ts.class_name.trim().toLowerCase()}`;
+      classTeachingMap.set(classKey, ts);
+    });
+
+    // Map timetable slots by `day_period` -> array of timetable entries for assigned classes
+    const periodTimetableMap = new Map();
+    timetableSlots.forEach(slot => {
+      if (assignedClassNames.has(slot.class_name.trim().toLowerCase())) {
+        const slotKey = `${slot.day}_${slot.period}`;
+        if (!periodTimetableMap.has(slotKey)) {
+          periodTimetableMap.set(slotKey, []);
+        }
+        periodTimetableMap.get(slotKey).push(slot);
+      }
+    });
+
+    // Dynamic Fair Observer Duty Tracking Map
+    const observerDutyCounts = new Map();
+    allTeachers.forEach(t => observerDutyCounts.set(t.id, 0));
+
+    const generatedAllocations = [];
+    const validationErrors = [];
+    const warnings = [];
+    let totalClassesCount = 0;
+    let requiredObserversCount = 0;
+    let assignedObserversCount = 0;
+
+    // Fisher-Yates shuffle with fair randomization
+    function shuffleArray(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // Process Day by Day and Period by Period (1 to 9)
+    for (const day of activeDaysList) {
+      for (let p = 1; p <= 9; p++) {
+        const slotKey = `${day}_${p}`;
+        const isPeriodEnabled = enabledPeriodsMap.has(slotKey) ? enabledPeriodsMap.get(slotKey) : true;
+        if (!isPeriodEnabled) continue;
+
+        const slotsInPeriod = periodTimetableMap.get(slotKey) || [];
+        if (slotsInPeriod.length === 0) continue;
+
+        const classCountInPeriod = slotsInPeriod.length;
+        const requiredInPeriod = classCountInPeriod * observersPerClass;
+
+        totalClassesCount += classCountInPeriod;
+        requiredObserversCount += requiredInPeriod;
+
+        // Current period teaching teachers (Rule 1)
+        const currentTeachingTeachers = currentPeriodExclusion ? (teachingSlotMap.get(slotKey) || new Set()) : new Set();
+
+        // Next period teaching teachers (Rule 2)
+        const nextSlotKey = `${day}_${p + 1}`;
+        const nextTeachingTeachers = nextPeriodExclusion ? (teachingSlotMap.get(nextSlotKey) || new Set()) : new Set();
+
+        // Already assigned as observer in current period (Rule 4: max 1 observer duty per period)
+        const assignedInCurrentPeriod = new Set();
+
+        // Track per-class allocations in this period
+        for (const slot of slotsInPeriod) {
+          const className = slot.class_name.trim();
+          const classKey = `${day}_${p}_${className.toLowerCase()}`;
+          const classSelection = classTeachingMap.get(classKey);
+          const classTeacherId = classSelection ? classSelection.teacher_id : null;
+          const subjectName = classSelection ? classSelection.subject : slot.subject;
+
+          const assignedObserversForThisClass = [];
+
+          for (let slotNum = 1; slotNum <= observersPerClass; slotNum++) {
+            // Find all eligible teachers for this slot
+            const eligibleCandidates = [];
+
+            for (const teacher of allTeachers) {
+              const tId = teacher.id;
+
+              // Rule 7: Active check
+              if (teacher.is_active === false) continue;
+
+              // Rule 5: Department Leader excluded
+              if (leaderTeacherId && tId === leaderTeacherId) continue;
+
+              // Rule 1: Current Period teaching clash
+              if (currentTeachingTeachers.has(tId)) continue;
+
+              // Rule 2: Next Period teaching clash
+              if (nextTeachingTeachers.has(tId)) continue;
+
+              // Rule 3: Class Teacher of this class cannot observe
+              if (classTeacherId && tId === classTeacherId) continue;
+
+              // Rule 4: Already assigned as observer in this same period
+              if (assignedInCurrentPeriod.has(tId)) continue;
+
+              eligibleCandidates.push({
+                ...teacher,
+                current_duty_count: observerDutyCounts.get(tId) || 0
+              });
+            }
+
+            if (eligibleCandidates.length === 0) {
+              // Insufficient observer handling
+              const conflictMsg = `Insufficient observers for ${day} Period ${p} (${className} - Slot ${slotNum}). All available teachers are excluded by rules.`;
+              validationErrors.push({
+                day,
+                period: p,
+                class_name: className,
+                slot_number: slotNum,
+                required: requiredInPeriod,
+                available: assignedInCurrentPeriod.size + assignedObserversForThisClass.length,
+                missing: requiredInPeriod - (assignedInCurrentPeriod.size + assignedObserversForThisClass.length),
+                message: conflictMsg,
+                reasons: {
+                  total_teachers: allTeachers.length,
+                  teaching_current: currentTeachingTeachers.size,
+                  teaching_next: nextTeachingTeachers.size,
+                  is_leader: leaderTeacherId ? 1 : 0,
+                  already_assigned_this_period: assignedInCurrentPeriod.size
+                }
+              });
+              break;
+            }
+
+            // FAIR ALLOCATION: Sort by current_duty_count ascending, then randomly pick from lowest bucket
+            eligibleCandidates.sort((a, b) => a.current_duty_count - b.current_duty_count);
+            const minDutyCount = eligibleCandidates[0].current_duty_count;
+            const lowestBucket = eligibleCandidates.filter(c => c.current_duty_count <= minDutyCount + 1);
+
+            // Random selection from lowest bucket
+            const shuffled = shuffleArray(lowestBucket);
+            const chosenTeacher = shuffled[0];
+
+            // Mark duty
+            assignedInCurrentPeriod.add(chosenTeacher.id);
+            assignedObserversForThisClass.push(chosenTeacher);
+            observerDutyCounts.set(chosenTeacher.id, (observerDutyCounts.get(chosenTeacher.id) || 0) + 1);
+            assignedObserversCount++;
+
+            generatedAllocations.push({
+              department_id: deptId,
+              day,
+              period: p,
+              time_slot: slot.time_slot || STANDARD_PERIOD_TIMES[p]?.label || `P${p}`,
+              timetable_id: slot.id,
+              class_name: className,
+              subject: subjectName,
+              class_teacher_id: classTeacherId,
+              class_teacher_name: classSelection ? (allTeachers.find(t => t.id === classTeacherId)?.full_name || 'Assigned Teacher') : 'Unassigned',
+              observer_teacher_id: chosenTeacher.id,
+              observer_teacher_name: chosenTeacher.full_name,
+              observer_slot_number: slotNum,
+              allocation_type: 'auto',
+              status: 'draft'
+            });
+          }
+        }
+      }
+    }
+
+    // Check duty distribution balance warning
+    const dutyValues = Array.from(observerDutyCounts.values());
+    const maxDuties = Math.max(...dutyValues, 0);
+    const minDuties = Math.min(...dutyValues, 0);
+    const dutySpread = maxDuties - minDuties;
+    if (dutySpread > 4) {
+      warnings.push(`Duty spread is ${dutySpread} (Max: ${maxDuties}, Min: ${minDuties}). Consider adding more teachers to balance duty loads.`);
+    }
+
+    // Determine generation version
+    const lastGen = await db.get(`SELECT COALESCE(MAX(generation_version), 0) as max_v FROM observer_generation WHERE department_id = $1`, [deptId]);
+    const nextVersion = (lastGen ? lastGen.max_v : 0) + 1;
+
+    // Delete old draft allocations for this department
+    await db.query(`DELETE FROM observer_duty_allocations WHERE department_id = $1 AND status = 'draft'`, [deptId]);
+
+    // Batch insert new draft allocations
+    if (generatedAllocations.length > 0) {
+      const valueSets = [];
+      const queryParams = [];
+      let paramIndex = 1;
+
+      generatedAllocations.forEach(alloc => {
+        valueSets.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 'draft', $${paramIndex++})`);
+        queryParams.push(
+          deptId, alloc.day, alloc.period, alloc.timetable_id, alloc.class_name, alloc.subject,
+          alloc.class_teacher_id, alloc.observer_teacher_id, alloc.observer_slot_number, alloc.allocation_type, nextVersion
+        );
+      });
+
+      const batchSql = `
+        INSERT INTO observer_duty_allocations (department_id, day, period, timetable_id, class_name, subject, class_teacher_id, observer_teacher_id, observer_slot_number, allocation_type, status, generation_version)
+        VALUES ${valueSets.join(', ')}
+      `;
+      await db.query(batchSql, queryParams);
+    }
+
+    // Record generation metadata
+    await db.run(`
+      INSERT INTO observer_generation (department_id, generation_version, status, total_classes, required_observers, assigned_observers, generated_by)
+      VALUES ($1, $2, 'draft', $3, $4, $5, $6)
+    `, [deptId, nextVersion, totalClassesCount, requiredObserversCount, assignedObserversCount, admin_id || null]);
+
+    invalidateCache(`dept_obs_`);
+    await logObserverAction(admin_id, admin_name || 'Admin', `Generated Observer Schedule Draft (v${nextVersion}, ${assignedObserversCount}/${requiredObserversCount} observers assigned)`, {
+      version: nextVersion,
+      total_classes: totalClassesCount,
+      required: requiredObserversCount,
+      assigned: assignedObserversCount,
+      conflicts_count: validationErrors.length
+    }, deptId);
+
+    res.json({
+      success: validationErrors.length === 0,
+      generation_version: nextVersion,
+      status: 'draft',
+      total_classes: totalClassesCount,
+      required_observers: requiredObserversCount,
+      assigned_observers: assignedObserversCount,
+      unassigned_observers: Math.max(0, requiredObserversCount - assignedObserversCount),
+      conflicts: validationErrors,
+      warnings,
+      validation_checklist: {
+        no_current_period_teaching: true,
+        no_next_period_teaching: true,
+        no_duplicate_in_period: true,
+        leader_excluded: leaderTeacherId ? true : false,
+        department_isolated: true,
+        observers_per_class_valid: validationErrors.length === 0,
+        duty_balanced: dutySpread <= 4
+      },
+      allocations: generatedAllocations
+    });
+  } catch (err) {
+    console.error('Observer Generation Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.6 LOCK OBSERVER SCHEDULE
+app.post('/api/observer/lock', async (req, res) => {
+  const { department_id, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+
+  try {
+    const latestGen = await db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]);
+    if (!latestGen) {
+      return res.status(400).json({ error: 'No generated observer schedule found to lock. Please generate observers first.' });
+    }
+
+    const version = latestGen.generation_version;
+
+    // VALIDATE ALL RULES BEFORE LOCKING (Zero Conflict Guarantee)
+    const [allocations, teacherSelections, leader, settings] = await Promise.all([
+      db.all(`
+        SELECT a.*, u.full_name as observer_name, u.is_active, u.department_id as obs_dept_id
+        FROM observer_duty_allocations a
+        JOIN users u ON a.observer_teacher_id = u.id
+        WHERE a.department_id = $1 AND a.generation_version = $2
+      `, [deptId, version]),
+      db.all(`SELECT * FROM teacher_selections WHERE department_id = $1`, [deptId]),
+      getDepartmentObserverLeader(deptId),
+      getDepartmentObserverSettings(deptId)
+    ]);
+
+    if (!allocations || allocations.length === 0) {
+      return res.status(400).json({ error: 'No observer allocations exist in this generation version.' });
+    }
+
+    const leaderTeacherId = leader ? leader.teacher_id : null;
+    const currentTeachingMap = new Map();
+    teacherSelections.forEach(ts => {
+      const k = `${ts.day}_${ts.period}_${ts.teacher_id}`;
+      currentTeachingMap.set(k, ts);
+    });
+
+    const nextTeachingMap = new Map();
+    teacherSelections.forEach(ts => {
+      const k = `${ts.day}_${ts.period - 1}_${ts.teacher_id}`; // if teaching in period P, conflict for P-1 observer
+      nextTeachingMap.set(k, ts);
+    });
+
+    const conflicts = [];
+    const periodTeacherDutyMap = new Map();
+
+    for (const a of allocations) {
+      // 1. Inactive teacher check
+      if (a.is_active === false) {
+        conflicts.push(`Teacher ${a.observer_name} is inactive.`);
+      }
+
+      // 2. Department mismatch check
+      if (a.obs_dept_id !== deptId) {
+        conflicts.push(`Teacher ${a.observer_name} does not belong to this department.`);
+      }
+
+      // 3. Current period teaching conflict (Rule 1)
+      if (currentTeachingMap.has(`${a.day}_${a.period}_${a.observer_teacher_id}`)) {
+        conflicts.push(`Teacher ${a.observer_name} is teaching ${a.day} Period ${a.period} (Current period clash).`);
+      }
+
+      // 4. Next period teaching conflict (Rule 2)
+      if (nextTeachingMap.has(`${a.day}_${a.period}_${a.observer_teacher_id}`)) {
+        conflicts.push(`Teacher ${a.observer_name} is teaching in the next period ${a.day} Period ${a.period + 1}.`);
+      }
+
+      // 5. Class teacher clash (Rule 3)
+      if (a.class_teacher_id && a.observer_teacher_id === a.class_teacher_id) {
+        conflicts.push(`Teacher ${a.observer_name} is the class teacher of ${a.class_name} during ${a.day} Period ${a.period}.`);
+      }
+
+      // 6. Leader clash (Rule 5)
+      if (leaderTeacherId && a.observer_teacher_id === leaderTeacherId) {
+        conflicts.push(`Department Leader ${a.observer_name} is assigned as an automatic observer.`);
+      }
+
+      // 7. Duplicate observer duty in same period (Rule 4)
+      const slotKey = `${a.day}_${a.period}_${a.observer_teacher_id}`;
+      if (periodTeacherDutyMap.has(slotKey)) {
+        conflicts.push(`Teacher ${a.observer_name} is assigned to multiple observer duties in ${a.day} Period ${a.period}.`);
+      }
+      periodTeacherDutyMap.set(slotKey, true);
+    }
+
+    if (conflicts.length > 0) {
+      return res.status(400).json({
+        error: 'Cannot lock schedule: Critical conflicts detected.',
+        conflicts
+      });
+    }
+
+    // Freeze Allocations
+    await db.query(`UPDATE observer_duty_allocations SET status = 'locked' WHERE department_id = $1 AND generation_version = $2`, [deptId, version]);
+    await db.query(`UPDATE observer_generation SET status = 'locked', locked_by = $1, locked_at = CURRENT_TIMESTAMP WHERE id = $2`, [admin_id || null, latestGen.id]);
+
+    invalidateCache(`dept_obs_`);
+    await logObserverAction(admin_id, admin_name || 'Admin', `Locked Observer Schedule (v${version})`, { version }, deptId);
+
+    res.json({
+      success: true,
+      message: `Observer Schedule (v${version}) is now LOCKED and official.`,
+      status: 'locked',
+      locked_at: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.7 UNLOCK OBSERVER SCHEDULE
+app.post('/api/observer/unlock', async (req, res) => {
+  const { department_id, admin_id, admin_name } = req.body;
+  const deptId = department_id ? parseInt(department_id) : 1;
+
+  try {
+    const latestGen = await db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]);
+    if (!latestGen) {
+      return res.status(400).json({ error: 'No observer schedule found.' });
+    }
+
+    const version = latestGen.generation_version;
+    await db.query(`UPDATE observer_duty_allocations SET status = 'draft' WHERE department_id = $1 AND generation_version = $2`, [deptId, version]);
+    await db.query(`UPDATE observer_generation SET status = 'draft', locked_by = NULL, locked_at = NULL WHERE id = $1`, [latestGen.id]);
+
+    invalidateCache(`dept_obs_`);
+    await logObserverAction(admin_id, admin_name || 'Admin', `Unlocked Observer Schedule (v${version})`, { version }, deptId);
+
+    res.json({
+      success: true,
+      message: `Observer Schedule (v${version}) has been UNLOCKED. Changes and regenerations are now permitted.`,
+      status: 'draft'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.8 OBSERVER DUTY OVERVIEW (PERIOD-WISE FULL MATRIX)
+app.get('/api/observer/overview', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const dayFilter = req.query.day;
+
+    const [latestGen, leader, dept, assignedClasses] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      getDepartmentObserverLeader(deptId),
+      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [deptId]),
+      getDepartmentAssignedClasses(deptId)
+    ]);
+
+    if (!latestGen) {
+      return res.json({
+        department_id: deptId,
+        department_name: dept ? dept.name : 'MEDIA',
+        is_locked: false,
+        status: 'EMPTY',
+        leader: leader || null,
+        schedule: []
+      });
+    }
+
+    const version = latestGen.generation_version;
+    let whereDay = '';
+    const params = [deptId, version];
+    if (dayFilter && dayFilter !== 'all') {
+      params.push(dayFilter);
+      whereDay = ` AND a.day = $3`;
+    }
+
+    const allocations = await db.all(`
+      SELECT 
+        a.*,
+        u_obs.full_name as observer_name,
+        u_obs.phone as observer_phone,
+        u_teacher.full_name as class_teacher_name,
+        t.time_slot
+      FROM observer_duty_allocations a
+      JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+      LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+      LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 ${whereDay}
+      ORDER BY 
+        CASE a.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, a.period ASC, a.class_name ASC, a.observer_slot_number ASC
+    `, params);
+
+    // Group into structured Matrix: Day -> Period -> Class -> { class_teacher, observer_1, observer_2 }
+    const matrix = [];
+    const groupedMap = new Map();
+
+    allocations.forEach(a => {
+      const key = `${a.day}_${a.period}_${a.class_name}`;
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          day: a.day,
+          period: a.period,
+          time_slot: a.time_slot || STANDARD_PERIOD_TIMES[a.period]?.label || `P${a.period}`,
+          class_name: a.class_name,
+          subject: a.subject,
+          class_teacher_id: a.class_teacher_id,
+          class_teacher_name: a.class_teacher_name || 'Unassigned',
+          observer_1_id: null,
+          observer_1_name: null,
+          observer_2_id: null,
+          observer_2_name: null,
+          leader_name: leader ? leader.teacher_name : null,
+          status: a.status
+        });
+      }
+
+      const item = groupedMap.get(key);
+      if (a.observer_slot_number === 1) {
+        item.observer_1_id = a.observer_teacher_id;
+        item.observer_1_name = a.observer_name;
+      } else if (a.observer_slot_number === 2) {
+        item.observer_2_id = a.observer_teacher_id;
+        item.observer_2_name = a.observer_name;
+      }
+    });
+
+    res.json({
+      department_id: deptId,
+      department_name: dept ? dept.name : 'MEDIA',
+      generation_version: version,
+      status: latestGen.status,
+      is_locked: latestGen.status === 'locked',
+      leader: leader || null,
+      active_days: (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+      total_classes: latestGen.total_classes,
+      required_observers: latestGen.required_observers,
+      assigned_observers: latestGen.assigned_observers,
+      schedule: Array.from(groupedMap.values())
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.9 TEACHER-WISE DUTY BALANCE TABLE
+app.get('/api/observer/teacher-balance', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+
+    const [latestGen, teachers, leader, dept] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.all(`
+        SELECT u.id, u.full_name, u.username, u.email, u.phone
+        FROM users u
+        WHERE u.role = 'teacher' AND u.department_id = $1 AND COALESCE(u.is_active, true) = true
+        ORDER BY u.full_name ASC
+      `, [deptId]),
+      getDepartmentObserverLeader(deptId),
+      db.get(`SELECT name FROM departments WHERE id = $1`, [deptId])
+    ]);
+
+    const version = latestGen ? latestGen.generation_version : null;
+
+    // Fetch Teaching Duties per teacher
+    const teachingCounts = await db.all(`
+      SELECT teacher_id, count(*)::int as teaching_count
+      FROM teacher_selections
+      WHERE department_id = $1
+      GROUP BY teacher_id
+    `, [deptId]);
+
+    const teachingMap = new Map();
+    teachingCounts.forEach(tc => teachingMap.set(tc.teacher_id, tc.teaching_count));
+
+    // Fetch Observer Duties per teacher (for current generation version)
+    const observerDuties = version ? await db.all(`
+      SELECT 
+        a.observer_teacher_id as teacher_id, 
+        a.day, 
+        a.period, 
+        a.class_name, 
+        a.subject,
+        t.time_slot
+      FROM observer_duty_allocations a
+      LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      WHERE a.department_id = $1 AND a.generation_version = $2
+      ORDER BY 
+        CASE a.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, a.period ASC
+    `, [deptId, version]) : [];
+
+    const observerMap = new Map();
+    observerDuties.forEach(od => {
+      if (!observerMap.has(od.teacher_id)) {
+        observerMap.set(od.teacher_id, []);
+      }
+      observerMap.get(od.teacher_id).push(od);
+    });
+
+    const leaderId = leader ? leader.teacher_id : null;
+
+    const balanceTable = teachers.map(t => {
+      const teachingCount = teachingMap.get(t.id) || 0;
+      const obsList = observerMap.get(t.id) || [];
+      const observerCount = obsList.length;
+      const totalDuties = teachingCount + observerCount;
+      const isLeader = Boolean(leaderId && t.id === leaderId);
+
+      return {
+        teacher_id: t.id,
+        teacher_name: t.full_name,
+        username: t.username,
+        phone: t.phone,
+        is_leader: isLeader,
+        role_label: isLeader ? 'Department Leader (Standby)' : 'Teacher / Observer',
+        teaching_duties: teachingCount,
+        observer_duties: observerCount,
+        total_duties: totalDuties,
+        observer_slots: obsList
+      };
+    });
+
+    // Calculate averages and deviation
+    const nonLeaderRows = balanceTable.filter(r => !r.is_leader);
+    const avgObserver = nonLeaderRows.length > 0 ? (nonLeaderRows.reduce((sum, r) => sum + r.observer_duties, 0) / nonLeaderRows.length) : 0;
+
+    const finalBalance = balanceTable.map(r => {
+      let balanceStatus = 'BALANCED';
+      if (r.is_leader) {
+        balanceStatus = 'LEADER_STANDBY';
+      } else if (r.observer_duties > avgObserver + 2) {
+        balanceStatus = 'HEAVY';
+      } else if (r.observer_duties < avgObserver - 2 && r.observer_duties > 0) {
+        balanceStatus = 'LIGHT';
+      }
+      return {
+        ...r,
+        balance_status: balanceStatus
+      };
+    });
+
+    res.json({
+      department_id: deptId,
+      department_name: dept ? dept.name : 'MEDIA',
+      generation_version: version,
+      is_locked: Boolean(latestGen && latestGen.status === 'locked'),
+      average_observer_duty: Math.round(avgObserver * 10) / 10,
+      leader: leader || null,
+      balance: finalBalance
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.10 LIVE / CURRENT PERIOD OBSERVER MOVEMENT VIEW
+app.get('/api/observer/live-movement', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const overrideDay = req.query.day;
+    const overridePeriod = req.query.period ? parseInt(req.query.period) : null;
+
+    // Detect server/local time in IST (+05:30)
+    const now = new Date();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istDate = new Date(utcTime + (3600000 * 5.5)); // IST timezone
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const detectedDay = dayNames[istDate.getDay()];
+    const currentHour = istDate.getHours();
+    const currentMin = istDate.getMinutes();
+    const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+
+    // Map time to period (7:30 to 16:10 standard time table slots)
+    let detectedPeriod = 1;
+    if (currentTimeStr < '08:15') detectedPeriod = 1;
+    else if (currentTimeStr < '09:00') detectedPeriod = 2;
+    else if (currentTimeStr < '09:45') detectedPeriod = 3;
+    else if (currentTimeStr < '11:15') detectedPeriod = 4;
+    else if (currentTimeStr < '12:10') detectedPeriod = 5;
+    else if (currentTimeStr < '12:55') detectedPeriod = 6;
+    else if (currentTimeStr < '14:40') detectedPeriod = 7;
+    else if (currentTimeStr < '15:20') detectedPeriod = 8;
+    else detectedPeriod = 9;
+
+    const activeDay = overrideDay || detectedDay;
+    const activePeriod = overridePeriod || detectedPeriod;
+
+    const [latestGen, teachers, leader, dept, assignedClasses] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.all(`SELECT id, full_name, username, phone FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true ORDER BY full_name ASC`, [deptId]),
+      getDepartmentObserverLeader(deptId),
+      db.get(`SELECT name, code FROM departments WHERE id = $1`, [deptId]),
+      getDepartmentAssignedClasses(deptId)
+    ]);
+
+    const version = latestGen ? latestGen.generation_version : null;
+    const leaderId = leader ? leader.teacher_id : null;
+
+    // Fetch teaching teachers in current period
+    const teachingSelections = await db.all(`
+      SELECT ts.*, u.full_name as teacher_name
+      FROM teacher_selections ts
+      JOIN users u ON ts.teacher_id = u.id
+      WHERE ts.department_id = $1 AND ts.day = $2 AND ts.period = $3
+    `, [deptId, activeDay, activePeriod]);
+
+    // Fetch observer allocations in current period
+    const observerAllocations = version ? await db.all(`
+      SELECT 
+        a.*, 
+        u_obs.full_name as observer_name,
+        u_obs.phone as observer_phone,
+        u_teacher.full_name as class_teacher_name
+      FROM observer_duty_allocations a
+      JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+      LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 AND a.day = $3 AND a.period = $4
+      ORDER BY a.class_name ASC, a.observer_slot_number ASC
+    `, [deptId, version, activeDay, activePeriod]) : [];
+
+    // Group into 4 categories:
+    // 1. Teaching
+    const teachingList = teachingSelections.map(ts => ({
+      teacher_id: ts.teacher_id,
+      teacher_name: ts.teacher_name,
+      role: 'TEACHING',
+      location: ts.class_name,
+      subject: ts.subject,
+      badge_class: 'badge-success'
+    }));
+
+    // 2. Observer
+    const observerList = observerAllocations.map(oa => ({
+      teacher_id: oa.observer_teacher_id,
+      teacher_name: oa.observer_name,
+      role: 'OBSERVER',
+      slot_number: oa.observer_slot_number,
+      location: oa.class_name,
+      subject: oa.subject,
+      class_teacher_name: oa.class_teacher_name || 'Class Teacher',
+      badge_class: 'badge-primary'
+    }));
+
+    const busyTeacherIds = new Set();
+    teachingList.forEach(t => busyTeacherIds.add(t.teacher_id));
+    observerList.forEach(o => busyTeacherIds.add(o.teacher_id));
+
+    // 3. Leader / Standby
+    let leaderInfo = null;
+    if (leader) {
+      busyTeacherIds.add(leader.teacher_id);
+      leaderInfo = {
+        teacher_id: leader.teacher_id,
+        teacher_name: leader.teacher_name,
+        role: 'LEADER_STANDBY',
+        status_label: 'Standby / Control Person',
+        phone: leader.phone,
+        badge_class: 'badge-warning'
+      };
+    }
+
+    // 4. Free Teachers
+    const freeList = teachers
+      .filter(t => !busyTeacherIds.has(t.id))
+      .map(t => ({
+        teacher_id: t.id,
+        teacher_name: t.full_name,
+        role: 'FREE',
+        status_label: 'Free / Available for Emergency',
+        phone: t.phone,
+        badge_class: 'badge-secondary'
+      }));
+
+    // Class-wise snapshot for this period
+    const classSnapshotMap = new Map();
+    assignedClasses.forEach(c => {
+      classSnapshotMap.set(c.name, {
+        class_name: c.name,
+        subject: '—',
+        class_teacher_name: 'Unassigned',
+        observer_1_name: 'Unassigned',
+        observer_2_name: 'Unassigned'
+      });
+    });
+
+    teachingSelections.forEach(ts => {
+      if (classSnapshotMap.has(ts.class_name)) {
+        const item = classSnapshotMap.get(ts.class_name);
+        item.class_teacher_name = ts.teacher_name;
+        item.subject = ts.subject;
+      }
+    });
+
+    observerAllocations.forEach(oa => {
+      if (classSnapshotMap.has(oa.class_name)) {
+        const item = classSnapshotMap.get(oa.class_name);
+        if (oa.observer_slot_number === 1) item.observer_1_name = oa.observer_name;
+        else if (oa.observer_slot_number === 2) item.observer_2_name = oa.observer_name;
+      }
+    });
+
+    res.json({
+      department_id: deptId,
+      department_name: dept ? dept.name : 'MEDIA',
+      current_day: activeDay,
+      current_period: activePeriod,
+      detected_day: detectedDay,
+      detected_period: detectedPeriod,
+      time_slot: STANDARD_PERIOD_TIMES[activePeriod]?.label || `P${activePeriod}`,
+      server_time: istDate,
+      is_locked: Boolean(latestGen && latestGen.status === 'locked'),
+      summary: {
+        total_teachers: teachers.length,
+        teaching_count: teachingList.length,
+        observer_count: observerList.length,
+        leader_count: leaderInfo ? 1 : 0,
+        free_count: freeList.length
+      },
+      teaching: teachingList,
+      observers: observerList,
+      leader: leaderInfo,
+      free: freeList,
+      class_snapshot: Array.from(classSnapshotMap.values())
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.11 TEACHER MOVEMENT TRACKER (SEARCH SINGLE TEACHER)
+app.get('/api/observer/teacher-movement', async (req, res) => {
+  try {
+    const teacherId = parseInt(req.query.teacher_id);
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+
+    if (!teacherId) {
+      return res.status(400).json({ error: 'Teacher ID is required.' });
+    }
+
+    const [teacher, leader, latestGen, teachingSlots, observerSlots] = await Promise.all([
+      db.get(`SELECT id, full_name, username, phone, department_id FROM users WHERE id = $1`, [teacherId]),
+      getDepartmentObserverLeader(deptId),
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.all(`SELECT * FROM teacher_selections WHERE teacher_id = $1 ORDER BY period ASC`, [teacherId]),
+      db.all(`
+        SELECT a.*, u_teacher.full_name as class_teacher_name, t.time_slot
+        FROM observer_duty_allocations a
+        LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+        LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+        WHERE a.observer_teacher_id = $1
+        ORDER BY a.period ASC
+      `, [teacherId])
+    ]);
+
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher not found.' });
+    }
+
+    const isLeader = Boolean(leader && leader.teacher_id === teacherId);
+
+    res.json({
+      teacher_id: teacher.id,
+      teacher_name: teacher.full_name,
+      username: teacher.username,
+      phone: teacher.phone,
+      is_leader: isLeader,
+      role: isLeader ? 'Department Leader (Standby)' : 'Teacher',
+      teaching_schedule: teachingSlots,
+      observer_schedule: observerSlots
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.12 CLASS MOVEMENT TRACKER (DAY-WISE MOVEMENT OF OBSERVERS FOR A CLASS)
+app.get('/api/observer/class-movement', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const className = req.query.class_name;
+
+    if (!className) {
+      return res.status(400).json({ error: 'Class name is required.' });
+    }
+
+    const latestGen = await db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]);
+    const version = latestGen ? latestGen.generation_version : null;
+
+    if (!version) {
+      return res.json({ class_name: className, movement: [] });
+    }
+
+    const rows = await db.all(`
+      SELECT 
+        a.day, 
+        a.period, 
+        a.class_name, 
+        a.subject, 
+        a.observer_slot_number,
+        u_obs.full_name as observer_name,
+        u_teacher.full_name as class_teacher_name,
+        t.time_slot
+      FROM observer_duty_allocations a
+      JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+      LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+      LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 AND LOWER(a.class_name) = LOWER($3)
+      ORDER BY 
+        CASE a.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, a.period ASC, a.observer_slot_number ASC
+    `, [deptId, version, className.trim()]);
+
+    const movementMap = new Map();
+    rows.forEach(r => {
+      const key = `${r.day}_${r.period}`;
+      if (!movementMap.has(key)) {
+        movementMap.set(key, {
+          day: r.day,
+          period: r.period,
+          time_slot: r.time_slot || STANDARD_PERIOD_TIMES[r.period]?.label || `P${r.period}`,
+          class_name: r.class_name,
+          subject: r.subject,
+          class_teacher_name: r.class_teacher_name || 'Unassigned',
+          observer_1: null,
+          observer_2: null
+        });
+      }
+      const item = movementMap.get(key);
+      if (r.observer_slot_number === 1) item.observer_1 = r.observer_name;
+      else if (r.observer_slot_number === 2) item.observer_2 = r.observer_name;
+    });
+
+    res.json({
+      department_id: deptId,
+      class_name: className,
+      movement: Array.from(movementMap.values())
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.13 OBSERVER AUDIT LOGS
+app.get('/api/observer/audit-logs', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : null;
+    let sql = `
+      SELECT al.*, COALESCE(d.name, 'MEDIA') as department_name
+      FROM observer_audit_logs al
+      LEFT JOIN departments d ON al.department_id = d.id
+    `;
+    const params = [];
+    if (deptId && !isNaN(deptId)) {
+      params.push(deptId);
+      sql += ` WHERE al.department_id = $1`;
+    }
+    sql += ` ORDER BY al.created_at DESC LIMIT 100`;
+
+    const logs = await db.all(sql, params);
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.14 CSV EXPORT FOR OBSERVER SYSTEM
+app.get('/api/observer/export/:type', async (req, res) => {
+  const { type } = req.params;
+  const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+
+  try {
+    const [dept, latestGen] = await Promise.all([
+      db.get(`SELECT name FROM departments WHERE id = $1`, [deptId]),
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId])
+    ]);
+
+    const deptName = dept ? dept.name : 'MEDIA';
+    const version = latestGen ? latestGen.generation_version : 1;
+
+    if (type === 'schedule') {
+      const rows = await db.all(`
+        SELECT 
+          a.day, 
+          a.period, 
+          COALESCE(t.time_slot, '') as time_slot,
+          a.class_name, 
+          a.subject, 
+          COALESCE(u_teacher.full_name, 'Unassigned') as class_teacher,
+          a.observer_slot_number,
+          u_obs.full_name as observer_name
+        FROM observer_duty_allocations a
+        JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+        LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+        LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+        WHERE a.department_id = $1 AND a.generation_version = $2
+        ORDER BY 
+          CASE a.day 
+            WHEN 'Sunday' THEN 1 
+            WHEN 'Monday' THEN 2 
+            WHEN 'Tuesday' THEN 3 
+            WHEN 'Wednesday' THEN 4 
+            WHEN 'Thursday' THEN 5 
+            WHEN 'Friday' THEN 6 
+            WHEN 'Saturday' THEN 7 
+            ELSE 8 
+          END, a.period ASC, a.class_name ASC, a.observer_slot_number ASC
+      `, [deptId, version]);
+
+      let csv = 'Department,Day,Period,Time Slot,Class,Subject,Class Teacher,Observer Slot,Observer Teacher\n';
+      rows.forEach(r => {
+        csv += `"${deptName}","${r.day}","P${r.period}","${r.time_slot}","${r.class_name}","${r.subject}","${r.class_teacher}","Observer ${r.observer_slot_number}","${r.observer_name}"\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${deptName}_Observer_Schedule.csv"`);
+      return res.send(csv);
+    }
+
+    if (type === 'balance') {
+      const teachers = await db.all(`SELECT id, full_name, username, phone FROM users WHERE role = 'teacher' AND department_id = $1 ORDER BY full_name ASC`, [deptId]);
+      const teachingCounts = await db.all(`SELECT teacher_id, count(*)::int as count FROM teacher_selections WHERE department_id = $1 GROUP BY teacher_id`, [deptId]);
+      const obsCounts = await db.all(`SELECT observer_teacher_id as teacher_id, count(*)::int as count FROM observer_duty_allocations WHERE department_id = $1 AND generation_version = $2 GROUP BY observer_teacher_id`, [deptId, version]);
+
+      const tMap = new Map();
+      teachingCounts.forEach(t => tMap.set(t.teacher_id, t.count));
+      const oMap = new Map();
+      obsCounts.forEach(o => oMap.set(o.teacher_id, o.count));
+
+      let csv = 'Department,Teacher Name,Username,Phone,Teaching Duties,Observer Duties,Total Duties\n';
+      teachers.forEach(t => {
+        const teaching = tMap.get(t.id) || 0;
+        const observer = oMap.get(t.id) || 0;
+        csv += `"${deptName}","${t.full_name}","${t.username}","${t.phone || ''}",${teaching},${observer},${teaching + observer}\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${deptName}_Teacher_Duty_Balance.csv"`);
+      return res.send(csv);
+    }
+
+    res.status(400).json({ error: 'Invalid export type. Supported: schedule, balance' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Fallback to index.html for SPA routing
 app.get('*', (req, res) => {

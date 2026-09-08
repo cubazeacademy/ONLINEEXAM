@@ -402,6 +402,7 @@ function switchTab(tabId) {
     'admin-teaching-settings': 'Selection Window & Deadline Settings',
     'admin-teaching-reports': 'Teaching Allocation Reports & Exports',
     'admin-teaching-logs': 'Subject Selection Audit Logs',
+    'admin-observer': 'Observer Duty Management',
     'teacher-dashboard': 'Teacher Subject Selection Portal',
     'teacher-subject-selection': 'Period Selection Wizard',
     'teacher-my-selections': 'My Teaching Period Allocations',
@@ -436,6 +437,9 @@ function switchTab(tabId) {
   if (tabId === 'admin-teaching-settings') loadAdminTeachingSettings();
   if (tabId === 'admin-teaching-reports') loadAdminTeachingReports();
   if (tabId === 'admin-teaching-logs') loadAdminTeachingLogs();
+
+  // Observer Duty Management Admin View
+  if (tabId === 'admin-observer') loadObserverDutyDashboard();
 
   // Teacher Portal Views
   if (tabId === 'teacher-dashboard') loadTeacherDashboard();
@@ -6700,6 +6704,1054 @@ async function loadAdminTeachingLogs() {
     `).join('');
   } catch (err) {
     console.error('Error loading audit logs:', err);
+  }
+}
+
+// =========================================================================
+// 9. OBSERVER DUTY MANAGEMENT MODULE - CLIENT STATE & LOGIC
+// =========================================================================
+
+let observerState = {
+  departmentId: 1,
+  selectedDay: 'Sunday',
+  selectedPeriod: 4,
+  currentSubTab: 'schedule', // 'schedule', 'movement', 'balance', 'logs'
+  settings: {},
+  leader: null,
+  stats: {},
+  assignedClasses: [],
+  teachers: [],
+  scheduleData: null,
+  balanceData: null,
+  liveMovementData: null,
+  isLocked: false,
+  isSelectionLocked: false,
+  generationVersion: 1
+};
+
+const debouncedFilterObserverView = debounce(() => filterObserverView(), 150);
+
+// 9.1 MAIN DASHBOARD LOADER
+async function loadObserverDutyDashboard(forceFresh = false) {
+  try {
+    const select = document.getElementById('observer-dept-select');
+    if (select && select.value) {
+      observerState.departmentId = parseInt(select.value);
+    }
+    const deptId = observerState.departmentId || 1;
+
+    // Load department dropdown first
+    await populateObserverDeptSelect();
+
+    // Fetch observer settings & state
+    const res = await fetch(apiUrl(`/api/observer/settings?department_id=${deptId}`));
+    const data = await res.json();
+
+    observerState.settings = data.settings || {};
+    observerState.leader = data.leader || null;
+    observerState.stats = data.stats || {};
+    observerState.assignedClasses = data.assigned_classes || [];
+    observerState.teachers = data.teachers || [];
+    observerState.isLocked = Boolean(data.is_observer_locked);
+    observerState.isSelectionLocked = Boolean(data.is_selection_locked);
+    observerState.generationVersion = data.generation ? data.generation.generation_version : 1;
+
+    // Render Stats & Config
+    renderObserverHeaderAndStats(data);
+
+    // Load Active Sub-tab
+    if (observerState.currentSubTab === 'schedule') {
+      await loadObserverScheduleTab();
+    } else if (observerState.currentSubTab === 'movement') {
+      await fetchLiveObserverMovement();
+    } else if (observerState.currentSubTab === 'balance') {
+      await loadObserverBalanceTab();
+    } else if (observerState.currentSubTab === 'logs') {
+      await loadObserverLogsTab();
+    }
+  } catch (err) {
+    console.error('Error loading Observer Duty Dashboard:', err);
+  }
+}
+
+// 9.2 POPULATE OBSERVER DEPARTMENT DROPDOWN
+async function populateObserverDeptSelect() {
+  const select = document.getElementById('observer-dept-select');
+  if (!select) return;
+
+  try {
+    let depts = teacherSelectionState.departments || [];
+    if (!depts || depts.length === 0) {
+      const res = await fetch(apiUrl('/api/teaching/admin/departments'));
+      depts = await res.json();
+      teacherSelectionState.departments = depts;
+    }
+
+    const currentVal = select.value || observerState.departmentId || '1';
+    select.innerHTML = depts.map(d => `
+      <option value="${d.id}" ${d.id == currentVal ? 'selected' : ''}>
+        ${escapeHtml(d.name)} (${escapeHtml(d.code)})
+      </option>
+    `).join('');
+
+    if (select.value) {
+      observerState.departmentId = parseInt(select.value);
+    }
+  } catch (e) {
+    console.error('Error populating observer department dropdown:', e);
+  }
+}
+
+function onObserverDepartmentChanged(deptId) {
+  observerState.departmentId = parseInt(deptId);
+  loadObserverDutyDashboard(true);
+}
+
+// 9.3 RENDER HEADER, METRICS & SETTINGS
+function renderObserverHeaderAndStats(data) {
+  // Status Badge
+  const statusBadge = document.getElementById('observer-status-badge');
+  const statusText = document.getElementById('observer-status-badge-text');
+  if (statusBadge && statusText) {
+    if (data.is_observer_locked) {
+      statusBadge.style.background = '#10b981';
+      statusText.textContent = 'OFFICIAL LOCKED';
+    } else if (data.generation) {
+      statusBadge.style.background = '#f59e0b';
+      statusText.textContent = `DRAFT (v${data.generation.generation_version})`;
+    } else {
+      statusBadge.style.background = '#6366f1';
+      statusText.textContent = 'READY TO GENERATE';
+    }
+  }
+
+  // Lock Button & Badge
+  const lockBadge = document.getElementById('observer-lock-badge');
+  const lockBadgeText = document.getElementById('text-observer-lock-badge');
+  const lockBadgeIcon = document.getElementById('icon-observer-lock-badge');
+  const lockBtnText = document.getElementById('btn-observer-lock-text');
+  const lockBtnIcon = document.getElementById('icon-observer-lock-btn');
+
+  if (lockBadge && lockBadgeText) {
+    if (data.is_observer_locked) {
+      lockBadge.style.background = '#059669';
+      lockBadgeText.textContent = 'LOCKED';
+      if (lockBadgeIcon) lockBadgeIcon.className = 'fa-solid fa-lock';
+      if (lockBtnText) lockBtnText.textContent = 'Unlock Schedule';
+      if (lockBtnIcon) lockBtnIcon.className = 'fa-solid fa-lock-open';
+    } else {
+      lockBadge.style.background = 'rgba(255,255,255,0.15)';
+      lockBadgeText.textContent = 'UNLOCKED';
+      if (lockBadgeIcon) lockBadgeIcon.className = 'fa-solid fa-lock-open';
+      if (lockBtnText) lockBtnText.textContent = 'Lock Schedule';
+      if (lockBtnIcon) lockBtnIcon.className = 'fa-solid fa-lock';
+    }
+  }
+
+  // Subject Selection Locked Indicator
+  const selStatusBadge = document.getElementById('observer-sel-status-badge');
+  const selStatusText = document.getElementById('text-observer-sel-status');
+  if (selStatusBadge && selStatusText) {
+    if (data.is_selection_locked) {
+      selStatusBadge.style.background = '#dcfce7';
+      selStatusBadge.style.color = '#15803d';
+      selStatusText.textContent = 'FINALIZED & LOCKED';
+    } else {
+      selStatusBadge.style.background = '#fee2e2';
+      selStatusBadge.style.color = '#b91c1c';
+      selStatusText.textContent = 'UNLOCKED (Lock required)';
+    }
+  }
+
+  // Stats
+  const stats = data.stats || {};
+  const elClassesCount = document.getElementById('stat-obs-classes-count');
+  const elTeachersDuty = document.getElementById('stat-obs-teachers-duty');
+  const elRequiredCount = document.getElementById('stat-obs-required-count');
+  const elFormula = document.getElementById('stat-obs-calc-formula');
+  const elTotalTeachers = document.getElementById('stat-obs-total-teachers');
+  const elFreeTeachers = document.getElementById('stat-obs-free-teachers');
+
+  if (elClassesCount) elClassesCount.textContent = stats.assigned_classes_count || 0;
+  if (elTeachersDuty) elTeachersDuty.textContent = stats.assigned_classes_count || 0;
+  if (elRequiredCount) elRequiredCount.textContent = stats.required_observers_per_period || 0;
+  if (elFormula) elFormula.textContent = `${stats.assigned_classes_count || 0} classes × ${stats.observers_per_class || 2} = ${stats.required_observers_per_period || 0} / period`;
+  if (elTotalTeachers) elTotalTeachers.textContent = stats.active_teachers_count || 0;
+  if (elFreeTeachers) elFreeTeachers.textContent = stats.standby_free_teachers || 0;
+
+  // Leader Profile
+  const leaderName = document.getElementById('stat-obs-leader-name');
+  const leaderDisplayName = document.getElementById('obs-leader-display-name');
+  const leaderAvatar = document.getElementById('obs-leader-avatar');
+
+  if (data.leader) {
+    if (leaderName) leaderName.textContent = data.leader.teacher_name;
+    if (leaderDisplayName) leaderDisplayName.textContent = data.leader.teacher_name;
+    if (leaderAvatar) leaderAvatar.textContent = (data.leader.teacher_name || 'L').charAt(0).toUpperCase();
+  } else {
+    if (leaderName) leaderName.textContent = 'Not Selected';
+    if (leaderDisplayName) leaderDisplayName.textContent = 'No Leader Selected';
+    if (leaderAvatar) leaderAvatar.textContent = '?';
+  }
+
+  // Settings form values
+  const settings = data.settings || {};
+  const numPerClass = document.getElementById('obs-setting-num-per-class');
+  const currPeriod = document.getElementById('obs-setting-curr-period');
+  const nextPeriod = document.getElementById('obs-setting-next-period');
+  const balanced = document.getElementById('obs-setting-balanced');
+  const leaderReq = document.getElementById('obs-setting-leader-req');
+  const calcSummary = document.getElementById('obs-calc-summary-text');
+
+  if (numPerClass) numPerClass.value = settings.observers_per_class || 2;
+  if (currPeriod) currPeriod.checked = settings.current_period_exclusion !== false;
+  if (nextPeriod) nextPeriod.checked = settings.next_period_exclusion !== false;
+  if (balanced) balanced.checked = settings.balanced_allocation !== false;
+  if (leaderReq) leaderReq.checked = settings.leader_required !== false;
+
+  if (calcSummary) {
+    const cCount = stats.assigned_classes_count || 0;
+    const oPerC = settings.observers_per_class || 2;
+    calcSummary.textContent = `Formula: ${cCount} classes × ${oPerC} = ${cCount * oPerC} Observers per period`;
+  }
+}
+
+// 9.4 SUB-TAB NAVIGATION
+function switchObserverSubTab(subTabId) {
+  observerState.currentSubTab = subTabId;
+
+  // Toggle button active states
+  ['schedule', 'movement', 'balance', 'logs'].forEach(id => {
+    const btn = document.getElementById(`btn-obs-tab-${id}`);
+    const view = document.getElementById(`obs-subview-${id}`);
+    if (btn) {
+      if (id === subTabId) btn.classList.add('active');
+      else btn.classList.remove('active');
+    }
+    if (view) {
+      if (id === subTabId) view.classList.remove('hidden');
+      else view.classList.add('hidden');
+    }
+  });
+
+  // Load sub-tab specific data
+  if (subTabId === 'schedule') loadObserverScheduleTab();
+  if (subTabId === 'movement') fetchLiveObserverMovement();
+  if (subTabId === 'balance') loadObserverBalanceTab();
+  if (subTabId === 'logs') loadObserverLogsTab();
+}
+
+// 9.5 SAVE OBSERVER SETTINGS
+async function saveObserverSettingsForm(e) {
+  e.preventDefault();
+  const deptId = observerState.departmentId || 1;
+  const numPerClass = parseInt(document.getElementById('obs-setting-num-per-class').value) || 2;
+  const currPeriod = document.getElementById('obs-setting-curr-period').checked;
+  const nextPeriod = document.getElementById('obs-setting-next-period').checked;
+  const balanced = document.getElementById('obs-setting-balanced').checked;
+  const leaderReq = document.getElementById('obs-setting-leader-req').checked;
+
+  try {
+    const res = await fetch(apiUrl('/api/observer/settings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        observers_per_class: numPerClass,
+        current_period_exclusion: currPeriod,
+        next_period_exclusion: nextPeriod,
+        balanced_allocation: balanced,
+        random_allocation: true,
+        leader_required: leaderReq,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save settings');
+
+    alert('Observer allocation settings saved successfully.');
+    loadObserverDutyDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// 9.6 DEPARTMENT LEADER CONTROLS
+async function openModalChangeObserverLeader() {
+  const deptId = observerState.departmentId || 1;
+  const select = document.getElementById('select-obs-leader-teacher');
+  if (!select) return;
+
+  try {
+    // Populate with active teachers
+    const teachers = observerState.teachers || [];
+    select.innerHTML = teachers.map(t => `
+      <option value="${t.id}" ${observerState.leader && observerState.leader.teacher_id === t.id ? 'selected' : ''}>
+        ${escapeHtml(t.full_name)} (${escapeHtml(t.username)})
+      </option>
+    `).join('');
+
+    openModal('modal-observer-change-leader');
+  } catch (e) {
+    console.error('Error opening change leader modal:', e);
+  }
+}
+
+async function saveObserverLeaderForm(e) {
+  e.preventDefault();
+  const deptId = observerState.departmentId || 1;
+  const teacherId = parseInt(document.getElementById('select-obs-leader-teacher').value);
+
+  if (!teacherId) return alert('Please select a teacher.');
+
+  try {
+    const res = await fetch(apiUrl('/api/observer/leader'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        teacher_id: teacherId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to assign leader');
+
+    closeModal('modal-observer-change-leader');
+    alert(data.message || 'Leader assigned successfully.');
+    loadObserverDutyDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function openModalManualAssignLeader() {
+  if (!observerState.leader) {
+    return alert('Please select a Department Leader first before assigning manually.');
+  }
+
+  const leaderNameSpan = document.getElementById('modal-manual-leader-name');
+  if (leaderNameSpan) leaderNameSpan.textContent = observerState.leader.teacher_name;
+
+  const classSelect = document.getElementById('manual-assign-class');
+  if (classSelect) {
+    const classes = observerState.assignedClasses || [];
+    classSelect.innerHTML = classes.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+  }
+
+  openModal('modal-observer-manual-assign');
+}
+
+async function saveObserverManualLeaderAssignForm(e) {
+  e.preventDefault();
+  const deptId = observerState.departmentId || 1;
+  const day = document.getElementById('manual-assign-day').value;
+  const period = parseInt(document.getElementById('manual-assign-period').value);
+  const className = document.getElementById('manual-assign-class').value;
+  const reason = document.getElementById('manual-assign-reason').value;
+
+  try {
+    const res = await fetch(apiUrl('/api/observer/leader/manual-assign'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        day,
+        period,
+        class_name: className,
+        reason,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to manually assign leader');
+
+    closeModal('modal-observer-manual-assign');
+    alert(data.message || 'Leader assigned successfully.');
+    loadObserverDutyDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// 9.7 GENERATE OBSERVERS (TRIGGER ALGORITHM & POPUP PREVIEW)
+async function generateObserverSchedule() {
+  const deptId = observerState.departmentId || 1;
+
+  if (!observerState.isSelectionLocked) {
+    return alert('Cannot generate observers yet.\n\nTeacher Subject Selection must be LOCKED and finalized first by the administrator.');
+  }
+
+  if (observerState.isLocked) {
+    if (!confirm('The current Observer Schedule is LOCKED. Regenerating will create a new draft version. Are you sure you want to proceed?')) {
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-observer-generate');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating...`;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/observer/generate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to generate observer schedule');
+
+    // Populate preview modal
+    document.getElementById('prev-obs-total-classes').textContent = data.total_classes || 0;
+    document.getElementById('prev-obs-required').textContent = data.required_observers || 0;
+    document.getElementById('prev-obs-assigned').textContent = data.assigned_observers || 0;
+    document.getElementById('prev-obs-unassigned').textContent = data.unassigned_observers || 0;
+
+    const unassignedBox = document.getElementById('prev-obs-unassigned-box');
+    if (unassignedBox) {
+      unassignedBox.style.display = data.unassigned_observers > 0 ? 'block' : 'none';
+    }
+
+    // Conflicts alert
+    const conflictsBox = document.getElementById('prev-obs-conflicts-box');
+    if (conflictsBox) {
+      if (data.conflicts && data.conflicts.length > 0) {
+        conflictsBox.classList.remove('hidden');
+        conflictsBox.innerHTML = `
+          <strong><i class="fa-solid fa-triangle-exclamation"></i> Insufficient Observers Detected:</strong>
+          <ul style="margin:6px 0 0 18px; padding:0; font-size:0.83rem;">
+            ${data.conflicts.map(c => `<li>${escapeHtml(c.message)}</li>`).join('')}
+          </ul>
+        `;
+      } else {
+        conflictsBox.classList.add('hidden');
+      }
+    }
+
+    // Sample preview slots
+    const previewTbody = document.getElementById('table-prev-obs-body');
+    if (previewTbody) {
+      const sample = (data.allocations || []).slice(0, 14); // show up to first 14 rows
+
+      // Group sample by day_period_class
+      const sampleMap = new Map();
+      sample.forEach(a => {
+        const k = `${a.day}_${a.period}_${a.class_name}`;
+        if (!sampleMap.has(k)) {
+          sampleMap.set(k, {
+            day: a.day,
+            period: a.period,
+            time_slot: a.time_slot,
+            class_name: a.class_name,
+            subject: a.subject,
+            class_teacher_name: a.class_teacher_name,
+            obs1: '—',
+            obs2: '—'
+          });
+        }
+        const item = sampleMap.get(k);
+        if (a.observer_slot_number === 1) item.obs1 = a.observer_teacher_name;
+        if (a.observer_slot_number === 2) item.obs2 = a.observer_teacher_name;
+      });
+
+      previewTbody.innerHTML = Array.from(sampleMap.values()).map(r => `
+        <tr>
+          <td><strong>${escapeHtml(r.day)} P${r.period}</strong> <small class="text-muted">(${escapeHtml(r.time_slot)})</small></td>
+          <td><span class="badge" style="background:#f1f5f9; color:#0f172a; font-weight:700;">${escapeHtml(r.class_name)}</span></td>
+          <td><strong>${escapeHtml(r.subject)}</strong></td>
+          <td><span class="obs-badge-teaching"><i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(r.class_teacher_name)}</span></td>
+          <td><span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(r.obs1)}</span></td>
+          <td><span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(r.obs2)}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    openModal('modal-observer-preview');
+    loadObserverDutyDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Observers`;
+    }
+  }
+}
+
+// 9.8 LOCK / UNLOCK CONTROLS
+async function toggleObserverLock(forceLock = null) {
+  const deptId = observerState.departmentId || 1;
+  const shouldLock = forceLock !== null ? forceLock : !observerState.isLocked;
+
+  const endpoint = shouldLock ? '/api/observer/lock' : '/api/observer/unlock';
+  const actionName = shouldLock ? 'LOCK' : 'UNLOCK';
+
+  if (!confirm(`Are you sure you want to ${actionName} the Observer Schedule for this department?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl(endpoint), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        admin_id: currentUser ? currentUser.id : null,
+        admin_name: currentUser ? currentUser.full_name : 'Admin'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.conflicts) {
+        throw new Error(`${data.error}\n\nConflicts:\n- ` + data.conflicts.join('\n- '));
+      }
+      throw new Error(data.error || `Failed to ${actionName} schedule`);
+    }
+
+    alert(data.message || `Schedule ${actionName}ED successfully.`);
+    loadObserverDutyDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function confirmLockFromPreview() {
+  closeModal('modal-observer-preview');
+  toggleObserverLock(true);
+}
+
+// 9.9 SUB-TAB 1: OBSERVER SCHEDULE OVERVIEW MATRIX
+async function loadObserverScheduleTab() {
+  const deptId = observerState.departmentId || 1;
+  const tbody = document.getElementById('table-obs-schedule-body');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/overview?department_id=${deptId}`));
+    const data = await res.json();
+    observerState.scheduleData = data;
+
+    renderObserverScheduleView(data);
+  } catch (err) {
+    console.error('Error loading observer schedule overview:', err);
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-4">Error loading schedule.</td></tr>`;
+  }
+}
+
+function renderObserverScheduleView(data) {
+  const tbody = document.getElementById('table-obs-schedule-body');
+  const dayTabsContainer = document.getElementById('obs-schedule-day-tabs');
+  if (!tbody) return;
+
+  if (!data || !data.schedule || data.schedule.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center p-6 text-muted">
+          <div style="padding:24px;">
+            <i class="fa-solid fa-calendar-xmark" style="font-size:2rem; color:#94a3b8; margin-bottom:8px; display:block;"></i>
+            <strong>No Observer Schedule generated yet.</strong>
+            <p style="margin:4px 0 12px 0; font-size:0.85rem;">Click "Generate Observers" above to automatically create balanced observer assignments.</p>
+            <button type="button" class="btn btn-sm btn-primary" onclick="generateObserverSchedule()">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Now
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+    if (dayTabsContainer) dayTabsContainer.innerHTML = '';
+    return;
+  }
+
+  // Populate Day Tabs
+  const activeDaysList = (data.active_days || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday').split(',').map(d => d.trim());
+  if (dayTabsContainer) {
+    dayTabsContainer.innerHTML = `
+      <button type="button" class="btn btn-sm ${observerState.selectedDay === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="switchObserverScheduleDay('all')">
+        All Days
+      </button>
+      ${activeDaysList.map(d => `
+        <button type="button" class="btn btn-sm ${observerState.selectedDay === d ? 'btn-primary' : 'btn-outline'}" onclick="switchObserverScheduleDay('${d}')">
+          ${getDayBadgeHtml(d)}
+        </button>
+      `).join('')}
+    `;
+  }
+
+  // Filter schedule by selected day
+  const filtered = data.schedule.filter(s => observerState.selectedDay === 'all' || s.day === observerState.selectedDay);
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center p-6 text-muted">No entries found for ${escapeHtml(observerState.selectedDay)}.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(r => `
+    <tr>
+      <td style="white-space:nowrap;">
+        <strong>${escapeHtml(r.day)} P${r.period}</strong>
+        <div style="font-size:0.75rem; color:#64748b;">${escapeHtml(r.time_slot)}</div>
+      </td>
+      <td><span class="badge" style="background:#f1f5f9; color:#0f172a; font-weight:700; font-size:0.85rem;">${escapeHtml(r.class_name)}</span></td>
+      <td><strong>${escapeHtml(r.subject)}</strong></td>
+      <td>
+        <span class="obs-badge-teaching">
+          <i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(r.class_teacher_name)}
+        </span>
+      </td>
+      <td>
+        ${r.observer_1_name ? `<span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(r.observer_1_name)}</span>` : '<span class="text-muted">—</span>'}
+      </td>
+      <td>
+        ${r.observer_2_name ? `<span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(r.observer_2_name)}</span>` : '<span class="text-muted">—</span>'}
+      </td>
+      <td>
+        ${r.leader_name ? `<span class="obs-badge-leader"><i class="fa-solid fa-user-tie"></i> ${escapeHtml(r.leader_name)}</span>` : '<span class="text-muted">Standby</span>'}
+      </td>
+      <td class="text-right">
+        <button type="button" class="btn btn-sm btn-outline" style="padding:3px 8px; font-size:0.75rem;" onclick="trackSingleClassMovement('${escapeHtml(r.class_name)}'); switchObserverSubTab('movement');" title="View class observer movement">
+          <i class="fa-solid fa-person-walking"></i> Track
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function switchObserverScheduleDay(day) {
+  observerState.selectedDay = day;
+  if (observerState.scheduleData) {
+    renderObserverScheduleView(observerState.scheduleData);
+  }
+}
+
+// 9.10 SUB-TAB 2: OBSERVER MOVEMENT & LIVE MONITORING
+async function fetchLiveObserverMovement() {
+  const deptId = observerState.departmentId || 1;
+  const select = document.getElementById('select-live-movement-period');
+  const period = select ? select.value : observerState.selectedPeriod;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/live-movement?department_id=${deptId}&period=${period}`));
+    const data = await res.json();
+    observerState.liveMovementData = data;
+
+    // Update Header Text
+    const titleEl = document.getElementById('live-movement-period-title');
+    const timeBadge = document.getElementById('live-movement-time-badge');
+    if (titleEl) titleEl.textContent = `CURRENT PERIOD: ${data.current_day} — P${data.current_period}`;
+    if (timeBadge) timeBadge.textContent = data.time_slot;
+
+    // Update Counts
+    document.getElementById('live-count-teaching').textContent = `(${data.teaching.length})`;
+    document.getElementById('live-count-observers').textContent = `(${data.observers.length})`;
+    document.getElementById('live-count-leader').textContent = `(${data.leader ? 1 : 0})`;
+    document.getElementById('live-count-free').textContent = `(${data.free.length})`;
+
+    // Populate 1: Teaching List
+    const teachingList = document.getElementById('live-list-teaching');
+    if (teachingList) {
+      if (data.teaching.length === 0) {
+        teachingList.innerHTML = `<span class="text-muted" style="font-size:0.8rem;">No teachers in class</span>`;
+      } else {
+        teachingList.innerHTML = data.teaching.map(t => `
+          <div class="obs-movement-item">
+            <div>
+              <strong style="color:#14532d;">${escapeHtml(t.teacher_name)}</strong>
+              <div style="font-size:0.75rem; color:#15803d;"><i class="fa-solid fa-book"></i> ${escapeHtml(t.subject)}</div>
+            </div>
+            <span class="badge badge-success">${escapeHtml(t.location)}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Populate 2: Observer List
+    const observerList = document.getElementById('live-list-observers');
+    if (observerList) {
+      if (data.observers.length === 0) {
+        observerList.innerHTML = `<span class="text-muted" style="font-size:0.8rem;">No observers assigned</span>`;
+      } else {
+        observerList.innerHTML = data.observers.map(o => `
+          <div class="obs-movement-item">
+            <div>
+              <strong style="color:#312e81;">${escapeHtml(o.teacher_name)}</strong>
+              <div style="font-size:0.75rem; color:#4338ca;"><i class="fa-solid fa-shield"></i> Slot ${o.slot_number} (with ${escapeHtml(o.class_teacher_name)})</div>
+            </div>
+            <span class="badge badge-primary">${escapeHtml(o.location)}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Populate 3: Leader
+    const leaderList = document.getElementById('live-list-leader');
+    if (leaderList) {
+      if (data.leader) {
+        leaderList.innerHTML = `
+          <div class="obs-movement-item" style="border-left:3px solid #f59e0b;">
+            <div>
+              <strong style="color:#78350f;">${escapeHtml(data.leader.teacher_name)}</strong>
+              <div style="font-size:0.75rem; color:#b45309;"><i class="fa-solid fa-phone"></i> ${escapeHtml(data.leader.phone || 'Available')}</div>
+            </div>
+            <span class="badge badge-warning">STANDBY</span>
+          </div>
+        `;
+      } else {
+        leaderList.innerHTML = `<span class="text-muted" style="font-size:0.8rem;">No leader selected</span>`;
+      }
+    }
+
+    // Populate 4: Free Teachers
+    const freeList = document.getElementById('live-list-free');
+    if (freeList) {
+      if (data.free.length === 0) {
+        freeList.innerHTML = `<span class="text-muted" style="font-size:0.8rem;">All teachers active</span>`;
+      } else {
+        freeList.innerHTML = data.free.map(f => `
+          <div class="obs-movement-item">
+            <div>
+              <strong style="color:#334155;">${escapeHtml(f.teacher_name)}</strong>
+              <div style="font-size:0.75rem; color:#64748b;">${escapeHtml(f.status_label)}</div>
+            </div>
+            <span class="badge" style="background:#f1f5f9; color:#475569;">FREE</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Populate Class Snapshot Table
+    const snapshotTbody = document.getElementById('table-live-class-snapshot-body');
+    if (snapshotTbody) {
+      snapshotTbody.innerHTML = (data.class_snapshot || []).map(cs => `
+        <tr>
+          <td><strong style="font-size:0.9rem;">${escapeHtml(cs.class_name)}</strong></td>
+          <td><strong>${escapeHtml(cs.subject)}</strong></td>
+          <td><span class="obs-badge-teaching"><i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(cs.class_teacher_name)}</span></td>
+          <td><span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(cs.observer_1_name)}</span></td>
+          <td><span class="obs-badge-observer"><i class="fa-solid fa-user-shield"></i> ${escapeHtml(cs.observer_2_name)}</span></td>
+          <td>
+            ${cs.observer_1_name !== 'Unassigned' && cs.observer_2_name !== 'Unassigned' ?
+              `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Covered (2 Observers)</span>` :
+              `<span class="badge badge-warning"><i class="fa-solid fa-circle-exclamation"></i> Incomplete</span>`}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Populate Search Dropdowns (Teacher & Class)
+    populateMovementTrackersDropdowns();
+  } catch (err) {
+    console.error('Error fetching live observer movement:', err);
+  }
+}
+
+function resetLiveMovementToCurrentTime() {
+  fetchLiveObserverMovement();
+}
+
+function populateMovementTrackersDropdowns() {
+  const teacherSelect = document.getElementById('select-track-teacher');
+  const classSelect = document.getElementById('select-track-class');
+
+  if (teacherSelect && teacherSelect.options.length <= 1) {
+    const teachers = observerState.teachers || [];
+    teacherSelect.innerHTML = `<option value="">-- Choose a teacher --</option>` +
+      teachers.map(t => `<option value="${t.id}">${escapeHtml(t.full_name)}</option>`).join('');
+  }
+
+  if (classSelect && classSelect.options.length <= 1) {
+    const classes = observerState.assignedClasses || [];
+    classSelect.innerHTML = `<option value="">-- Choose a class --</option>` +
+      classes.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+  }
+}
+
+async function trackSingleTeacherMovement(teacherId) {
+  const container = document.getElementById('container-track-teacher-result');
+  if (!container) return;
+  if (!teacherId) {
+    container.innerHTML = `<span class="text-muted">Select a teacher above to inspect their complete movement & duties.</span>`;
+    return;
+  }
+
+  const deptId = observerState.departmentId || 1;
+  container.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Tracking teacher...`;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/teacher-movement?department_id=${deptId}&teacher_id=${teacherId}`));
+    const data = await res.json();
+
+    const teachingSlots = data.teaching_schedule || [];
+    const observerSlots = data.observer_schedule || [];
+
+    container.innerHTML = `
+      <div style="margin-bottom:10px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+        <h4 style="margin:0; font-size:0.95rem; color:#1e293b;">${escapeHtml(data.teacher_name)}</h4>
+        <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:0.75rem;">${escapeHtml(data.role)}</span>
+      </div>
+
+      <div style="margin-bottom:8px;">
+        <strong style="font-size:0.8rem; color:#15803d;"><i class="fa-solid fa-chalkboard-user"></i> Teaching Slots (${teachingSlots.length}):</strong>
+        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:4px;">
+          ${teachingSlots.length === 0 ? '<span class="text-muted" style="font-size:0.75rem;">None</span>' :
+            teachingSlots.map(s => `<span class="badge badge-success" style="font-size:0.75rem;">${escapeHtml(s.day)} P${s.period} (${escapeHtml(s.class_name)})</span>`).join('')}
+        </div>
+      </div>
+
+      <div>
+        <strong style="font-size:0.8rem; color:#4338ca;"><i class="fa-solid fa-user-shield"></i> Observer Duty Slots (${observerSlots.length}):</strong>
+        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:4px;">
+          ${observerSlots.length === 0 ? '<span class="text-muted" style="font-size:0.75rem;">None</span>' :
+            observerSlots.map(s => `<span class="badge badge-primary" style="font-size:0.75rem;">${escapeHtml(s.day)} P${s.period} (${escapeHtml(s.class_name)})</span>`).join('')}
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<span class="text-danger">Error tracking teacher.</span>`;
+  }
+}
+
+async function trackSingleClassMovement(className) {
+  const container = document.getElementById('container-track-class-result');
+  if (!container) return;
+  if (!className) {
+    container.innerHTML = `<span class="text-muted">Select a class above to see the complete day-wise movement of observers.</span>`;
+    return;
+  }
+
+  const deptId = observerState.departmentId || 1;
+  container.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Tracking class observers...`;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/class-movement?department_id=${deptId}&class_name=${encodeURIComponent(className)}`));
+    const data = await res.json();
+    const movement = data.movement || [];
+
+    if (movement.length === 0) {
+      container.innerHTML = `<span class="text-muted">No observer movement records found for ${escapeHtml(className)}.</span>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <h5 style="margin:0 0 8px 0; font-size:0.9rem; color:#1e293b;">${escapeHtml(className)} Observers Movement Tracker</h5>
+      <div style="max-height:220px; overflow-y:auto;">
+        <table class="data-table" style="font-size:0.78rem;">
+          <thead>
+            <tr>
+              <th>Day & Period</th>
+              <th>Class Teacher</th>
+              <th>Observer 1</th>
+              <th>Observer 2</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${movement.map(m => `
+              <tr>
+                <td><strong>${escapeHtml(m.day)} P${m.period}</strong></td>
+                <td><span class="obs-badge-teaching">${escapeHtml(m.class_teacher_name)}</span></td>
+                <td><span class="obs-badge-observer">${escapeHtml(m.observer_1 || '—')}</span></td>
+                <td><span class="obs-badge-observer">${escapeHtml(m.observer_2 || '—')}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<span class="text-danger">Error tracking class movement.</span>`;
+  }
+}
+
+// 9.11 SUB-TAB 3: DUTY BALANCE
+async function loadObserverBalanceTab() {
+  const deptId = observerState.departmentId || 1;
+  const tbody = document.getElementById('table-obs-balance-body');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/teacher-balance?department_id=${deptId}`));
+    const data = await res.json();
+    observerState.balanceData = data;
+
+    renderObserverDutyBalance(data);
+  } catch (err) {
+    console.error('Error loading duty balance:', err);
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-4">Error loading duty balance.</td></tr>`;
+  }
+}
+
+function renderObserverDutyBalance(data) {
+  const tbody = document.getElementById('table-obs-balance-body');
+  if (!tbody) return;
+
+  const rows = data.balance || [];
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center p-6 text-muted">No teacher duty records found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    let tagHtml = `<span class="obs-balance-tag-balanced"><i class="fa-solid fa-circle-check"></i> Balanced</span>`;
+    if (r.balance_status === 'LEADER_STANDBY') {
+      tagHtml = `<span class="obs-balance-tag-leader"><i class="fa-solid fa-user-tie"></i> Leader Standby</span>`;
+    } else if (r.balance_status === 'HEAVY') {
+      tagHtml = `<span class="obs-balance-tag-heavy"><i class="fa-solid fa-triangle-exclamation"></i> Heavy Load</span>`;
+    } else if (r.balance_status === 'LIGHT') {
+      tagHtml = `<span class="obs-balance-tag-light"><i class="fa-solid fa-circle-info"></i> Light Load</span>`;
+    }
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(r.teacher_name)}</strong></td>
+        <td><span class="text-muted" style="font-size:0.8rem;">${escapeHtml(r.phone || r.username)}</span></td>
+        <td><span class="badge" style="background:#f1f5f9; color:#475569; font-size:0.75rem;">${escapeHtml(r.role_label)}</span></td>
+        <td style="text-align:center;"><strong class="text-success">${r.teaching_duties}</strong></td>
+        <td style="text-align:center;"><strong class="text-primary">${r.observer_duties}</strong></td>
+        <td style="text-align:center;"><strong style="font-size:0.95rem; color:#0f172a;">${r.total_duties}</strong></td>
+        <td>${tagHtml}</td>
+        <td class="text-right">
+          <button type="button" class="btn btn-sm btn-outline" style="padding:3px 8px; font-size:0.75rem;" onclick="viewTeacherObserverSchedule(${r.teacher_id}, '${escapeHtml(r.teacher_name)}')" title="View detailed workload">
+            <i class="fa-solid fa-calendar-week"></i> Schedule
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function viewTeacherObserverSchedule(teacherId, teacherName) {
+  const modalTitle = document.getElementById('modal-obs-teacher-title');
+  const container = document.getElementById('container-obs-teacher-workload-content');
+  if (!container) return;
+
+  if (modalTitle) modalTitle.textContent = `${teacherName} — Workload & Duties`;
+  container.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Loading schedule...`;
+  openModal('modal-observer-teacher-schedule');
+
+  const deptId = observerState.departmentId || 1;
+  try {
+    const res = await fetch(apiUrl(`/api/observer/teacher-movement?department_id=${deptId}&teacher_id=${teacherId}`));
+    const data = await res.json();
+
+    const teaching = data.teaching_schedule || [];
+    const observer = data.observer_schedule || [];
+
+    container.innerHTML = `
+      <div style="margin-bottom:16px;">
+        <h5 style="margin:0 0 6px 0; color:#15803d;"><i class="fa-solid fa-chalkboard-user"></i> Teaching Classes (${teaching.length}):</h5>
+        <div class="table-responsive" style="max-height:160px; border:1px solid #e2e8f0; border-radius:8px;">
+          <table class="data-table" style="font-size:0.8rem;">
+            <thead>
+              <tr><th>Day & Period</th><th>Class</th><th>Subject</th></tr>
+            </thead>
+            <tbody>
+              ${teaching.length === 0 ? '<tr><td colspan="3" class="text-muted text-center">No teaching periods assigned</td></tr>' :
+                teaching.map(t => `<tr><td><strong>${escapeHtml(t.day)} P${t.period}</strong></td><td><span class="badge" style="background:#f1f5f9; color:#0f172a;">${escapeHtml(t.class_name)}</span></td><td><strong>${escapeHtml(t.subject)}</strong></td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h5 style="margin:0 0 6px 0; color:#4338ca;"><i class="fa-solid fa-user-shield"></i> Observer Duties (${observer.length}):</h5>
+        <div class="table-responsive" style="max-height:160px; border:1px solid #e2e8f0; border-radius:8px;">
+          <table class="data-table" style="font-size:0.8rem;">
+            <thead>
+              <tr><th>Day & Period</th><th>Class</th><th>Class Teacher</th></tr>
+            </thead>
+            <tbody>
+              ${observer.length === 0 ? '<tr><td colspan="3" class="text-muted text-center">No observer duties assigned</td></tr>' :
+                observer.map(o => `<tr><td><strong>${escapeHtml(o.day)} P${o.period}</strong></td><td><span class="badge" style="background:#e0e7ff; color:#4338ca;">${escapeHtml(o.class_name)}</span></td><td>${escapeHtml(o.class_teacher_name || 'Class Teacher')}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<span class="text-danger">Error loading workload.</span>`;
+  }
+}
+
+// 9.12 SUB-TAB 4: AUDIT LOGS
+async function loadObserverLogsTab() {
+  const deptId = observerState.departmentId || 1;
+  const tbody = document.getElementById('table-obs-logs-body');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/audit-logs?department_id=${deptId}`));
+    const logs = await res.json();
+
+    if (logs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center p-6 text-muted">No observer audit logs recorded yet.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = logs.map(l => `
+      <tr>
+        <td style="font-size:0.8rem; color:#64748b;">${new Date(l.created_at).toLocaleString()}</td>
+        <td><strong>${escapeHtml(l.user_name || 'Admin')}</strong></td>
+        <td><strong class="badge badge-primary">${escapeHtml(l.action)}</strong></td>
+        <td style="font-size:0.8rem; color:#475569;"><code>${escapeHtml(JSON.stringify(l.details || {}))}</code></td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('Error loading observer logs:', err);
+  }
+}
+
+// 9.13 EXPORTS & PRINT
+function exportObserverCSV(type) {
+  const deptId = observerState.departmentId || 1;
+  window.location.href = apiUrl(`/api/observer/export/${type}?department_id=${deptId}`);
+}
+
+function printObserverSchedule() {
+  window.print();
+}
+
+function filterObserverView() {
+  const query = (document.getElementById('search-obs-table')?.value || '').toLowerCase().trim();
+  if (observerState.currentSubTab === 'schedule' && observerState.scheduleData) {
+    const filtered = {
+      ...observerState.scheduleData,
+      schedule: observerState.scheduleData.schedule.filter(s => {
+        return (
+          s.class_name.toLowerCase().includes(query) ||
+          s.subject.toLowerCase().includes(query) ||
+          (s.class_teacher_name && s.class_teacher_name.toLowerCase().includes(query)) ||
+          (s.observer_1_name && s.observer_1_name.toLowerCase().includes(query)) ||
+          (s.observer_2_name && s.observer_2_name.toLowerCase().includes(query)) ||
+          s.day.toLowerCase().includes(query)
+        );
+      })
+    };
+    renderObserverScheduleView(filtered);
+  } else if (observerState.currentSubTab === 'balance' && observerState.balanceData) {
+    const filtered = {
+      ...observerState.balanceData,
+      balance: observerState.balanceData.balance.filter(b => {
+        return (
+          b.teacher_name.toLowerCase().includes(query) ||
+          b.username.toLowerCase().includes(query) ||
+          (b.phone && b.phone.toLowerCase().includes(query))
+        );
+      })
+    };
+    renderObserverDutyBalance(filtered);
   }
 }
 

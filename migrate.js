@@ -594,10 +594,63 @@ async function runMigration() {
       `CREATE INDEX IF NOT EXISTS idx_obs_audit_dept ON observer_audit_logs(department_id);`
     ];
 
-    for (const oIdx of observerIndexes) {
-      await client.query(oIdx);
+    // 7. DEPARTMENT LEADER MANAGEMENT & PORTAL TABLES
+    console.log('📦 7. Migrating Department Leaders & Replacement tables...');
+    try {
+      await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;`);
+      await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('admin', 'student', 'teacher', 'department_leader'));`);
+    } catch (e) {
+      console.log('Users role constraint note:', e.message);
     }
-    console.log('✅ Observer Duty Management tables and indexes initialized.');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS department_leaders (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        teacher_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        last_login TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    try {
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_active_dept_leader ON department_leaders (department_id) WHERE status = 'active';`);
+    } catch (e) {
+      console.log('Active leader unique index note:', e.message);
+    }
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS department_observer_replacements (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        day VARCHAR(20) NOT NULL,
+        period INTEGER NOT NULL,
+        class_name VARCHAR(100) NOT NULL,
+        current_observer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        suggested_replacement_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reason TEXT,
+        status VARCHAR(50) DEFAULT 'pending',
+        requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const leaderIndexes = [
+      `CREATE INDEX IF NOT EXISTS idx_dept_leaders_dept ON department_leaders(department_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_dept_leaders_user ON department_leaders(user_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_dept_leaders_teacher ON department_leaders(teacher_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_obs_replacements_dept ON department_observer_replacements(department_id);`
+    ];
+    for (const lIdx of leaderIndexes) {
+      await client.query(lIdx);
+    }
+    console.log('✅ Department Leaders and Replacement tables initialized.');
 
     // Seed default Admin user if empty
     const adminCheck = await client.query(`SELECT count(*)::int as count FROM users WHERE role = 'admin'`);

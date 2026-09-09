@@ -238,10 +238,15 @@ function initLiveSync() {
         else if (viewId === 'admin-teaching-departments') await loadTeachingDepartments(true);
         else if (viewId === 'admin-teaching-classes') await loadTeachingDepartmentClasses(true);
         else if (viewId === 'admin-teaching-periods') await loadAdminTeachingPeriods(true);
+        else if (viewId === 'admin-department-leaders') await loadAdminDepartmentLeaders(true);
       } else if (currentUser.role === 'teacher') {
         if (viewId === 'teacher-dashboard') await loadTeacherDashboard(true);
         else if (viewId === 'teacher-subject-selection') await refreshTeacherSelectionSlots(true);
         else if (viewId === 'teacher-my-selections') await loadTeacherMySelectionsSlip(true);
+      } else if (currentUser.role === 'department_leader') {
+        if (viewId === 'leader-dashboard') await loadLeaderDashboard(true);
+        else if (viewId === 'leader-observer-schedule') await loadLeaderObserverSchedule(true);
+        else if (viewId === 'leader-today-overview') await loadLeaderTodayOverview(true);
       }
     } catch (e) {
       // Silent sync fallback
@@ -335,9 +340,10 @@ function showPortalLayout() {
   const role = currentUser.role || 'student';
 
   if (roleBadge) {
-    roleBadge.textContent = role.toUpperCase();
+    roleBadge.textContent = role === 'department_leader' ? 'DEPT LEADER' : role.toUpperCase();
     if (role === 'admin') roleBadge.className = 'badge badge-role';
     else if (role === 'teacher') roleBadge.className = 'badge badge-primary';
+    else if (role === 'department_leader') roleBadge.className = 'badge badge-warning';
     else roleBadge.className = 'badge badge-success';
   }
 
@@ -345,6 +351,7 @@ function showPortalLayout() {
     let roleLabel = 'Student';
     if (role === 'admin') roleLabel = 'Admin';
     if (role === 'teacher') roleLabel = 'Teacher';
+    if (role === 'department_leader') roleLabel = 'Dept Leader';
     rolePill.textContent = `@${currentUser.username || 'user'} - ${roleLabel}`;
   }
 
@@ -356,10 +363,12 @@ function showPortalLayout() {
   const navAdmin = document.getElementById('nav-admin');
   const navTeacher = document.getElementById('nav-teacher');
   const navStudent = document.getElementById('nav-student');
+  const navLeader = document.getElementById('nav-leader');
 
   if (navAdmin) navAdmin.classList.add('hidden');
   if (navTeacher) navTeacher.classList.add('hidden');
   if (navStudent) navStudent.classList.add('hidden');
+  if (navLeader) navLeader.classList.add('hidden');
 
   if (role === 'admin') {
     if (navAdmin) navAdmin.classList.remove('hidden');
@@ -367,6 +376,9 @@ function showPortalLayout() {
   } else if (role === 'teacher') {
     if (navTeacher) navTeacher.classList.remove('hidden');
     switchTab('teacher-dashboard');
+  } else if (role === 'department_leader') {
+    if (navLeader) navLeader.classList.remove('hidden');
+    switchTab('leader-dashboard');
   } else {
     if (navStudent) navStudent.classList.remove('hidden');
     switchTab('student-dashboard');
@@ -443,6 +455,15 @@ function switchTab(tabId) {
     'admin-teaching-reports': 'Teaching Allocation Reports & Exports',
     'admin-teaching-logs': 'Subject Selection Audit Logs',
     'admin-observer': 'Observer Duty Management',
+    'admin-department-leaders': 'Department Leaders Management',
+    'leader-dashboard': 'Department Leader Dashboard',
+    'leader-observer-schedule': 'Department Observer Schedule',
+    'leader-teacher-schedule': 'Department Teacher Timetable',
+    'leader-today-overview': 'Today\'s Period Overview',
+    'leader-duty-balance': 'Department Observer Duty Balance',
+    'leader-absences': 'Observer Absence & Replacements',
+    'leader-notifications': 'Department Notifications',
+    'leader-profile': 'Leader Profile & Security',
     'teacher-dashboard': 'Today\'s Schedule & Duty Overview',
     'teacher-observer-duties': 'My Observer Duties & Monitoring',
     'teacher-movement': 'My Daily Movement Roster',
@@ -482,6 +503,17 @@ function switchTab(tabId) {
 
   // Observer Duty Management Admin View
   if (tabId === 'admin-observer') loadObserverDutyDashboard();
+  if (tabId === 'admin-department-leaders') loadAdminDepartmentLeaders();
+
+  // Leader Portal Views
+  if (tabId === 'leader-dashboard') loadLeaderDashboard();
+  if (tabId === 'leader-observer-schedule') loadLeaderObserverSchedule();
+  if (tabId === 'leader-teacher-schedule') loadLeaderTeacherSchedule();
+  if (tabId === 'leader-today-overview') loadLeaderTodayOverview();
+  if (tabId === 'leader-duty-balance') loadLeaderDutyBalance();
+  if (tabId === 'leader-absences') loadLeaderAbsencesAndRequests();
+  if (tabId === 'leader-notifications') loadLeaderNotifications();
+  if (tabId === 'leader-profile') loadLeaderProfile();
 
   // Teacher Portal Views
   if (tabId === 'teacher-dashboard') loadTeacherDashboard();
@@ -9266,6 +9298,1158 @@ async function executeObserverManualEdit() {
       btn.innerHTML = `<i class="fa-solid fa-check"></i> Confirm Change`;
     }
   }
+}
+
+
+/* ==========================================================================
+   ADMIN — DEPARTMENT LEADER MANAGEMENT LOGIC
+   ========================================================================== */
+
+let adminLeadersData = {
+  departments: [],
+  leaders: []
+};
+
+// 1. Load Admin Department Leaders Roster
+async function loadAdminDepartmentLeaders(forceFresh = false) {
+  const tbody = document.getElementById('table-admin-leaders-body');
+  if (!tbody) return;
+
+  try {
+    const data = await fetchJsonWithCache('/api/admin/department-leaders', 1500, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load department leaders');
+
+    adminLeadersData.departments = data.departments || [];
+    adminLeadersData.leaders = data.leaders || [];
+
+    // Update Stats
+    const totalDepts = adminLeadersData.departments.length;
+    const activeLeaders = adminLeadersData.leaders.filter(l => l.status === 'active');
+    const assignedDeptIds = new Set(activeLeaders.map(l => l.department_id));
+    const unassignedCount = totalDepts - assignedDeptIds.size;
+
+    const elTotal = document.getElementById('stat-leader-total-depts');
+    const elActive = document.getElementById('stat-leader-active-count');
+    const elUnassigned = document.getElementById('stat-leader-unassigned-depts');
+
+    if (elTotal) elTotal.textContent = totalDepts;
+    if (elActive) elActive.textContent = activeLeaders.length;
+    if (elUnassigned) elUnassigned.textContent = Math.max(0, unassignedCount);
+
+    renderAdminLeadersTable();
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+// 2. Render Admin Leaders Table with Filters
+function filterAdminLeadersTable() {
+  renderAdminLeadersTable();
+}
+
+function renderAdminLeadersTable() {
+  const tbody = document.getElementById('table-admin-leaders-body');
+  if (!tbody) return;
+
+  const searchQuery = (document.getElementById('filter-admin-leaders-search')?.value || '').toLowerCase().trim();
+  const statusFilter = document.getElementById('filter-admin-leaders-status')?.value || 'active';
+
+  let list = adminLeadersData.leaders || [];
+
+  if (statusFilter !== 'all') {
+    list = list.filter(l => l.status === statusFilter);
+  }
+
+  if (searchQuery) {
+    list = list.filter(l => 
+      (l.teacher_name || '').toLowerCase().includes(searchQuery) ||
+      (l.username || '').toLowerCase().includes(searchQuery) ||
+      (l.department_name || '').toLowerCase().includes(searchQuery) ||
+      (l.full_name || '').toLowerCase().includes(searchQuery)
+    );
+  }
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-muted">No department leaders found matching your search.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(l => {
+    const isActive = l.status === 'active';
+    const statusBadge = isActive 
+      ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Active</span>`
+      : `<span class="badge badge-secondary"><i class="fa-solid fa-circle-pause"></i> Inactive</span>`;
+
+    const lastLoginStr = l.last_login 
+      ? new Date(l.last_login).toLocaleString()
+      : '<span class="text-muted">Never</span>';
+
+    const assignedDateStr = l.created_at 
+      ? new Date(l.created_at).toLocaleDateString()
+      : '—';
+
+    return `
+      <tr style="${!isActive ? 'opacity: 0.65; background:#f8fafc;' : ''}">
+        <td>
+          <strong style="color:var(--primary); font-size:0.92rem;"><i class="fa-solid fa-building-user"></i> ${escapeHtml(l.department_name)}</strong>
+          <div style="font-size:0.75rem; color:#64748b;">Dept ID: #${l.department_id}</div>
+        </td>
+        <td>
+          <div style="font-weight:700; color:#0f172a;">${escapeHtml(l.teacher_name)}</div>
+          <div style="font-size:0.75rem; color:#64748b;">${escapeHtml(l.full_name || '')}</div>
+        </td>
+        <td>
+          <code style="font-weight:700; background:#f1f5f9; padding:2px 6px; border-radius:4px; color:#334155;">@${escapeHtml(l.username)}</code>
+        </td>
+        <td>${statusBadge}</td>
+        <td style="font-size:0.82rem;">${lastLoginStr}</td>
+        <td style="font-size:0.82rem;">${assignedDateStr}</td>
+        <td class="text-right">
+          <div style="display:inline-flex; gap:6px;">
+            <button type="button" class="btn btn-sm btn-outline" title="Reset Password" onclick="openModalResetLeaderPassword(${l.id}, '${escapeHtml(l.teacher_name)}', '${escapeHtml(l.username)}', '${escapeHtml(l.department_name)}')">
+              <i class="fa-solid fa-key" style="color:#d97706;"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" title="${isActive ? 'Disable Leader' : 'Enable Leader'}" onclick="toggleLeaderStatus(${l.id}, '${l.status}')">
+              <i class="fa-solid ${isActive ? 'fa-toggle-on text-success' : 'fa-toggle-off text-muted'}"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline text-danger" title="Remove Leader Assignment" onclick="deleteLeaderAssignment(${l.id}, '${escapeHtml(l.teacher_name)}', '${escapeHtml(l.department_name)}')">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 3. Open Assign Department Leader Modal
+async function openModalAddDepartmentLeader() {
+  const deptSelect = document.getElementById('admin-leader-dept-select');
+  const teacherSelect = document.getElementById('admin-leader-teacher-select');
+  const replaceAlert = document.getElementById('admin-leader-replace-alert');
+  const usernameInput = document.getElementById('admin-leader-username');
+  const passwordInput = document.getElementById('admin-leader-password');
+  const fullnameInput = document.getElementById('admin-leader-fullname');
+
+  if (usernameInput) usernameInput.value = '';
+  if (passwordInput) passwordInput.value = '';
+  if (fullnameInput) fullnameInput.value = '';
+  if (replaceAlert) replaceAlert.classList.add('hidden');
+
+  // Populate departments dropdown
+  if (deptSelect) {
+    deptSelect.innerHTML = adminLeadersData.departments.map(d => 
+      `<option value="${d.id}">${escapeHtml(d.name)}</option>`
+    ).join('');
+
+    if (adminLeadersData.departments.length > 0) {
+      await onAdminLeaderDeptSelected(adminLeadersData.departments[0].id);
+    }
+  }
+
+  openModal('modal-admin-add-department-leader');
+}
+
+// 4. Handle Department Change in Assign Modal
+async function onAdminLeaderDeptSelected(deptId) {
+  const teacherSelect = document.getElementById('admin-leader-teacher-select');
+  const replaceAlert = document.getElementById('admin-leader-replace-alert');
+  const activeNameSpan = document.getElementById('admin-leader-current-active-name');
+  if (!teacherSelect) return;
+
+  teacherSelect.innerHTML = '<option value="">Loading teachers...</option>';
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/available-teachers?department_id=${deptId}`));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load teachers');
+
+    const teachers = data.teachers || [];
+    if (teachers.length === 0) {
+      teacherSelect.innerHTML = '<option value="">No active teachers in this department</option>';
+    } else {
+      teacherSelect.innerHTML = teachers.map(t => 
+        `<option value="${t.id}" data-name="${escapeHtml(t.name)}" data-username="${escapeHtml(t.username || '')}">${escapeHtml(t.name)} (${escapeHtml(t.username || 'No user')})</option>`
+      ).join('');
+      onAdminLeaderTeacherSelected(teachers[0].id);
+    }
+
+    if (data.current_leader && replaceAlert && activeNameSpan) {
+      activeNameSpan.textContent = `${data.current_leader.teacher_name} (@${data.current_leader.username})`;
+      replaceAlert.classList.remove('hidden');
+    } else if (replaceAlert) {
+      replaceAlert.classList.add('hidden');
+    }
+  } catch (err) {
+    teacherSelect.innerHTML = `<option value="">Error: ${escapeHtml(err.message)}</option>`;
+  }
+}
+
+// 5. Handle Teacher Selection to Suggest Username/Full Name
+function onAdminLeaderTeacherSelected(teacherId) {
+  const teacherSelect = document.getElementById('admin-leader-teacher-select');
+  const usernameInput = document.getElementById('admin-leader-username');
+  const fullnameInput = document.getElementById('admin-leader-fullname');
+  if (!teacherSelect) return;
+
+  const selectedOpt = teacherSelect.options[teacherSelect.selectedIndex];
+  if (selectedOpt) {
+    const tName = selectedOpt.getAttribute('data-name') || '';
+    const tUser = selectedOpt.getAttribute('data-username') || '';
+    if (usernameInput && (!usernameInput.value || usernameInput.value === usernameInput.defaultValue)) {
+      usernameInput.value = tUser ? `${tUser}_lead` : `${tName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_lead`;
+    }
+    if (fullnameInput && (!fullnameInput.value || fullnameInput.value === fullnameInput.defaultValue)) {
+      fullnameInput.value = `${tName} (Leader)`;
+    }
+  }
+}
+
+// 6. Save Department Leader Form
+async function saveDepartmentLeaderForm(e) {
+  e.preventDefault();
+  const deptId = document.getElementById('admin-leader-dept-select')?.value;
+  const teacherId = document.getElementById('admin-leader-teacher-select')?.value;
+  const username = document.getElementById('admin-leader-username')?.value.trim();
+  const password = document.getElementById('admin-leader-password')?.value.trim();
+  const fullname = document.getElementById('admin-leader-fullname')?.value.trim();
+
+  if (!deptId || !teacherId || !username || !password) {
+    return alert('Please fill in all required fields.');
+  }
+
+  const btn = document.getElementById('btn-save-admin-dept-leader');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Assigning...`;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/admin/department-leaders'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department_id: deptId,
+        teacher_id: teacherId,
+        username,
+        password,
+        full_name: fullname
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to assign department leader');
+
+    closeModal('modal-admin-add-department-leader');
+    alert(`✅ Department Leader Assigned Successfully\n\nLeader: ${data.leader?.full_name || username}\nUsername: @${username}`);
+    clearClientCache('/api/admin/department-leaders');
+    loadAdminDepartmentLeaders(true);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-check"></i> Save &amp; Assign Leader`;
+    }
+  }
+}
+
+// 7. Reset Leader Password Modal
+function openModalResetLeaderPassword(id, name, username, deptName) {
+  const idInput = document.getElementById('reset-leader-id');
+  const nameEl = document.getElementById('reset-leader-name');
+  const deptEl = document.getElementById('reset-leader-dept');
+  const pwdInput = document.getElementById('reset-leader-new-password');
+
+  if (idInput) idInput.value = id;
+  if (nameEl) nameEl.textContent = `${name} (@${username})`;
+  if (deptEl) deptEl.textContent = deptName;
+  if (pwdInput) pwdInput.value = '';
+
+  openModal('modal-admin-reset-leader-password');
+}
+
+// 8. Save Leader Password Reset
+async function saveLeaderPasswordReset(e) {
+  e.preventDefault();
+  const id = document.getElementById('reset-leader-id')?.value;
+  const newPassword = document.getElementById('reset-leader-new-password')?.value.trim();
+
+  if (!id || !newPassword) return alert('Please enter a new password.');
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/${id}/reset-password`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_password: newPassword })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+
+    closeModal('modal-admin-reset-leader-password');
+    alert('✅ Department Leader password updated successfully.');
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// 9. Toggle Leader Enable / Disable Status
+async function toggleLeaderStatus(id, currentStatus) {
+  const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+  const actionText = newStatus === 'active' ? 'enable' : 'disable';
+
+  if (!confirm(`Are you sure you want to ${actionText} this Department Leader?`)) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/${id}/toggle-status`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to toggle status');
+
+    clearClientCache('/api/admin/department-leaders');
+    loadAdminDepartmentLeaders(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// 10. Delete / Remove Leader Assignment
+async function deleteLeaderAssignment(id, leaderName, deptName) {
+  if (!confirm(`⚠️ Remove Leader Assignment for ${leaderName} in ${deptName}?\n\nThis will remove Department Leader access for this account. Proceed?`)) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/${id}`), {
+      method: 'DELETE'
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete assignment');
+
+    alert('✅ Department Leader assignment removed.');
+    clearClientCache('/api/admin/department-leaders');
+    loadAdminDepartmentLeaders(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+
+/* ==========================================================================
+   DEPARTMENT LEADER PORTAL LOGIC (STRICT DEPARTMENT ISOLATION)
+   ========================================================================== */
+
+let leaderState = {
+  department: null,
+  leader: null,
+  currentDay: 'Sunday',
+  availableDays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  scheduleSlots: [],
+  teachers: [],
+  dutyBalance: [],
+  replacements: [],
+  notifications: []
+};
+
+// Global Slot Context for Leader Observer Manual Edit
+let leaderManualEditContext = null;
+
+// 1. Load Leader Dashboard
+async function loadLeaderDashboard(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/dashboard?user_id=${currentUser.id}`, 2000, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load leader dashboard');
+
+    leaderState.department = data.department;
+    leaderState.leader = data.leader;
+
+    // Update Header Badges
+    const deptBadge = document.getElementById('leader-dash-dept-badge');
+    const nameEl = document.getElementById('leader-dash-name');
+    if (deptBadge && data.department) deptBadge.innerHTML = `<i class="fa-solid fa-building"></i> Dept: ${escapeHtml(data.department.name)}`;
+    if (nameEl) nameEl.textContent = data.leader?.full_name || currentUser.full_name || currentUser.username;
+
+    // Update Metric Cards
+    const tCount = document.getElementById('stat-leader-teachers-count');
+    const cCount = document.getElementById('stat-leader-classes-count');
+    const dCount = document.getElementById('stat-leader-today-duties');
+    const sStatus = document.getElementById('stat-leader-schedule-status');
+
+    if (tCount) tCount.textContent = data.stats?.total_teachers || 0;
+    if (cCount) cCount.textContent = data.stats?.active_classes_count || 0;
+    if (dCount) dCount.textContent = data.stats?.today_observer_slots_count || 0;
+    if (sStatus) {
+      sStatus.textContent = data.is_locked ? 'LOCKED' : 'UNLOCKED';
+      sStatus.style.color = data.is_locked ? '#10b981' : '#f59e0b';
+    }
+
+    // Render Live Period Monitoring
+    renderLeaderLivePeriodMonitoring(data.live_period);
+
+    // Render Recent Notifications in Dashboard
+    renderLeaderDashNotifications(data.notifications || []);
+  } catch (err) {
+    console.error('Leader dashboard error:', err);
+  }
+}
+
+// 2. Render Live Period Monitoring Slots on Dashboard
+function renderLeaderLivePeriodMonitoring(livePeriod) {
+  const container = document.getElementById('leader-live-period-slots');
+  const clockBadge = document.getElementById('leader-live-clock-badge');
+  const dayEl = document.getElementById('leader-live-day');
+  const periodEl = document.getElementById('leader-live-period');
+
+  if (livePeriod && dayEl && periodEl) {
+    dayEl.textContent = livePeriod.day || 'Today';
+    periodEl.textContent = `Period ${livePeriod.period} (${livePeriod.time_slot || 'Active'})`;
+  }
+
+  if (!container) return;
+
+  const slots = livePeriod?.slots || [];
+  if (slots.length === 0) {
+    container.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align:center; padding:24px; color:#64748b; background:#f8fafc; border-radius:10px;">
+        <i class="fa-solid fa-mug-hot" style="font-size:1.8rem; color:#94a3b8; margin-bottom:8px;"></i>
+        <div>No active observer duties currently ongoing for this period.</div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = slots.map(s => `
+    <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:12px; padding:14px; position:relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span class="badge badge-primary" style="font-weight:700; font-size:0.82rem;">${escapeHtml(s.class_name)}</span>
+        <span style="font-size:0.8rem; color:#64748b; font-weight:600;"><i class="fa-solid fa-book"></i> ${escapeHtml(s.subject_code || 'General')}</span>
+      </div>
+      <div style="font-size:0.82rem; color:#475569; margin-bottom:6px;">
+        <i class="fa-solid fa-chalkboard-user"></i> <strong>Teaching:</strong> ${escapeHtml(s.teaching_teacher_name || '—')}
+      </div>
+      <div style="border-top:1px dashed #cbd5e1; padding-top:6px; margin-top:6px; font-size:0.82rem;">
+        <div style="color:#4338ca; font-weight:700; margin-bottom:2px;">
+          <i class="fa-solid fa-user-shield"></i> Obs 1: <span style="color:#0f172a;">${escapeHtml(s.observer_1_name || 'Unassigned')}</span>
+        </div>
+        <div style="color:#047857; font-weight:700;">
+          <i class="fa-solid fa-user-shield"></i> Obs 2: <span style="color:#0f172a;">${escapeHtml(s.observer_2_name || 'Unassigned')}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// 3. Render Notifications on Dashboard
+function renderLeaderDashNotifications(notifs) {
+  const container = document.getElementById('leader-dash-notifications-list');
+  if (!container) return;
+
+  if (notifs.length === 0) {
+    container.innerHTML = `<div class="text-muted text-center p-4" style="font-size:0.85rem;">No new notifications for your department.</div>`;
+    return;
+  }
+
+  container.innerHTML = notifs.slice(0, 5).map(n => `
+    <div style="padding:10px 16px; border-bottom:1px solid #f1f5f9; display:flex; align-items:flex-start; gap:10px;">
+      <i class="fa-solid ${n.icon || 'fa-bell'}" style="color:${n.color || 'var(--primary)'}; margin-top:3px;"></i>
+      <div style="flex:1;">
+        <div style="font-weight:700; font-size:0.85rem; color:#0f172a;">${escapeHtml(n.title)}</div>
+        <div style="font-size:0.78rem; color:#64748b;">${escapeHtml(n.message)}</div>
+      </div>
+      <span style="font-size:0.72rem; color:#94a3b8;">${new Date(n.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span>
+    </div>
+  `).join('');
+}
+
+// 4. Load Leader Observer Schedule Matrix
+async function loadLeaderObserverSchedule(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const tbody = document.getElementById('table-leader-observer-schedule-body');
+  const dayPills = document.getElementById('leader-obs-day-pills');
+  const lockBadge = document.getElementById('leader-obs-lock-status-badge');
+
+  try {
+    const day = leaderState.currentDay || 'Sunday';
+    const data = await fetchJsonWithCache(`/api/leader/observer-schedule?user_id=${currentUser.id}&day=${encodeURIComponent(day)}`, 1500, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load observer schedule');
+
+    leaderState.scheduleSlots = data.schedule || [];
+    if (data.days && data.days.length > 0) leaderState.availableDays = data.days;
+
+    // Render Day Pills
+    if (dayPills) {
+      dayPills.innerHTML = leaderState.availableDays.map(d => `
+        <button type="button" class="btn btn-sm ${d === day ? 'btn-primary' : 'btn-outline'}" style="font-size:0.82rem; padding:4px 12px;" onclick="switchLeaderObsDay('${d}')">
+          <i class="fa-solid fa-calendar-day"></i> ${escapeHtml(d)}
+        </button>
+      `).join('');
+    }
+
+    if (lockBadge) {
+      lockBadge.className = data.is_locked ? 'badge badge-success' : 'badge badge-warning';
+      lockBadge.innerHTML = data.is_locked ? '<i class="fa-solid fa-lock"></i> SCHEDULE LOCKED' : '<i class="fa-solid fa-lock-open"></i> SCHEDULE UNLOCKED';
+    }
+
+    renderLeaderObserverScheduleTable(data.schedule || [], data.is_locked);
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+// 5. Switch Day in Observer Schedule
+function switchLeaderObsDay(day) {
+  leaderState.currentDay = day;
+  loadLeaderObserverSchedule(true);
+}
+
+// 6. Render Leader Observer Schedule Table
+function renderLeaderObserverScheduleTable(slots, isLocked) {
+  const tbody = document.getElementById('table-leader-observer-schedule-body');
+  if (!tbody) return;
+
+  if (slots.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-muted">No classes or observer duties scheduled for ${escapeHtml(leaderState.currentDay)}.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = slots.map(s => {
+    const obs1Html = s.observer_1_name 
+      ? `<span style="font-weight:700; color:#1e1b4b;"><i class="fa-solid fa-user-shield" style="color:#4f46e5;"></i> ${escapeHtml(s.observer_1_name)}</span>`
+      : `<span class="badge badge-danger">Unassigned</span>`;
+
+    const obs2Html = s.observer_2_name 
+      ? `<span style="font-weight:700; color:#064e3b;"><i class="fa-solid fa-user-shield" style="color:#059669;"></i> ${escapeHtml(s.observer_2_name)}</span>`
+      : `<span class="badge badge-danger">Unassigned</span>`;
+
+    return `
+      <tr>
+        <td>
+          <span class="badge badge-primary" style="font-weight:800;">P${s.period}</span>
+          <span style="font-size:0.8rem; color:#64748b; margin-left:4px;">${escapeHtml(s.time_slot || '')}</span>
+        </td>
+        <td><strong style="color:#0f172a; font-size:0.92rem;">${escapeHtml(s.class_name)}</strong></td>
+        <td><span style="font-weight:600; color:#475569;">${escapeHtml(s.subject_code || 'General')}</span></td>
+        <td>
+          <span class="obs-badge-teaching">
+            <i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(s.teaching_teacher_name || 'None')}
+          </span>
+        </td>
+        <td>${obs1Html}</td>
+        <td>${obs2Html}</td>
+        <td class="text-right">
+          <button type="button" class="btn btn-sm btn-outline" style="font-weight:600; font-size:0.8rem; border-color:#cbd5e1;" onclick="openLeaderManualEditModal('${escapeHtml(leaderState.currentDay)}', ${s.period}, '${escapeHtml(s.class_name)}')">
+            <i class="fa-solid fa-user-pen" style="color:#4f46e5;"></i> Edit Observer
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 7. Open Leader Manual Observer Edit Modal
+async function openLeaderManualEditModal(day, period, className) {
+  const slot = leaderState.scheduleSlots.find(s => s.period == period && s.class_name == className);
+  if (!slot) return alert('Slot data not found.');
+
+  leaderManualEditContext = {
+    day: day || leaderState.currentDay,
+    period,
+    className,
+    slot,
+    departmentId: leaderState.department?.id
+  };
+
+  // Populate slot header in modal
+  const deptPill = document.getElementById('modal-leader-obs-edit-dept-pill');
+  const titleEl = document.getElementById('leader-obs-edit-target-title');
+  const dayEl = document.getElementById('leader-obs-edit-target-day');
+  const subjEl = document.getElementById('leader-obs-edit-target-subject');
+  const teachEl = document.getElementById('leader-obs-edit-target-teacher');
+  const reasonInput = document.getElementById('leader-obs-edit-reason');
+  const obs1Tag = document.getElementById('leader-obs1-current-tag');
+  const obs2Tag = document.getElementById('leader-obs2-current-tag');
+
+  if (deptPill) deptPill.textContent = `Dept: ${leaderState.department?.name || '--'}`;
+  if (titleEl) titleEl.innerHTML = `${escapeHtml(className)} — Period ${period} <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(${escapeHtml(slot.time_slot || '')})</span>`;
+  if (dayEl) dayEl.textContent = day;
+  if (subjEl) subjEl.textContent = slot.subject_code || 'General';
+  if (teachEl) teachEl.innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(slot.teaching_teacher_name || 'None')}`;
+  if (reasonInput) reasonInput.value = '';
+  if (obs1Tag) obs1Tag.textContent = `Current: ${slot.observer_1_name || 'Unassigned'}`;
+  if (obs2Tag) obs2Tag.textContent = `Current: ${slot.observer_2_name || 'Unassigned'}`;
+
+  // Populate Observer 1 & 2 dropdowns with eligibility
+  populateLeaderObserverDropdowns(slot);
+
+  openModal('modal-leader-observer-manual-edit');
+}
+
+// 8. Populate Observer Dropdowns with Eligibility Rules
+function populateLeaderObserverDropdowns(slot) {
+  const select1 = document.getElementById('leader-select-obs1');
+  const select2 = document.getElementById('leader-select-obs2');
+  if (!select1 || !select2) return;
+
+  const candidates = slot.available_observers || [];
+
+  const buildOptions = (currentSelectedId) => {
+    let html = `<option value="">-- Select Observer --</option>`;
+    candidates.forEach(c => {
+      const isSelected = c.teacher_id == currentSelectedId;
+      const isBlocked = c.is_blocked && !isSelected;
+      const blockedLabel = c.blocked_reason ? ` [BLOCKED: ${c.blocked_reason}]` : '';
+      const leaderLabel = c.is_leader ? ' [LEADER / STANDBY]' : '';
+      const dutyLabel = c.duty_count !== undefined ? ` (${c.duty_count} duties)` : '';
+
+      html += `
+        <option value="${c.teacher_id}" 
+          ${isSelected ? 'selected' : ''} 
+          ${isBlocked ? 'disabled style="color:#94a3b8;"' : ''}
+          data-blocked="${c.is_blocked}"
+          data-leader="${c.is_leader || false}"
+          data-duty="${c.duty_count || 0}">
+          ${escapeHtml(c.teacher_name)}${leaderLabel}${dutyLabel}${blockedLabel}
+        </option>
+      `;
+    });
+    return html;
+  };
+
+  select1.innerHTML = buildOptions(slot.observer_1_id);
+  select2.innerHTML = buildOptions(slot.observer_2_id);
+
+  onLeaderManualEditSelectionChanged();
+}
+
+// 9. Handle Observer Selection Change in Leader Modal (Validations & Soft Warnings)
+function onLeaderManualEditSelectionChanged() {
+  const select1 = document.getElementById('leader-select-obs1');
+  const select2 = document.getElementById('leader-select-obs2');
+  const warnBox = document.getElementById('leader-obs-edit-warnings-box');
+  if (!select1 || !select2 || !warnBox) return;
+
+  const obs1Id = select1.value;
+  const obs2Id = select2.value;
+
+  const warnings = [];
+
+  // Duplicate Check
+  if (obs1Id && obs2Id && obs1Id === obs2Id) {
+    warnBox.innerHTML = `
+      <div class="alert-box alert-error" style="padding:10px 12px; font-size:0.82rem; margin:0;">
+        <i class="fa-solid fa-circle-xmark"></i> <strong>Invalid:</strong> Observer 1 and Observer 2 cannot be the same teacher.
+      </div>
+    `;
+    warnBox.classList.remove('hidden');
+    return;
+  }
+
+  // Check Leader info warning
+  const opt1 = select1.options[select1.selectedIndex];
+  const opt2 = select2.options[select2.selectedIndex];
+
+  if (opt1 && opt1.getAttribute('data-leader') === 'true') {
+    warnings.push(`<strong>Observer 1:</strong> Designated as Department Leader. Manually assigning will remove leader from standby for this slot.`);
+  }
+  if (opt2 && opt2.getAttribute('data-leader') === 'true') {
+    warnings.push(`<strong>Observer 2:</strong> Designated as Department Leader. Manually assigning will remove leader from standby for this slot.`);
+  }
+
+  if (warnings.length > 0) {
+    warnBox.innerHTML = `
+      <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 12px; font-size:0.8rem; color:#92400e;">
+        <i class="fa-solid fa-triangle-exclamation"></i> <strong>Notice:</strong>
+        <ul style="margin:4px 0 0 16px; padding:0;">
+          ${warnings.map(w => `<li>${w}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+    warnBox.classList.remove('hidden');
+  } else {
+    warnBox.classList.add('hidden');
+  }
+}
+
+// 10. Submit Leader Observer Manual Edit
+async function handleLeaderObserverManualEditSubmit(e) {
+  e.preventDefault();
+  if (!leaderManualEditContext) return alert('No active slot context.');
+
+  const obs1Id = document.getElementById('leader-select-obs1')?.value;
+  const obs2Id = document.getElementById('leader-select-obs2')?.value;
+  const reason = document.getElementById('leader-obs-edit-reason')?.value.trim();
+
+  if (!obs1Id || !obs2Id) return alert('Please select both Observer 1 and Observer 2.');
+  if (obs1Id === obs2Id) return alert('Observer 1 and Observer 2 cannot be the same teacher.');
+  if (!reason) return alert('Please provide a reason for the assignment change.');
+
+  const btn = document.getElementById('btn-save-leader-obs-edit');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/leader/observer/manual-edit'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: currentUser.id,
+        day: leaderManualEditContext.day,
+        period: leaderManualEditContext.period,
+        class_name: leaderManualEditContext.className,
+        observer_1_id: obs1Id,
+        observer_2_id: obs2Id,
+        reason
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update observer assignment');
+
+    closeModal('modal-leader-observer-manual-edit');
+    alert(`✅ Observer Assignment Updated Successfully\n\nClass: ${leaderManualEditContext.className} (Period ${leaderManualEditContext.period})\nSchedule remains LOCKED.`);
+
+    clearClientCache('/api/leader/observer-schedule');
+    loadLeaderObserverSchedule(true);
+    loadLeaderDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-check"></i> Save Observer Change`;
+    }
+  }
+}
+
+// 11. Load Leader Teacher Timetable View
+async function loadLeaderTeacherSchedule(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const tbody = document.getElementById('table-leader-teacher-schedule-body');
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/teacher-schedule?user_id=${currentUser.id}`, 2000, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load teacher schedule');
+
+    leaderState.teachers = data.teachers || [];
+    renderLeaderTeacherScheduleTable();
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+// 12. Filter and Render Leader Teacher Schedule Table
+function filterLeaderTeacherTable() {
+  renderLeaderTeacherScheduleTable();
+}
+
+function renderLeaderTeacherScheduleTable() {
+  const tbody = document.getElementById('table-leader-teacher-schedule-body');
+  if (!tbody) return;
+
+  const query = (document.getElementById('filter-leader-teacher-search')?.value || '').toLowerCase().trim();
+  let list = leaderState.teachers || [];
+
+  if (query) {
+    list = list.filter(t => 
+      (t.name || '').toLowerCase().includes(query) ||
+      (t.username || '').toLowerCase().includes(query)
+    );
+  }
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center p-6 text-muted">No teachers found in your department matching search.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(t => {
+    const selections = t.selections || [];
+    const selectionBadges = selections.length > 0 
+      ? selections.map(s => `<span class="badge badge-info" style="margin:2px; font-size:0.75rem;">${escapeHtml(s.day)} P${s.period}: ${escapeHtml(s.class_name)} (${escapeHtml(s.subject_code || '')})</span>`).join('')
+      : `<span class="text-muted" style="font-size:0.8rem;">No selections made</span>`;
+
+    const leaderPill = t.is_leader ? `<span class="badge" style="background:#f59e0b; color:#78350f; font-weight:800; font-size:0.7rem;"><i class="fa-solid fa-crown"></i> LEADER</span>` : '';
+
+    return `
+      <tr>
+        <td>
+          <div style="font-weight:700; color:#0f172a;">${escapeHtml(t.name)} ${leaderPill}</div>
+          <div style="font-size:0.75rem; color:#64748b;">Teacher ID: #${t.id}</div>
+        </td>
+        <td><code>@${escapeHtml(t.username || '—')}</code></td>
+        <td>
+          <span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Active Faculty</span>
+        </td>
+        <td style="text-align:center;">
+          <span class="badge badge-primary" style="font-size:0.9rem; padding:4px 10px; font-weight:800;">${selections.length}</span>
+        </td>
+        <td style="max-width:320px;">
+          <div style="display:flex; flex-wrap:wrap; gap:4px;">${selectionBadges}</div>
+        </td>
+        <td class="text-right">
+          <button type="button" class="btn btn-sm btn-outline" onclick="alert('Viewing timetable for ${escapeHtml(t.name)}')">
+            <i class="fa-solid fa-eye"></i> View
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 13. Load Today's Overview Timeline
+async function loadLeaderTodayOverview(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const tbody = document.getElementById('table-leader-today-overview-body');
+  const titleEl = document.getElementById('leader-today-overview-day-title');
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/today-overview?user_id=${currentUser.id}`, 2000, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load today overview');
+
+    if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-sun text-warning"></i> Today: ${escapeHtml(data.today || 'Sunday')} &bull; ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+
+    const timeline = data.timeline || [];
+    if (timeline.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-6 text-muted">No scheduled classes or duties for today.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = timeline.map(row => {
+      let statusBadge = '<span class="badge badge-secondary">Upcoming</span>';
+      if (row.status === 'Ongoing') statusBadge = '<span class="badge badge-danger"><span class="live-pulsing-dot"></span> Ongoing Now</span>';
+      else if (row.status === 'Next') statusBadge = '<span class="badge badge-warning">Next Period</span>';
+      else if (row.status === 'Completed') statusBadge = '<span class="badge badge-success"><i class="fa-solid fa-check"></i> Completed</span>';
+
+      return `
+        <tr style="${row.status === 'Ongoing' ? 'background:#faf5ff; font-weight:600;' : ''}">
+          <td><span class="badge badge-primary">P${row.period}</span></td>
+          <td style="font-size:0.82rem; color:#64748b;">${escapeHtml(row.time_slot || '')}</td>
+          <td><strong>${escapeHtml(row.class_name)}</strong></td>
+          <td>${escapeHtml(row.subject_code || 'General')}</td>
+          <td><span class="obs-badge-teaching">${escapeHtml(row.teaching_teacher_name || '—')}</span></td>
+          <td style="color:#4f46e5; font-weight:700;">${escapeHtml(row.observer_1_name || 'Unassigned')}</td>
+          <td style="color:#059669; font-weight:700;">${escapeHtml(row.observer_2_name || 'Unassigned')}</td>
+          <td>${statusBadge}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+// 14. Load Duty Balance View
+async function loadLeaderDutyBalance(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const tbody = document.getElementById('table-leader-duty-balance-body');
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/duty-balance?user_id=${currentUser.id}`, 2000, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load duty balance');
+
+    const teachers = data.teachers || [];
+    if (teachers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-muted">No teachers found in your department.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = teachers.map(t => {
+      const leaderBadge = t.is_leader ? '<span class="badge badge-warning" style="font-size:0.7rem;"><i class="fa-solid fa-crown"></i> LEADER</span>' : '<span class="badge badge-info" style="font-size:0.7rem;">FACULTY</span>';
+      
+      let balanceIndicator = '<span class="badge badge-success"><i class="fa-solid fa-check"></i> Balanced</span>';
+      if (t.observer_duties > 5) balanceIndicator = '<span class="badge badge-warning"><i class="fa-solid fa-triangle-exclamation"></i> High Load</span>';
+      else if (t.observer_duties === 0 && !t.is_leader) balanceIndicator = '<span class="badge badge-secondary">Low Load</span>';
+
+      return `
+        <tr>
+          <td><strong style="color:#0f172a;">${escapeHtml(t.name)}</strong></td>
+          <td><code>@${escapeHtml(t.username || '—')}</code></td>
+          <td>${leaderBadge}</td>
+          <td style="text-align:center; font-weight:700;">${t.teaching_duties || 0}</td>
+          <td style="text-align:center; font-weight:700; color:#4f46e5;">${t.observer_duties || 0}</td>
+          <td style="text-align:center; font-weight:800; font-size:1rem; color:#0f172a;">${t.total_duties || 0}</td>
+          <td>${balanceIndicator}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+// 15. Load Absences & Replacement Requests View
+async function loadLeaderAbsencesAndRequests(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const tbody = document.getElementById('table-leader-replacements-body');
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/replacement-requests?user_id=${currentUser.id}`, 2000, forceFresh);
+    if (!data.success) throw new Error(data.error || 'Failed to load replacement requests');
+
+    const requests = data.requests || [];
+    if (requests.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-muted">No replacement requests submitted yet.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = requests.map(r => `
+      <tr>
+        <td><strong>${escapeHtml(r.day || r.date)}</strong></td>
+        <td><span class="badge badge-primary">P${r.period}</span> ${escapeHtml(r.class_name)}</td>
+        <td style="color:#b91c1c; font-weight:700;"><i class="fa-solid fa-user-slash"></i> ${escapeHtml(r.original_observer_name || '—')}</td>
+        <td style="color:#047857; font-weight:700;"><i class="fa-solid fa-user-check"></i> ${escapeHtml(r.replacement_teacher_name || '—')}</td>
+        <td style="font-size:0.82rem; color:#475569;">${escapeHtml(r.reason)}</td>
+        <td><span class="badge ${r.status === 'approved' ? 'badge-success' : 'badge-warning'}">${escapeHtml(r.status.toUpperCase())}</span></td>
+        <td style="font-size:0.8rem; color:#94a3b8;">${new Date(r.created_at).toLocaleString()}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+// 16. Open Leader Replacement Request Modal
+async function openModalLeaderReplacementRequest() {
+  const classSelect = document.getElementById('leader-repl-class');
+  const origSelect = document.getElementById('leader-repl-orig-observer');
+  const newSelect = document.getElementById('leader-repl-new-teacher');
+  const reasonEl = document.getElementById('leader-repl-reason');
+
+  if (reasonEl) reasonEl.value = '';
+
+  // Populate Teachers in Replacement Select
+  if (newSelect && leaderState.teachers.length > 0) {
+    newSelect.innerHTML = leaderState.teachers.map(t => 
+      `<option value="${t.id}">${escapeHtml(t.name)} (@${escapeHtml(t.username || '')})</option>`
+    ).join('');
+  }
+
+  await onLeaderReplSlotChanged();
+  openModal('modal-leader-request-replacement');
+}
+
+// 17. Slot Changed in Replacement Modal
+async function onLeaderReplSlotChanged() {
+  const day = document.getElementById('leader-repl-day')?.value || 'Sunday';
+  const period = document.getElementById('leader-repl-period')?.value || 1;
+  const classSelect = document.getElementById('leader-repl-class');
+  const origSelect = document.getElementById('leader-repl-orig-observer');
+  if (!classSelect || !origSelect) return;
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/observer-schedule?user_id=${currentUser.id}&day=${encodeURIComponent(day)}`, 1500);
+    const slots = (data.schedule || []).filter(s => s.period == period);
+
+    if (slots.length === 0) {
+      classSelect.innerHTML = '<option value="">No classes in this period</option>';
+      origSelect.innerHTML = '<option value="">No observers</option>';
+      return;
+    }
+
+    classSelect.innerHTML = slots.map(s => 
+      `<option value="${escapeHtml(s.class_name)}">${escapeHtml(s.class_name)} (${escapeHtml(s.subject_code || '')})</option>`
+    ).join('');
+
+    const currentSlot = slots[0];
+    origSelect.innerHTML = `
+      ${currentSlot.observer_1_id ? `<option value="${currentSlot.observer_1_id}">Obs 1: ${escapeHtml(currentSlot.observer_1_name)}</option>` : ''}
+      ${currentSlot.observer_2_id ? `<option value="${currentSlot.observer_2_id}">Obs 2: ${escapeHtml(currentSlot.observer_2_name)}</option>` : ''}
+    `;
+  } catch (e) {
+    // Silent fallback
+  }
+}
+
+// 18. Submit Leader Replacement Request
+async function submitLeaderReplacementRequest(e) {
+  e.preventDefault();
+  const day = document.getElementById('leader-repl-day')?.value;
+  const period = document.getElementById('leader-repl-period')?.value;
+  const className = document.getElementById('leader-repl-class')?.value;
+  const origObserverId = document.getElementById('leader-repl-orig-observer')?.value;
+  const newTeacherId = document.getElementById('leader-repl-new-teacher')?.value;
+  const reason = document.getElementById('leader-repl-reason')?.value.trim();
+
+  if (!day || !period || !className || !origObserverId || !newTeacherId || !reason) {
+    return alert('Please fill in all fields.');
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/leader/replacement-request'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: currentUser.id,
+        day,
+        period,
+        class_name: className,
+        original_observer_id: origObserverId,
+        replacement_teacher_id: newTeacherId,
+        reason
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to submit replacement request');
+
+    closeModal('modal-leader-request-replacement');
+    alert('✅ Observer replacement request submitted successfully.');
+    clearClientCache('/api/leader/replacement-requests');
+    loadLeaderAbsencesAndRequests(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// 19. Load Leader Full Notifications View
+async function loadLeaderNotifications(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const container = document.getElementById('container-leader-notifications-full');
+  if (!container) return;
+
+  try {
+    const data = await fetchJsonWithCache(`/api/leader/notifications?user_id=${currentUser.id}`, 2000, forceFresh);
+    const list = data.notifications || [];
+
+    if (list.length === 0) {
+      container.innerHTML = `<div class="text-muted text-center p-6">No notifications recorded yet for your department.</div>`;
+      return;
+    }
+
+    container.innerHTML = list.map(n => `
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; display:flex; align-items:flex-start; gap:14px;">
+        <div style="width:38px; height:38px; border-radius:50%; background:#e0e7ff; color:#4338ca; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0;">
+          <i class="fa-solid ${n.icon || 'fa-bell'}"></i>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <h4 style="margin:0; font-size:0.95rem; color:#0f172a;">${escapeHtml(n.title)}</h4>
+            <span style="font-size:0.75rem; color:#94a3b8;">${new Date(n.created_at).toLocaleString()}</span>
+          </div>
+          <p style="margin:0; font-size:0.85rem; color:#475569;">${escapeHtml(n.message)}</p>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = `<div class="text-danger p-6 text-center">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// 20. Load Leader Profile & Security View
+function loadLeaderProfile() {
+  if (!currentUser || currentUser.role !== 'department_leader') return;
+
+  const nameEl = document.getElementById('leader-profile-fullname');
+  const userEl = document.getElementById('leader-profile-username');
+  const deptEl = document.getElementById('leader-profile-deptname');
+  const avatarEl = document.getElementById('leader-profile-avatar');
+
+  if (nameEl) nameEl.textContent = leaderState.leader?.full_name || currentUser.full_name || currentUser.username;
+  if (userEl) userEl.textContent = currentUser.username;
+  if (deptEl) deptEl.textContent = leaderState.department?.name || 'Department';
+  if (avatarEl) avatarEl.textContent = (currentUser.full_name || currentUser.username).charAt(0).toUpperCase();
+
+  const errBox = document.getElementById('leader-pwd-error-box');
+  const succBox = document.getElementById('leader-pwd-success-box');
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+}
+
+// 21. Handle Leader Password Change Form
+async function handleLeaderPasswordChange(e) {
+  e.preventDefault();
+  const currentPassword = document.getElementById('leader-pwd-current')?.value.trim();
+  const newPassword = document.getElementById('leader-pwd-new')?.value.trim();
+  const confirmPassword = document.getElementById('leader-pwd-confirm')?.value.trim();
+
+  const errBox = document.getElementById('leader-pwd-error-box');
+  const succBox = document.getElementById('leader-pwd-success-box');
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (newPassword !== confirmPassword) {
+    if (errBox) {
+      errBox.textContent = 'New passwords do not match.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/leader/profile/change-password'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: currentUser.id,
+        current_password: currentPassword,
+        new_password: newPassword
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to change password');
+
+    if (succBox) {
+      succBox.textContent = '✅ Password updated successfully!';
+      succBox.classList.remove('hidden');
+    }
+    document.getElementById('form-leader-change-password').reset();
+  } catch (err) {
+    if (errBox) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+    }
+  }
+}
+
+// 22. Export Leader Observer Schedule CSV
+function exportLeaderObserverCSV() {
+  const slots = leaderState.scheduleSlots || [];
+  if (slots.length === 0) return alert('No schedule data available to export.');
+
+  const day = leaderState.currentDay || 'Sunday';
+  const deptName = leaderState.department?.name || 'Department';
+
+  let csvContent = `Department: ${deptName}, Day: ${day}\n`;
+  csvContent += `Period,Time,Class,Subject,Teaching Teacher,Observer 1,Observer 2\n`;
+
+  slots.forEach(s => {
+    csvContent += `"${s.period}","${s.time_slot || ''}","${s.class_name}","${s.subject_code || ''}","${s.teaching_teacher_name || ''}","${s.observer_1_name || ''}","${s.observer_2_name || ''}"\n`;
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${deptName.replace(/[^a-z0-9]/gi, '_')}_Observer_Schedule_${day}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 

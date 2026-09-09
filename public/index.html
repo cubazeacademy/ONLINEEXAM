@@ -139,14 +139,51 @@
           <i class="fa-solid fa-list-check"></i> <span>Audit Logs</span>
         </a>
 
-        <div class="nav-category">OBSERVER MANAGEMENT <i class="fa-solid fa-chevron-down"></i></div>
+        <div class="nav-category">OBSERVER &amp; LEADER MANAGEMENT <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-observer" class="nav-item" onclick="switchTab('admin-observer')">
           <i class="fa-solid fa-user-shield"></i> <span>Observer Duty</span>
+        </a>
+        <a href="#admin-department-leaders" class="nav-item" onclick="switchTab('admin-department-leaders')">
+          <i class="fa-solid fa-user-tie"></i> <span>Department Leaders</span>
         </a>
 
         <div class="nav-category">SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
           <i class="fa-solid fa-sliders"></i> <span>Exam Settings</span>
+        </a>
+        <a href="#" class="nav-item text-danger" onclick="logout()">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i> <span>Logout</span>
+        </a>
+      </nav>
+
+      <!-- DEPARTMENT LEADER SIDEBAR NAVIGATION -->
+      <nav id="nav-leader" class="nav-menu hidden">
+        <div class="nav-category">DEPARTMENT LEADER <i class="fa-solid fa-chevron-down"></i></div>
+        <a href="#leader-dashboard" class="nav-item active" onclick="switchTab('leader-dashboard')">
+          <i class="fa-solid fa-chart-line"></i> <span>Leader Dashboard</span>
+        </a>
+        <a href="#leader-observer-schedule" class="nav-item" onclick="switchTab('leader-observer-schedule')">
+          <i class="fa-solid fa-user-shield"></i> <span>Observer Schedule</span>
+        </a>
+        <a href="#leader-teacher-schedule" class="nav-item" onclick="switchTab('leader-teacher-schedule')">
+          <i class="fa-solid fa-chalkboard-user"></i> <span>Teacher Schedule</span>
+        </a>
+        <a href="#leader-today-overview" class="nav-item" onclick="switchTab('leader-today-overview')">
+          <i class="fa-solid fa-calendar-day"></i> <span>Today's Overview</span>
+        </a>
+        <a href="#leader-duty-balance" class="nav-item" onclick="switchTab('leader-duty-balance')">
+          <i class="fa-solid fa-scale-balanced"></i> <span>Duty Balance</span>
+        </a>
+        <a href="#leader-absences" class="nav-item" onclick="switchTab('leader-absences')">
+          <i class="fa-solid fa-user-slash"></i> <span>Absence &amp; Replacements</span>
+        </a>
+        <a href="#leader-notifications" class="nav-item" onclick="switchTab('leader-notifications')">
+          <i class="fa-solid fa-bell"></i> <span>Notifications</span>
+        </a>
+
+        <div class="nav-category">ACCOUNT <i class="fa-solid fa-chevron-down"></i></div>
+        <a href="#leader-profile" class="nav-item" onclick="switchTab('leader-profile')">
+          <i class="fa-solid fa-id-card"></i> <span>Profile &amp; Security</span>
         </a>
         <a href="#" class="nav-item text-danger" onclick="logout()">
           <i class="fa-solid fa-arrow-right-from-bracket"></i> <span>Logout</span>
@@ -3296,6 +3333,505 @@
           </div>
         </section>
 
+        <!-- ========================================================================= -->
+        <!-- ADMIN: DEPARTMENT LEADERS MANAGEMENT VIEW                                 -->
+        <!-- ========================================================================= -->
+        <section id="view-admin-department-leaders" class="tab-view hidden">
+          <div class="hero-banner" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);">
+            <h2><i class="fa-solid fa-user-tie"></i> Department Leaders Management</h2>
+            <p>Assign, configure, and manage dedicated Department Leaders with isolated department-level access and monitoring privileges.</p>
+            <i class="fa-solid fa-crown hero-watermark"></i>
+          </div>
+
+          <!-- TOP METRICS GRID -->
+          <div class="metrics-grid">
+            <div class="metric-card bg-indigo">
+              <div class="metric-icon"><i class="fa-solid fa-building-user"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-total-depts">0</span>
+                <span class="metric-label">Total Departments</span>
+              </div>
+            </div>
+            <div class="metric-card bg-green">
+              <div class="metric-icon"><i class="fa-solid fa-user-check"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-active-count">0</span>
+                <span class="metric-label">Active Leaders</span>
+              </div>
+            </div>
+            <div class="metric-card bg-amber">
+              <div class="metric-icon"><i class="fa-solid fa-user-clock"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-unassigned-depts">0</span>
+                <span class="metric-label">Unassigned Depts</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANEL CARD -->
+          <div class="panel-card mt-6">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-users-gear" style="color:var(--primary);"></i> Department Leaders Roster</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Manage active leader logins, assign new leaders, reset credentials, or replace existing leaders.</p>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-primary" onclick="openModalAddDepartmentLeader()">
+                  <i class="fa-solid fa-user-plus"></i> Assign Department Leader
+                </button>
+                <button type="button" class="btn btn-outline" onclick="loadAdminDepartmentLeaders(true)">
+                  <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+
+            <!-- SEARCH & FILTER BAR -->
+            <div class="p-4" style="background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; flex:1;">
+                <div style="position:relative; min-width:240px;">
+                  <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.85rem;"></i>
+                  <input type="text" id="filter-admin-leaders-search" class="form-control" placeholder="Search by leader name, username, dept..." style="padding-left:34px; font-size:0.85rem;" oninput="filterAdminLeadersTable()">
+                </div>
+                <select id="filter-admin-leaders-status" class="form-control" style="width:auto; font-size:0.85rem;" onchange="filterAdminLeadersTable()">
+                  <option value="all">All Statuses</option>
+                  <option value="active" selected>Active Leaders Only</option>
+                  <option value="inactive">Inactive / Past Leaders</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="panel-body p-0">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Department</th>
+                      <th>Leader Name</th>
+                      <th>Username / Login ID</th>
+                      <th>Status</th>
+                      <th>Last Login</th>
+                      <th>Assigned Date</th>
+                      <th class="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-admin-leaders-body">
+                    <tr>
+                      <td colspan="7" class="text-center p-6 text-muted">Loading department leaders...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- DEPARTMENT LEADER PORTAL VIEWS (STRICT DEPARTMENT ISOLATION)              -->
+        <!-- ========================================================================= -->
+
+        <!-- LEADER 1: DASHBOARD -->
+        <section id="view-leader-dashboard" class="tab-view hidden">
+          <!-- HERO BANNER WITH DEPT PILL -->
+          <div class="hero-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+              <div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                  <span class="badge" style="background:#f59e0b; color:#78350f; font-weight:800; font-size:0.75rem; padding:4px 10px; border-radius:12px;">
+                    <i class="fa-solid fa-crown"></i> DEPARTMENT LEADER PORTAL
+                  </span>
+                  <span class="badge badge-info" id="leader-dash-dept-badge" style="font-size:0.75rem; padding:4px 10px; border-radius:12px;">
+                    <i class="fa-solid fa-building"></i> Dept: --
+                  </span>
+                </div>
+                <h2>Welcome, <span id="leader-dash-name">Leader</span></h2>
+                <p>Real-time department supervision, observer roster monitoring, and teacher schedule overview.</p>
+              </div>
+              <div class="leader-standby-pill" style="background:rgba(245, 158, 11, 0.15); border:1.5px solid rgba(245, 158, 11, 0.4); border-radius:12px; padding:8px 16px; color:#fde68a;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;"><i class="fa-solid fa-shield-halved"></i> Duty Status</div>
+                <div style="font-size:1rem; font-weight:800; color:#fbbf24;">STANDBY / CONTROL</div>
+              </div>
+            </div>
+            <i class="fa-solid fa-user-shield hero-watermark"></i>
+          </div>
+
+          <!-- METRICS GRID -->
+          <div class="metrics-grid">
+            <div class="metric-card bg-blue">
+              <div class="metric-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-teachers-count">0</span>
+                <span class="metric-label">Dept Teachers</span>
+              </div>
+            </div>
+            <div class="metric-card bg-indigo">
+              <div class="metric-icon"><i class="fa-solid fa-layer-group"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-classes-count">0</span>
+                <span class="metric-label">Active Classes</span>
+              </div>
+            </div>
+            <div class="metric-card bg-green">
+              <div class="metric-icon"><i class="fa-solid fa-user-shield"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-today-duties">0</span>
+                <span class="metric-label">Today's Observer Slots</span>
+              </div>
+            </div>
+            <div class="metric-card bg-purple">
+              <div class="metric-icon"><i class="fa-solid fa-lock"></i></div>
+              <div class="metric-data">
+                <span class="metric-value" id="stat-leader-schedule-status">LOCKED</span>
+                <span class="metric-label">Schedule Status</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- LIVE PERIOD MONITORING HERO CARD -->
+          <div class="panel-card mt-6" style="border: 1.5px solid #e0e7ff; background:#ffffff;">
+            <div class="panel-header" style="background:#faf5ff; border-bottom:1.5px solid #e9d5ff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="live-pulsing-dot"></span>
+                <h3 style="margin:0; color:#581c87;"><i class="fa-solid fa-tower-broadcast"></i> Live Department Observer Monitoring</h3>
+              </div>
+              <div style="font-size:0.85rem; font-weight:700; color:#6b21a8;" id="leader-live-clock-badge">
+                <i class="fa-regular fa-clock"></i> Today: <span id="leader-live-day">--</span> &bull; <span id="leader-live-period">P--</span>
+              </div>
+            </div>
+            <div class="panel-body" style="padding:20px;">
+              <div id="leader-live-period-slots" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
+                <!-- Dynamically populated live slots -->
+              </div>
+            </div>
+          </div>
+
+          <!-- QUICK ACTIONS & NOTIFICATIONS -->
+          <div class="grid grid-cols-2 gap-6 mt-6">
+            <!-- QUICK SHORTCUTS -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <h3><i class="fa-solid fa-bolt" style="color:var(--primary);"></i> Leader Quick Navigation</h3>
+              </div>
+              <div class="panel-body" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
+                <button type="button" class="btn btn-outline" style="padding:16px; text-align:left; display:flex; flex-direction:column; gap:6px; height:auto;" onclick="switchTab('leader-observer-schedule')">
+                  <i class="fa-solid fa-user-shield" style="font-size:1.4rem; color:#4f46e5;"></i>
+                  <span style="font-weight:700; font-size:0.9rem; color:#0f172a;">Observer Schedule</span>
+                  <span style="font-size:0.75rem; color:#64748b;">View &amp; edit observer slots</span>
+                </button>
+                <button type="button" class="btn btn-outline" style="padding:16px; text-align:left; display:flex; flex-direction:column; gap:6px; height:auto;" onclick="switchTab('leader-teacher-schedule')">
+                  <i class="fa-solid fa-chalkboard-user" style="font-size:1.4rem; color:#0891b2;"></i>
+                  <span style="font-weight:700; font-size:0.9rem; color:#0f172a;">Teacher Timetable</span>
+                  <span style="font-size:0.75rem; color:#64748b;">View department faculty load</span>
+                </button>
+                <button type="button" class="btn btn-outline" style="padding:16px; text-align:left; display:flex; flex-direction:column; gap:6px; height:auto;" onclick="switchTab('leader-today-overview')">
+                  <i class="fa-solid fa-calendar-day" style="font-size:1.4rem; color:#16a34a;"></i>
+                  <span style="font-weight:700; font-size:0.9rem; color:#0f172a;">Today's Timeline</span>
+                  <span style="font-size:0.75rem; color:#64748b;">Track P1–P9 live activities</span>
+                </button>
+                <button type="button" class="btn btn-outline" style="padding:16px; text-align:left; display:flex; flex-direction:column; gap:6px; height:auto;" onclick="switchTab('leader-absences')">
+                  <i class="fa-solid fa-user-slash" style="font-size:1.4rem; color:#ea580c;"></i>
+                  <span style="font-weight:700; font-size:0.9rem; color:#0f172a;">Absences &amp; Replacements</span>
+                  <span style="font-size:0.75rem; color:#64748b;">Request emergency covers</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- RECENT NOTIFICATIONS -->
+            <div class="panel-card">
+              <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3><i class="fa-solid fa-bell" style="color:var(--primary);"></i> Department Updates</h3>
+                <button type="button" class="btn btn-sm btn-outline" onclick="switchTab('leader-notifications')">View All</button>
+              </div>
+              <div class="panel-body p-0">
+                <div id="leader-dash-notifications-list" style="max-height:220px; overflow-y:auto;">
+                  <!-- Dynamic notification items -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 2: OBSERVER SCHEDULE -->
+        <section id="view-leader-observer-schedule" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-user-shield" style="color:var(--primary);"></i> Department Observer Schedule</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Full observer assignment matrix. You may manually edit Observer 1 and Observer 2 assignments for any locked slot.</p>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-sm btn-outline" onclick="exportLeaderObserverCSV()">
+                  <i class="fa-solid fa-file-csv"></i> Export Schedule CSV
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="loadLeaderObserverSchedule(true)">
+                  <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+
+            <!-- DAY PICKER TABS -->
+            <div style="padding:12px 20px; background:#f8fafc; border-bottom:1.5px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="display:flex; gap:6px; flex-wrap:wrap;" id="leader-obs-day-pills">
+                <!-- Day buttons -->
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge badge-success" id="leader-obs-lock-status-badge"><i class="fa-solid fa-lock"></i> SCHEDULE LOCKED</span>
+              </div>
+            </div>
+
+            <!-- SCHEDULE MATRIX TABLE -->
+            <div class="panel-body p-0">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Period &amp; Time</th>
+                      <th>Class</th>
+                      <th>Subject</th>
+                      <th>Class Teacher</th>
+                      <th>Observer 1</th>
+                      <th>Observer 2</th>
+                      <th class="text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-leader-observer-schedule-body">
+                    <tr>
+                      <td colspan="7" class="text-center p-6 text-muted">Loading department observer schedule...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 3: TEACHER SCHEDULE -->
+        <section id="view-leader-teacher-schedule" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-chalkboard-user" style="color:var(--primary);"></i> Department Teacher Timetable &amp; Allocations</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">View teaching subject selections, daily schedules, and overall workload for faculty members in your department.</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" onclick="loadLeaderTeacherSchedule(true)">
+                <i class="fa-solid fa-rotate"></i> Refresh
+              </button>
+            </div>
+
+            <div class="p-4" style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+              <div style="position:relative; max-width:320px;">
+                <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.85rem;"></i>
+                <input type="text" id="filter-leader-teacher-search" class="form-control" placeholder="Search teacher by name or username..." style="padding-left:34px; font-size:0.85rem;" oninput="filterLeaderTeacherTable()">
+              </div>
+            </div>
+
+            <div class="panel-body p-0">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Teacher Name</th>
+                      <th>Username</th>
+                      <th>Role / Status</th>
+                      <th style="text-align:center;">Teaching Slots Selected</th>
+                      <th>Allocated Teaching Periods</th>
+                      <th class="text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-leader-teacher-schedule-body">
+                    <tr>
+                      <td colspan="6" class="text-center p-6 text-muted">Loading teacher schedule...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 4: TODAY'S OVERVIEW -->
+        <section id="view-leader-today-overview" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-calendar-day" style="color:var(--primary);"></i> Today's Period-by-Period Overview</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Comprehensive timeline of all active classes, teaching teachers, and assigned observers for today.</p>
+              </div>
+              <div style="font-weight:700; color:var(--primary);" id="leader-today-overview-day-title">
+                <i class="fa-solid fa-sun"></i> Today: Sunday
+              </div>
+            </div>
+
+            <div class="panel-body p-0">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Period</th>
+                      <th>Time Slot</th>
+                      <th>Class</th>
+                      <th>Subject</th>
+                      <th>Teaching Teacher</th>
+                      <th>Observer 1</th>
+                      <th>Observer 2</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-leader-today-overview-body">
+                    <tr>
+                      <td colspan="8" class="text-center p-6 text-muted">Loading today's overview...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 5: DUTY BALANCE -->
+        <section id="view-leader-duty-balance" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-scale-balanced" style="color:var(--primary);"></i> Department Duty Balance &amp; Fair Distribution</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Monitors workload distribution between Teaching duties and Observer duties among department teachers.</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" onclick="loadLeaderDutyBalance(true)">
+                <i class="fa-solid fa-rotate"></i> Refresh
+              </button>
+            </div>
+
+            <div class="panel-body p-0">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Teacher Name</th>
+                      <th>Username</th>
+                      <th>Role</th>
+                      <th style="text-align:center;">Teaching Duties</th>
+                      <th style="text-align:center;">Observer Duties</th>
+                      <th style="text-align:center;">Total Duties</th>
+                      <th>Duty Balance Indicator</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-leader-duty-balance-body">
+                    <tr>
+                      <td colspan="7" class="text-center p-6 text-muted">Loading duty balance...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 6: ABSENCES & REPLACEMENTS -->
+        <section id="view-leader-absences" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-user-slash" style="color:var(--primary);"></i> Observer Absence &amp; Replacement Management</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Record faculty absences and submit or manage emergency observer replacement requests.</p>
+              </div>
+              <button type="button" class="btn btn-primary" onclick="openModalLeaderReplacementRequest()">
+                <i class="fa-solid fa-plus"></i> Request Observer Replacement
+              </button>
+            </div>
+
+            <div class="panel-body p-0">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date / Day</th>
+                      <th>Period &amp; Class</th>
+                      <th>Original Observer</th>
+                      <th>Replacement Teacher</th>
+                      <th>Reason</th>
+                      <th>Status</th>
+                      <th>Submitted At</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-leader-replacements-body">
+                    <tr>
+                      <td colspan="7" class="text-center p-6 text-muted">No replacement requests submitted yet.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 7: NOTIFICATIONS -->
+        <section id="view-leader-notifications" class="tab-view hidden">
+          <div class="panel-card">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h3 style="margin:0;"><i class="fa-solid fa-bell" style="color:var(--primary);"></i> Department Notifications &amp; Alerts</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Audit logs, schedule lock alerts, and important notifications for your department.</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" onclick="loadLeaderNotifications(true)">
+                <i class="fa-solid fa-rotate"></i> Refresh
+              </button>
+            </div>
+
+            <div class="panel-body">
+              <div id="container-leader-notifications-full" style="display:flex; flex-direction:column; gap:10px;">
+                <!-- Dynamically populated notifications -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- LEADER 8: PROFILE & SECURITY -->
+        <section id="view-leader-profile" class="tab-view hidden">
+          <div class="panel-card max-w-lg" style="max-width: 600px; margin: 0 auto;">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-id-card" style="color:var(--primary);"></i> Department Leader Profile &amp; Security</h3>
+            </div>
+            <div class="panel-body" style="padding: 24px;">
+              <!-- LEADER INFO SUMMARY -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:20px; display:flex; align-items:center; gap:16px;">
+                <div style="width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg, #4f46e5 0%, #312e81 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:800;" id="leader-profile-avatar">
+                  L
+                </div>
+                <div>
+                  <h4 style="margin:0; font-size:1.1rem; color:#0f172a;" id="leader-profile-fullname">Leader Name</h4>
+                  <div style="font-size:0.85rem; color:#64748b; margin-top:2px;">
+                    <span><strong>Username:</strong> <span id="leader-profile-username">--</span></span> &bull; 
+                    <span><strong>Department:</strong> <span id="leader-profile-deptname" style="color:#4f46e5; font-weight:700;">--</span></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CHANGE PASSWORD FORM -->
+              <form id="form-leader-change-password" onsubmit="handleLeaderPasswordChange(event)">
+                <h4 style="font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:14px;">
+                  <i class="fa-solid fa-key text-primary"></i> Change Account Password
+                </h4>
+                <div class="form-group">
+                  <label style="font-weight:600; font-size:0.85rem;">Current Password <span class="text-danger">*</span></label>
+                  <input type="password" id="leader-pwd-current" class="form-control" placeholder="Enter current password" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                  <label style="font-weight:600; font-size:0.85rem;">New Password <span class="text-danger">*</span></label>
+                  <input type="password" id="leader-pwd-new" class="form-control" placeholder="Enter new password (min 4 characters)" minlength="4" required autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                  <label style="font-weight:600; font-size:0.85rem;">Confirm New Password <span class="text-danger">*</span></label>
+                  <input type="password" id="leader-pwd-confirm" class="form-control" placeholder="Confirm new password" minlength="4" required autocomplete="new-password">
+                </div>
+                <div id="leader-pwd-error-box" class="alert-box alert-error hidden" style="margin-bottom:14px;"></div>
+                <div id="leader-pwd-success-box" class="alert-box alert-success hidden" style="margin-bottom:14px;"></div>
+                <button type="submit" class="btn btn-primary btn-block">
+                  <i class="fa-solid fa-shield-check"></i> Update Password
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
 
@@ -4867,6 +5403,262 @@
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-rule5-emergency-unlock')">Cancel</button>
           <button type="submit" class="btn btn-primary" style="background:#ea580c; border-color:#c2410c;">
             <i class="fa-solid fa-key"></i> Confirm Emergency Unlock
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- DEPARTMENT LEADER MANAGEMENT MODALS                                       -->
+  <!-- ========================================================================= -->
+
+  <!-- MODAL: ADMIN ASSIGN / CREATE DEPARTMENT LEADER -->
+  <div id="modal-admin-add-department-leader" class="modal-overlay hidden">
+    <div class="modal-content max-w-md" style="max-width: 520px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #fff;">
+        <h3 style="color:#fff; margin:0;"><i class="fa-solid fa-user-plus" style="color:#38bdf8;"></i> Assign Department Leader</h3>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-admin-add-department-leader')">&times;</button>
+      </div>
+      <form id="form-admin-add-department-leader" onsubmit="saveDepartmentLeaderForm(event)">
+        <div class="modal-body" style="padding: 20px 24px;">
+          <!-- DEPARTMENT SELECT -->
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-building-user"></i> Department <span class="text-danger">*</span></label>
+            <select id="admin-leader-dept-select" class="form-control" style="font-weight:700;" required onchange="onAdminLeaderDeptSelected(this.value)">
+              <!-- Dynamically populated departments -->
+            </select>
+          </div>
+
+          <!-- TEACHER SELECT -->
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-chalkboard-user"></i> Department Teacher <span class="text-danger">*</span></label>
+            <select id="admin-leader-teacher-select" class="form-control" required onchange="onAdminLeaderTeacherSelected(this.value)">
+              <option value="">-- Select Department First --</option>
+            </select>
+          </div>
+
+          <!-- REPLACEMENT ALERT IF DEPT ALREADY HAS ACTIVE LEADER -->
+          <div id="admin-leader-replace-alert" class="alert-box alert-warning hidden" style="margin-bottom:14px; font-size:0.82rem; padding:10px 12px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> <strong>Note:</strong> This department currently has an active leader (<span id="admin-leader-current-active-name" style="font-weight:700;">--</span>). Assigning a new leader will archive the current assignment.
+          </div>
+
+          <!-- USERNAME -->
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-user"></i> Leader Login Username <span class="text-danger">*</span></label>
+            <input type="text" id="admin-leader-username" class="form-control" placeholder="e.g. media_lead or teacher username" required autocomplete="off">
+          </div>
+
+          <!-- PASSWORD -->
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-lock"></i> Leader Login Password <span class="text-danger">*</span></label>
+            <input type="text" id="admin-leader-password" class="form-control" placeholder="Set secure password (min 4 characters)" minlength="4" required autocomplete="off">
+          </div>
+
+          <!-- DISPLAY NAME -->
+          <div class="form-group mb-0">
+            <label style="font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-signature"></i> Full Display Name</label>
+            <input type="text" id="admin-leader-fullname" class="form-control" placeholder="e.g. Dr. Jane Doe (Leader)" autocomplete="off">
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 14px 24px; display:flex; justify-content:space-between; align-items:center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-admin-add-department-leader')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-admin-dept-leader">
+            <i class="fa-solid fa-check"></i> Save &amp; Assign Leader
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADMIN RESET LEADER PASSWORD -->
+  <div id="modal-admin-reset-leader-password" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 440px;">
+      <div class="modal-header" style="background:#fef3c7; color:#78350f; border-bottom:1.5px solid #fde68a;">
+        <h3 style="color:#78350f; margin:0;"><i class="fa-solid fa-key" style="color:#f59e0b;"></i> Reset Leader Password</h3>
+        <button class="btn-close" onclick="closeModal('modal-admin-reset-leader-password')">&times;</button>
+      </div>
+      <form id="form-admin-reset-leader-password" onsubmit="saveLeaderPasswordReset(event)">
+        <input type="hidden" id="reset-leader-id">
+        <div class="modal-body" style="padding: 20px;">
+          <p style="font-size:0.85rem; color:#475569; margin-top:0;">
+            Reset the login password for <strong id="reset-leader-name" style="color:#0f172a;">Leader</strong> (<span id="reset-leader-dept" style="color:#4f46e5; font-weight:700;">Dept</span>).
+          </p>
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.85rem;">New Password <span class="text-danger">*</span></label>
+            <input type="text" id="reset-leader-new-password" class="form-control" placeholder="Enter new password (min 4 characters)" minlength="4" required>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-admin-reset-leader-password')">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:#f59e0b; border-color:#d97706; color:#78350f;">
+            <i class="fa-solid fa-check"></i> Update Password
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: LEADER OBSERVER MANUAL EDIT (DEPARTMENT ISOLATED) -->
+  <div id="modal-leader-observer-manual-edit" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg" style="max-width: 600px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #fff;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span class="badge" style="background:#059669; color:#fff; font-size:0.72rem; padding:3px 8px; border-radius:12px; font-weight:700;">
+              <i class="fa-solid fa-lock"></i> SCHEDULE LOCKED
+            </span>
+            <span class="badge" id="modal-leader-obs-edit-dept-pill" style="background:rgba(255,255,255,0.18); color:#e0e7ff; font-size:0.72rem; padding:3px 8px; border-radius:12px;">
+              Dept: --
+            </span>
+          </div>
+          <h3 style="color:#fff; margin:0; font-size:1.15rem;"><i class="fa-solid fa-user-pen" style="color:#38bdf8;"></i> Leader: Edit Observer Assignment</h3>
+        </div>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-leader-observer-manual-edit')">&times;</button>
+      </div>
+
+      <form id="form-leader-observer-manual-edit" onsubmit="handleLeaderObserverManualEditSubmit(event)">
+        <div class="modal-body" style="padding: 20px 24px; max-height: calc(85vh - 140px); overflow-y: auto;">
+          <!-- SLOT SUMMARY CARD -->
+          <div style="background:linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border:1.5px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Target Slot</div>
+                <div style="font-size:1.1rem; font-weight:800; color:#0f172a; margin-top:2px;" id="leader-obs-edit-target-title">
+                  Std -- — Period --
+                </div>
+                <div style="font-size:0.82rem; color:#475569; margin-top:3px;">
+                  <span><strong>Day:</strong> <span id="leader-obs-edit-target-day">--</span></span> &bull; 
+                  <span><strong>Subject:</strong> <span id="leader-obs-edit-target-subject">--</span></span>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Teaching Teacher</div>
+                <span class="obs-badge-teaching" style="margin-top:4px; display:inline-block;" id="leader-obs-edit-target-teacher">
+                  --
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- OBSERVER 1 SELECTION -->
+          <div class="form-group mb-4">
+            <label style="font-weight:700; font-size:0.85rem; color:#0f172a; display:flex; justify-content:space-between; align-items:center;">
+              <span><i class="fa-solid fa-user-shield" style="color:#4f46e5;"></i> Observer 1 <span class="text-danger">*</span></span>
+              <span id="leader-obs1-current-tag" class="badge badge-secondary" style="font-size:0.72rem;">Current: --</span>
+            </label>
+            <select id="leader-select-obs1" class="form-control" style="font-weight:600; font-size:0.88rem; padding:8px 12px;" required onchange="onLeaderManualEditSelectionChanged()">
+              <!-- Options with eligibility badges -->
+            </select>
+          </div>
+
+          <!-- OBSERVER 2 SELECTION -->
+          <div class="form-group mb-4">
+            <label style="font-weight:700; font-size:0.85rem; color:#0f172a; display:flex; justify-content:space-between; align-items:center;">
+              <span><i class="fa-solid fa-user-shield" style="color:#059669;"></i> Observer 2 <span class="text-danger">*</span></span>
+              <span id="leader-obs2-current-tag" class="badge badge-secondary" style="font-size:0.72rem;">Current: --</span>
+            </label>
+            <select id="leader-select-obs2" class="form-control" style="font-weight:600; font-size:0.88rem; padding:8px 12px;" required onchange="onLeaderManualEditSelectionChanged()">
+              <!-- Options with eligibility badges -->
+            </select>
+          </div>
+
+          <!-- SOFT WARNINGS / VALIDATION ALERTS -->
+          <div id="leader-obs-edit-warnings-box" class="hidden" style="margin-bottom:14px;">
+            <!-- Warnings rendered dynamically -->
+          </div>
+
+          <!-- REASON FIELD -->
+          <div class="form-group mb-0">
+            <label style="font-weight:700; font-size:0.85rem; color:#0f172a;">
+              Reason for Change <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="leader-obs-edit-reason" class="form-control" placeholder="e.g. Teacher requested shift / emergency cover" required>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 24px; display:flex; justify-content:space-between; align-items:center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-leader-observer-manual-edit')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-leader-obs-edit" style="background:#4f46e5; border-color:#4338ca;">
+            <i class="fa-solid fa-check"></i> Save Observer Change
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: LEADER REQUEST OBSERVER REPLACEMENT -->
+  <div id="modal-leader-request-replacement" class="modal-overlay hidden">
+    <div class="modal-content max-w-md" style="max-width: 520px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%); color: #fff;">
+        <h3 style="color:#fff; margin:0;"><i class="fa-solid fa-user-slash" style="color:#fed7aa;"></i> Request Observer Replacement</h3>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-leader-request-replacement')">&times;</button>
+      </div>
+      <form id="form-leader-request-replacement" onsubmit="submitLeaderReplacementRequest(event)">
+        <div class="modal-body" style="padding: 20px 24px;">
+          <p style="font-size:0.85rem; color:#475569; margin-top:0;">
+            Submit an emergency absence replacement for an assigned observer duty slot in your department.
+          </p>
+
+          <div class="form-row">
+            <div class="form-group col-6">
+              <label style="font-weight:700; font-size:0.82rem;">Day / Date <span class="text-danger">*</span></label>
+              <select id="leader-repl-day" class="form-control" required onchange="onLeaderReplSlotChanged()">
+                <option value="Sunday">Sunday</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+              </select>
+            </div>
+            <div class="form-group col-6">
+              <label style="font-weight:700; font-size:0.82rem;">Period <span class="text-danger">*</span></label>
+              <select id="leader-repl-period" class="form-control" required onchange="onLeaderReplSlotChanged()">
+                <option value="1">Period 1</option>
+                <option value="2">Period 2</option>
+                <option value="3">Period 3</option>
+                <option value="4">Period 4</option>
+                <option value="5">Period 5</option>
+                <option value="6">Period 6</option>
+                <option value="7">Period 7</option>
+                <option value="8">Period 8</option>
+                <option value="9">Period 9</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.82rem;">Class Slot <span class="text-danger">*</span></label>
+            <select id="leader-repl-class" class="form-control" required onchange="onLeaderReplSlotChanged()">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.82rem;">Original Absent Observer <span class="text-danger">*</span></label>
+            <select id="leader-repl-orig-observer" class="form-control" required>
+              <!-- Populated with observers from selected slot -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label style="font-weight:700; font-size:0.82rem;">Proposed Replacement Teacher <span class="text-danger">*</span></label>
+            <select id="leader-repl-new-teacher" class="form-control" required>
+              <!-- Populated with eligible teachers -->
+            </select>
+          </div>
+
+          <div class="form-group mb-0">
+            <label style="font-weight:700; font-size:0.82rem;">Reason for Absence / Replacement <span class="text-danger">*</span></label>
+            <textarea id="leader-repl-reason" class="form-control" rows="2" placeholder="e.g. Medical leave / emergency unavailability" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 24px; display:flex; justify-content:space-between;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-leader-request-replacement')">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:#ea580c; border-color:#c2410c;">
+            <i class="fa-solid fa-paper-plane"></i> Submit Request
           </button>
         </div>
       </form>

@@ -240,6 +240,7 @@ app.post('/api/auth/login', async (req, res) => {
         u.roll_no, 
         u.admission_no, 
         u.department_id,
+        u.is_active,
         COALESCE(d.name, 'MEDIA') as department_name,
         COALESCE(d.code, 'MEDIA') as department_code
       FROM users u
@@ -258,6 +259,18 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid username/admission number or password' });
+    }
+
+    if (user.is_active === false) {
+      return res.status(403).json({ error: 'This account has been deactivated. Please contact administrator.' });
+    }
+
+    if (user.role === 'department_leader') {
+      const leaderRec = await db.get(`SELECT status FROM department_leaders WHERE user_id = $1`, [user.id]);
+      if (leaderRec && leaderRec.status !== 'active') {
+        return res.status(403).json({ error: 'This Department Leader account is inactive or has been replaced. Please contact administrator.' });
+      }
+      await db.run(`UPDATE department_leaders SET last_login = CURRENT_TIMESTAMP WHERE user_id = $1`, [user.id]);
     }
 
     return res.json({
@@ -7155,6 +7168,1199 @@ app.get(['/api/teaching/teacher/today-schedule', '/api/teaching/teacher/duty-ove
   } catch (err) {
     console.error('Teacher Today Schedule API Error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// 11. DEPARTMENT LEADER MANAGEMENT (ADMIN) & DEPARTMENT LEADER PORTAL
+// =========================================================================
+
+// Helper: Derive Department ID and verify Leader Authentication
+async function getAuthenticatedLeaderDept(userIdOrUsername) {
+  if (!userIdOrUsername) throw new Error('Authentication required: Leader User ID missing');
+  let leaderUser = null;
+  const parsedId = parseInt(userIdOrUsername);
+  if (!isNaN(parsedId)) {
+    leaderUser = await db.get(`
+      SELECT u.id, u.username, u.full_name, u.role, u.department_id, u.is_active,
+             d.name as department_name, d.code as department_code, d.active_days
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE u.id = $1 AND u.role = 'department_leader'
+    `, [parsedId]);
+  }
+  if (!leaderUser) {
+    leaderUser = await db.get(`
+      SELECT u.id, u.username, u.full_name, u.role, u.department_id, u.is_active,
+             d.name as department_name, d.code as department_code, d.active_days
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1)) AND u.role = 'department_leader'
+    `, [String(userIdOrUsername)]);
+  }
+
+  if (!leaderUser) {
+    throw new Error('Unauthorized: User is not an authorized Department Leader');
+  }
+  if (leaderUser.is_active === false) {
+    throw new Error('Forbidden: This Department Leader account has been deactivated');
+  }
+  if (!leaderUser.department_id) {
+    throw new Error('Configuration error: Department Leader is not assigned to any department');
+  }
+
+  return leaderUser;
+}
+
+// -------------------------------------------------------------
+// 11.1 ADMIN: DEPARTMENT LEADER MANAGEMENT APIS
+// -------------------------------------------------------------
+
+// GET all Department Leaders across departments
+app.get('/api/admin/department-leaders', async (req, res) => {
+  try {
+    const depts = await db.all(`SELECT id, name, code, active_days FROM departments ORDER BY name ASC`);
+    const leaders = await db.all(`
+      SELECT 
+        dl.id as leader_record_id,
+        dl.department_id,
+        dl.user_id,
+        dl.teacher_id,
+        dl.status,
+        dl.last_login,
+        dl.created_at,
+        u_lead.username as leader_username,
+        u_lead.full_name as leader_name,
+        u_lead.phone as leader_phone,
+        u_lead.email as leader_email,
+        u_lead.is_active as user_active,
+        u_teach.full_name as underlying_teacher_name,
+        u_teach.username as underlying_teacher_username,
+        d.name as department_name,
+        d.code as department_code
+      FROM department_leaders dl
+      JOIN users u_lead ON dl.user_id = u_lead.id
+      LEFT JOIN users u_teach ON dl.teacher_id = u_teach.id
+      JOIN departments d ON dl.department_id = d.id
+      ORDER BY dl.status ASC, dl.created_at DESC
+    `);
+
+    // Group by department
+    const deptLeaderMap = new Map();
+    depts.forEach(d => {
+      deptLeaderMap.set(d.id, {
+        department_id: d.id,
+        department_name: d.name,
+        department_code: d.code,
+        active_days: d.active_days,
+        active_leader: null,
+        history: []
+      });
+    });
+
+    leaders.forEach(l => {
+      if (deptLeaderMap.has(l.department_id)) {
+        const item = deptLeaderMap.get(l.department_id);
+        if (l.status === 'active' && !item.active_leader) {
+          item.active_leader = l;
+        } else {
+          item.history.push(l);
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      departments: Array.from(deptLeaderMap.values()).map(d => ({
+        id: d.department_id,
+        department_id: d.department_id,
+        name: d.department_name,
+        department_name: d.department_name,
+        code: d.department_code,
+        department_code: d.department_code,
+        active_days: d.active_days,
+        active_leader: d.active_leader,
+        history: d.history
+      })),
+      leaders: leaders,
+      all_leaders: leaders
+    });
+  } catch (err) {
+    console.error('Error fetching admin department leaders:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET active teachers in a specific department for Leader selection
+app.get('/api/admin/department-leaders/available-teachers', async (req, res) => {
+  try {
+    const deptId = parseInt(req.query.department_id);
+    if (!deptId) return res.status(400).json({ success: false, error: 'department_id is required' });
+
+    const [teachers, currentLeader] = await Promise.all([
+      db.all(`
+        SELECT id, full_name as name, full_name, username, phone, email, admission_no, roll_no
+        FROM users
+        WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true
+        ORDER BY full_name ASC
+      `, [deptId]),
+      db.get(`
+        SELECT dl.*, u.username, u.full_name as teacher_name
+        FROM department_leaders dl
+        JOIN users u ON dl.user_id = u.id
+        WHERE dl.department_id = $1 AND dl.status = 'active'
+      `, [deptId])
+    ]);
+
+    res.json({
+      success: true,
+      teachers,
+      current_leader: currentLeader || null
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST Create / Assign Department Leader with custom login credentials
+app.post('/api/admin/department-leaders', async (req, res) => {
+  const {
+    department_id,
+    teacher_id,
+    username,
+    password,
+    admin_id,
+    admin_name
+  } = req.body;
+
+  const deptId = parseInt(department_id);
+  const teacherId = parseInt(teacher_id);
+  const cleanUsername = (username || '').toString().trim();
+  const cleanPassword = (password || '').toString().trim();
+
+  if (!deptId || !teacherId || !cleanUsername || !cleanPassword) {
+    return res.status(400).json({ error: 'Department, Teacher, Username, and Password are all required.' });
+  }
+
+  try {
+    // 1. Verify Department
+    const dept = await db.get(`SELECT id, name, code FROM departments WHERE id = $1`, [deptId]);
+    if (!dept) return res.status(400).json({ error: 'Selected department does not exist.' });
+
+    // 2. Verify Teacher belongs strictly to this department
+    const teacher = await db.get(`
+      SELECT id, full_name, username, email, phone, department_id
+      FROM users
+      WHERE id = $1 AND role = 'teacher' AND department_id = $2 AND COALESCE(is_active, true) = true
+    `, [teacherId, deptId]);
+
+    if (!teacher) {
+      return res.status(400).json({ error: 'Selected teacher does not belong to this department or is inactive.' });
+    }
+
+    // 3. Check Username Uniqueness across users table
+    const existingUser = await db.get(`SELECT id, username FROM users WHERE LOWER(TRIM(username)) = LOWER($1)`, [cleanUsername]);
+    if (existingUser) {
+      return res.status(400).json({ error: `Username "${cleanUsername}" is already taken. Please choose another username.` });
+    }
+
+    // 4. Check if department already has an active leader -> deactive/replace existing
+    const existingActiveLeader = await db.get(`
+      SELECT dl.*, u.username as old_username, u.full_name as old_name
+      FROM department_leaders dl
+      JOIN users u ON dl.user_id = u.id
+      WHERE dl.department_id = $1 AND dl.status = 'active'
+    `, [deptId]);
+
+    if (existingActiveLeader) {
+      // Mark old leader record as replaced
+      await db.run(`UPDATE department_leaders SET status = 'replaced', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [existingActiveLeader.id]);
+      // Deactivate old leader user account
+      await db.run(`UPDATE users SET is_active = false WHERE id = $1`, [existingActiveLeader.user_id]);
+    }
+
+    // 5. Create new Leader User Account in users table
+    const userInsert = await db.run(`
+      INSERT INTO users (username, password, full_name, email, phone, role, department_id, is_active)
+      VALUES ($1, $2, $3, $4, $5, 'department_leader', $6, true)
+      RETURNING id
+    `, [cleanUsername, cleanPassword, teacher.full_name, teacher.email, teacher.phone, deptId]);
+
+    const newLeaderUserId = userInsert.lastInsertRowid || userInsert.rows[0]?.id;
+
+    // 6. Create record in department_leaders
+    const dlInsert = await db.run(`
+      INSERT INTO department_leaders (department_id, user_id, teacher_id, status, created_by)
+      VALUES ($1, $2, $3, 'active', $4)
+      RETURNING id
+    `, [deptId, newLeaderUserId, teacherId, admin_id || null]);
+
+    const leaderRecordId = dlInsert.lastInsertRowid || dlInsert.rows[0]?.id;
+
+    // 7. Sync with department_observer_leaders table so automatic engine recognizes leader
+    const existingObsLeader = await db.get(`SELECT id FROM department_observer_leaders WHERE department_id = $1`, [deptId]);
+    if (existingObsLeader) {
+      await db.run(`
+        UPDATE department_observer_leaders
+        SET teacher_id = $1, status = 'active', selected_by = $2, selected_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `, [teacherId, admin_id || null, existingObsLeader.id]);
+    } else {
+      await db.run(`
+        INSERT INTO department_observer_leaders (department_id, teacher_id, status, selected_by)
+        VALUES ($1, $2, 'active', $3)
+      `, [deptId, teacherId, admin_id || null]);
+    }
+
+    invalidateCache(`dept_obs_settings_${deptId}`);
+
+    // 8. Log Audit
+    await logObserverAction(
+      admin_id,
+      admin_name || 'Admin',
+      `Assigned ${teacher.full_name} as Department Leader for ${dept.name} (Username: ${cleanUsername})`,
+      {
+        department: dept.name,
+        department_id: deptId,
+        teacher_id: teacherId,
+        teacher_name: teacher.full_name,
+        leader_username: cleanUsername,
+        replaced_leader: existingActiveLeader ? existingActiveLeader.old_name : null
+      },
+      deptId
+    );
+
+    res.json({
+      success: true,
+      message: `Department Leader assigned successfully for ${dept.name}.`,
+      leader: {
+        id: leaderRecordId,
+        user_id: newLeaderUserId,
+        department_id: deptId,
+        department_name: dept.name,
+        teacher_id: teacherId,
+        teacher_name: teacher.full_name,
+        username: cleanUsername,
+        status: 'active'
+      }
+    });
+  } catch (err) {
+    console.error('Error assigning department leader:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Admin Reset Leader Password
+app.post('/api/admin/department-leaders/:id/reset-password', async (req, res) => {
+  const leaderRecordId = parseInt(req.params.id);
+  const { new_password, admin_id, admin_name } = req.body;
+  const cleanPassword = (new_password || '').toString().trim();
+
+  if (!cleanPassword) {
+    return res.status(400).json({ error: 'New password cannot be empty.' });
+  }
+
+  try {
+    const leaderRecord = await db.get(`
+      SELECT dl.*, u.username, u.full_name, d.name as department_name
+      FROM department_leaders dl
+      JOIN users u ON dl.user_id = u.id
+      JOIN departments d ON dl.department_id = d.id
+      WHERE dl.id = $1
+    `, [leaderRecordId]);
+
+    if (!leaderRecord) {
+      return res.status(404).json({ error: 'Department leader record not found.' });
+    }
+
+    await db.run(`UPDATE users SET password = $1 WHERE id = $2`, [cleanPassword, leaderRecord.user_id]);
+
+    await logObserverAction(
+      admin_id,
+      admin_name || 'Admin',
+      `Reset Password for Department Leader ${leaderRecord.full_name} (${leaderRecord.department_name})`,
+      { leader_username: leaderRecord.username, department: leaderRecord.department_name },
+      leaderRecord.department_id
+    );
+
+    res.json({ success: true, message: `Password reset successfully for @${leaderRecord.username}.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Admin Toggle Leader Status (Active / Inactive)
+app.post('/api/admin/department-leaders/:id/toggle-status', async (req, res) => {
+  const leaderRecordId = parseInt(req.params.id);
+  const { admin_id, admin_name } = req.body;
+
+  try {
+    const leaderRecord = await db.get(`
+      SELECT dl.*, u.username, u.full_name, d.name as department_name
+      FROM department_leaders dl
+      JOIN users u ON dl.user_id = u.id
+      JOIN departments d ON dl.department_id = d.id
+      WHERE dl.id = $1
+    `, [leaderRecordId]);
+
+    if (!leaderRecord) return res.status(404).json({ error: 'Leader record not found.' });
+
+    const newStatus = leaderRecord.status === 'active' ? 'inactive' : 'active';
+    const userActive = newStatus === 'active';
+
+    if (newStatus === 'active') {
+      // Check if another active leader already exists
+      const otherActive = await db.get(`SELECT id FROM department_leaders WHERE department_id = $1 AND status = 'active' AND id != $2`, [leaderRecord.department_id, leaderRecordId]);
+      if (otherActive) {
+        return res.status(400).json({ error: 'Another leader is already active for this department. Deactivate or replace the current active leader first.' });
+      }
+    }
+
+    await db.run(`UPDATE department_leaders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [newStatus, leaderRecordId]);
+    await db.run(`UPDATE users SET is_active = $1 WHERE id = $2`, [userActive, leaderRecord.user_id]);
+
+    if (leaderRecord.teacher_id) {
+      await db.run(`UPDATE department_observer_leaders SET status = $1 WHERE department_id = $2`, [newStatus, leaderRecord.department_id]);
+    }
+
+    invalidateCache(`dept_obs_settings_${leaderRecord.department_id}`);
+
+    await logObserverAction(
+      admin_id,
+      admin_name || 'Admin',
+      `${newStatus === 'active' ? 'Enabled' : 'Disabled'} Department Leader ${leaderRecord.full_name} (${leaderRecord.department_name})`,
+      { status: newStatus },
+      leaderRecord.department_id
+    );
+
+    res.json({ success: true, message: `Department Leader status changed to ${newStatus}.`, status: newStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE Admin Remove Leader Assignment
+app.delete('/api/admin/department-leaders/:id', async (req, res) => {
+  const leaderRecordId = parseInt(req.params.id);
+  const adminId = req.query.admin_id ? parseInt(req.query.admin_id) : null;
+  const adminName = req.query.admin_name || 'Admin';
+
+  try {
+    const leaderRecord = await db.get(`
+      SELECT dl.*, u.username, u.full_name, d.name as department_name
+      FROM department_leaders dl
+      JOIN users u ON dl.user_id = u.id
+      JOIN departments d ON dl.department_id = d.id
+      WHERE dl.id = $1
+    `, [leaderRecordId]);
+
+    if (!leaderRecord) return res.status(404).json({ error: 'Leader record not found.' });
+
+    // Mark as removed and deactivate user
+    await db.run(`UPDATE department_leaders SET status = 'removed', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [leaderRecordId]);
+    await db.run(`UPDATE users SET is_active = false WHERE id = $1`, [leaderRecord.user_id]);
+    await db.run(`UPDATE department_observer_leaders SET status = 'inactive' WHERE department_id = $1`, [leaderRecord.department_id]);
+
+    invalidateCache(`dept_obs_settings_${leaderRecord.department_id}`);
+
+    await logObserverAction(
+      adminId,
+      adminName,
+      `Removed Department Leader assignment for ${leaderRecord.full_name} (${leaderRecord.department_name})`,
+      { department: leaderRecord.department_name },
+      leaderRecord.department_id
+    );
+
+    res.json({ success: true, message: 'Department Leader assignment removed successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 11.2 DEPARTMENT LEADER PORTAL APIS (STRICT DEPARTMENT ISOLATION)
+// -------------------------------------------------------------
+
+// Leader Dashboard Overview
+app.get('/api/leader/dashboard', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+
+    // Detect IST server time
+    const now = new Date();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istDate = new Date(utcTime + (3600000 * 5.5));
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDay = dayNames[istDate.getDay()];
+    const currentHour = istDate.getHours();
+    const currentMin = istDate.getMinutes();
+    const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+
+    let currentPeriod = 1;
+    if (currentTimeStr < '08:15') currentPeriod = 1;
+    else if (currentTimeStr < '09:00') currentPeriod = 2;
+    else if (currentTimeStr < '09:45') currentPeriod = 3;
+    else if (currentTimeStr < '11:15') currentPeriod = 4;
+    else if (currentTimeStr < '12:10') currentPeriod = 5;
+    else if (currentTimeStr < '12:55') currentPeriod = 6;
+    else if (currentTimeStr < '14:40') currentPeriod = 7;
+    else if (currentTimeStr < '15:20') currentPeriod = 8;
+    else currentPeriod = 9;
+
+    const [
+      latestGen,
+      teachersCountRes,
+      assignedClasses,
+      todayTeachingRes,
+      todayObserversRes,
+      pendingReplacementsRes,
+      settings
+    ] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.get(`SELECT count(*)::int as count FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true`, [deptId]),
+      getDepartmentAssignedClasses(deptId),
+      db.get(`SELECT count(*)::int as count FROM teacher_selections WHERE department_id = $1 AND day = $2`, [deptId, currentDay]),
+      db.get(`SELECT count(*)::int as count FROM observer_duty_allocations WHERE department_id = $1 AND day = $2`, [deptId, currentDay]),
+      db.get(`SELECT count(*)::int as count FROM department_observer_replacements WHERE department_id = $1 AND status = 'pending'`, [deptId]),
+      getDepartmentObserverSettings(deptId)
+    ]);
+
+    const totalTeachers = teachersCountRes ? teachersCountRes.count : 0;
+    const classesCount = assignedClasses ? assignedClasses.length : 0;
+    const isLocked = Boolean(latestGen && latestGen.status === 'locked');
+    const version = latestGen ? latestGen.generation_version : 1;
+
+    // Fetch current period live details
+    const [currentTeaching, currentObservers] = await Promise.all([
+      db.all(`
+        SELECT ts.*, u.full_name as teacher_name
+        FROM teacher_selections ts
+        JOIN users u ON ts.teacher_id = u.id
+        WHERE ts.department_id = $1 AND ts.day = $2 AND ts.period = $3
+      `, [deptId, currentDay, currentPeriod]),
+      db.all(`
+        SELECT a.*, u.full_name as observer_name
+        FROM observer_duty_allocations a
+        JOIN users u ON a.observer_teacher_id = u.id
+        WHERE a.department_id = $1 AND a.generation_version = $2 AND a.day = $3 AND a.period = $4
+      `, [deptId, version, currentDay, currentPeriod])
+    ]);
+
+    const busyTeacherIds = new Set();
+    currentTeaching.forEach(t => busyTeacherIds.add(t.teacher_id));
+    currentObservers.forEach(o => busyTeacherIds.add(o.observer_teacher_id));
+
+    const standbyFreeTeachers = Math.max(0, totalTeachers - busyTeacherIds.size);
+
+    res.json({
+      success: true,
+      department: {
+        id: deptId,
+        name: leader.department_name,
+        code: leader.department_code,
+        active_days: leader.active_days
+      },
+      leader: {
+        id: leader.id,
+        full_name: leader.full_name,
+        username: leader.username,
+        department_id: deptId,
+        department_name: leader.department_name,
+        department_code: leader.department_code
+      },
+      is_locked: isLocked,
+      stats: {
+        total_teachers: totalTeachers,
+        today_classes: todayTeachingRes ? todayTeachingRes.count : 0,
+        active_classes_count: classesCount,
+        today_observer_slots_count: todayObserversRes ? todayObserversRes.count : 0,
+        today_observer_duties: todayObserversRes ? todayObserversRes.count : 0,
+        standby_free_teachers: standbyFreeTeachers,
+        pending_replacements: pendingReplacementsRes ? pendingReplacementsRes.count : 0,
+        current_period: currentPeriod,
+        next_period: Math.min(9, currentPeriod + 1),
+        current_day: currentDay,
+        time_slot: STANDARD_PERIOD_TIMES[currentPeriod]?.label || `P${currentPeriod}`,
+        is_schedule_locked: isLocked
+      },
+      live_period: {
+        period: currentPeriod,
+        day: currentDay,
+        time_slot: STANDARD_PERIOD_TIMES[currentPeriod]?.label || `P${currentPeriod}`,
+        slots: currentObservers.map(o => ({
+          period: o.period,
+          class_name: o.class_name,
+          observer_1_name: o.observer_slot_number === 1 ? o.observer_name : null,
+          observer_2_name: o.observer_slot_number === 2 ? o.observer_name : null
+        }))
+      },
+      current_period_summary: {
+        teaching: currentTeaching,
+        observers: currentObservers,
+        busy_count: busyTeacherIds.size,
+        free_count: standbyFreeTeachers
+      },
+      notifications: [
+        {
+          type: isLocked ? 'success' : 'warning',
+          title: isLocked ? 'Observer Schedule Locked' : 'Observer Schedule in Draft',
+          message: isLocked ? 'Official Observer Schedule is locked. Manual single-slot edits are active.' : 'Schedule has not been locked by administrator yet.'
+        },
+        ...(pendingReplacementsRes && pendingReplacementsRes.count > 0 ? [{
+          type: 'info',
+          title: 'Pending Replacements',
+          message: `There are ${pendingReplacementsRes.count} observer replacement requests pending review.`
+        }] : [])
+      ]
+    });
+  } catch (err) {
+    console.error('Leader Dashboard Error:', err);
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ error: err.message });
+  }
+});
+
+// Leader Observer Schedule Matrix
+app.get('/api/leader/observer-schedule', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+    const dayFilter = req.query.day;
+
+    const [latestGen, dept] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.get(`SELECT name, code, active_days FROM departments WHERE id = $1`, [deptId])
+    ]);
+
+    if (!latestGen) {
+      return res.json({
+        department_id: deptId,
+        department_name: leader.department_name,
+        is_locked: false,
+        status: 'EMPTY',
+        schedule: []
+      });
+    }
+
+    const version = latestGen.generation_version;
+    let whereDay = '';
+    const params = [deptId, version];
+    if (dayFilter && dayFilter !== 'all') {
+      params.push(dayFilter);
+      whereDay = ` AND a.day = $3`;
+    }
+
+    const allocations = await db.all(`
+      SELECT 
+        a.*,
+        u_obs.full_name as observer_name,
+        u_obs.phone as observer_phone,
+        u_teacher.full_name as class_teacher_name,
+        t.time_slot
+      FROM observer_duty_allocations a
+      JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+      LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
+      LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 ${whereDay}
+      ORDER BY 
+        CASE a.day 
+          WHEN 'Sunday' THEN 1 
+          WHEN 'Monday' THEN 2 
+          WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 
+          WHEN 'Thursday' THEN 5 
+          WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 
+          ELSE 8 
+        END, a.period ASC, a.class_name ASC, a.observer_slot_number ASC
+    `, params);
+
+    const groupedMap = new Map();
+    allocations.forEach(a => {
+      const key = `${a.day}_${a.period}_${a.class_name}`;
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          day: a.day,
+          period: a.period,
+          time_slot: a.time_slot || STANDARD_PERIOD_TIMES[a.period]?.label || `P${a.period}`,
+          class_name: a.class_name,
+          subject: a.subject,
+          class_teacher_id: a.class_teacher_id,
+          class_teacher_name: a.class_teacher_name || 'Unassigned',
+          observer_1_id: null,
+          observer_1_name: null,
+          observer_2_id: null,
+          observer_2_name: null,
+          leader_name: leader.full_name,
+          status: a.status
+        });
+      }
+
+      const item = groupedMap.get(key);
+      if (a.observer_slot_number === 1) {
+        item.observer_1_id = a.observer_teacher_id;
+        item.observer_1_name = a.observer_name;
+      } else if (a.observer_slot_number === 2) {
+        item.observer_2_id = a.observer_teacher_id;
+        item.observer_2_name = a.observer_name;
+      }
+    });
+
+    res.json({
+      success: true,
+      department_id: deptId,
+      department_name: leader.department_name,
+      generation_version: version,
+      is_locked: latestGen.status === 'locked',
+      active_days: (dept && dept.active_days) || 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+      days: ((dept && dept.active_days) ? dept.active_days.split(',').map(s => s.trim()) : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']),
+      schedule: Array.from(groupedMap.values())
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Manual Observer Edit (Reuses centralized rule validation)
+app.post('/api/leader/observer/manual-edit', async (req, res) => {
+  const {
+    user_id,
+    day,
+    period,
+    class_name,
+    observer_1_id,
+    observer_2_id,
+    reason
+  } = req.body;
+
+  try {
+    const leader = await getAuthenticatedLeaderDept(user_id);
+    const deptId = leader.department_id;
+    const periodNum = parseInt(period);
+    const className = (class_name || '').toString().trim();
+
+    if (!day || !periodNum || !className) {
+      return res.status(400).json({ success: false, error: 'Day, Period, and Class are required.' });
+    }
+
+    const latestGen = await db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]);
+    if (!latestGen) {
+      return res.status(400).json({ success: false, error: 'No observer schedule found for your department.' });
+    }
+    const version = latestGen.generation_version;
+
+    // Fetch existing allocations
+    const existingAllocations = await db.all(`
+      SELECT a.*, u.full_name as current_observer_name
+      FROM observer_duty_allocations a
+      JOIN users u ON a.observer_teacher_id = u.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 AND a.day = $3 AND a.period = $4 AND LOWER(a.class_name) = LOWER($5)
+      ORDER BY a.observer_slot_number ASC
+    `, [deptId, version, day.trim(), periodNum, className]);
+
+    const existingSlot1 = existingAllocations.find(a => a.observer_slot_number === 1);
+    const existingSlot2 = existingAllocations.find(a => a.observer_slot_number === 2);
+
+    const targetObs1Id = observer_1_id !== undefined ? (observer_1_id ? parseInt(observer_1_id) : null) : (existingSlot1 ? existingSlot1.observer_teacher_id : null);
+    const targetObs2Id = observer_2_id !== undefined ? (observer_2_id ? parseInt(observer_2_id) : null) : (existingSlot2 ? existingSlot2.observer_teacher_id : null);
+
+    if (!targetObs1Id && !targetObs2Id) {
+      return res.status(400).json({ success: false, error: 'At least one observer must be selected.' });
+    }
+
+    // Rule 7: Duplicate Observer check
+    if (targetObs1Id && targetObs2Id && targetObs1Id === targetObs2Id) {
+      const dupTeacher = await db.get(`SELECT full_name FROM users WHERE id = $1`, [targetObs1Id]);
+      const tName = dupTeacher ? dupTeacher.full_name : 'This teacher';
+      return res.status(400).json({
+        success: false,
+        error: `⚠️ Duplicate Observer: ${tName} cannot be assigned as both Observer 1 and Observer 2 for ${className} during ${day} Period ${periodNum}.`,
+        code: 'DUPLICATE_OBSERVER'
+      });
+    }
+
+    const updates = [];
+
+    // Validate Observer 1
+    if (targetObs1Id) {
+      const eligibility1 = await calculateSlotEligibility(deptId, day.trim(), periodNum, className, 1, targetObs1Id, targetObs2Id);
+      const teacher1Eligibility = eligibility1.find(t => t.teacher_id === targetObs1Id);
+
+      if (!teacher1Eligibility) {
+        return res.status(400).json({ success: false, error: 'Selected Observer 1 teacher not found in your department.' });
+      }
+
+      if (!teacher1Eligibility.is_eligible) {
+        return res.status(400).json({
+          success: false,
+          error: `⚠️ Observer Assignment Not Allowed\n\n${teacher1Eligibility.teacher_name} cannot be assigned as Observer 1:\n${teacher1Eligibility.hard_block_reason}.\n\nPlease select another eligible teacher.`,
+          code: teacher1Eligibility.hard_block_code,
+          reason: teacher1Eligibility.hard_block_reason
+        });
+      }
+
+      updates.push({
+        slot_number: 1,
+        new_teacher_id: targetObs1Id,
+        new_teacher_name: teacher1Eligibility.teacher_name,
+        prev_teacher_id: existingSlot1 ? existingSlot1.observer_teacher_id : null,
+        prev_teacher_name: existingSlot1 ? existingSlot1.current_observer_name : 'Unassigned',
+        is_changed: !existingSlot1 || existingSlot1.observer_teacher_id !== targetObs1Id
+      });
+    }
+
+    // Validate Observer 2
+    if (targetObs2Id) {
+      const eligibility2 = await calculateSlotEligibility(deptId, day.trim(), periodNum, className, 2, targetObs1Id, targetObs2Id);
+      const teacher2Eligibility = eligibility2.find(t => t.teacher_id === targetObs2Id);
+
+      if (!teacher2Eligibility) {
+        return res.status(400).json({ success: false, error: 'Selected Observer 2 teacher not found in your department.' });
+      }
+
+      if (!teacher2Eligibility.is_eligible) {
+        return res.status(400).json({
+          success: false,
+          error: `⚠️ Observer Assignment Not Allowed\n\n${teacher2Eligibility.teacher_name} cannot be assigned as Observer 2:\n${teacher2Eligibility.hard_block_reason}.\n\nPlease select another eligible teacher.`,
+          code: teacher2Eligibility.hard_block_code,
+          reason: teacher2Eligibility.hard_block_reason
+        });
+      }
+
+      updates.push({
+        slot_number: 2,
+        new_teacher_id: targetObs2Id,
+        new_teacher_name: teacher2Eligibility.teacher_name,
+        prev_teacher_id: existingSlot2 ? existingSlot2.observer_teacher_id : null,
+        prev_teacher_name: existingSlot2 ? existingSlot2.current_observer_name : 'Unassigned',
+        is_changed: !existingSlot2 || existingSlot2.observer_teacher_id !== targetObs2Id
+      });
+    }
+
+    const timetableSlot = await db.get(`
+      SELECT * FROM teacher_selection_timetable
+      WHERE department_id = $1 AND day = $2 AND period = $3 AND LOWER(class_name) = LOWER($4)
+    `, [deptId, day.trim(), periodNum, className]);
+
+    const teachingSelection = await db.get(`
+      SELECT * FROM teacher_selections
+      WHERE department_id = $1 AND day = $2 AND period = $3 AND LOWER(class_name) = LOWER($4)
+    `, [deptId, day.trim(), periodNum, className]);
+
+    const subjectName = teachingSelection ? teachingSelection.subject : (timetableSlot ? timetableSlot.subject : 'General');
+    const classTeacherId = teachingSelection ? teachingSelection.teacher_id : null;
+    const timetableId = timetableSlot ? timetableSlot.id : null;
+    const currentScheduleStatus = latestGen.status || 'locked';
+
+    // Apply updates strictly for the modified slots
+    for (const update of updates) {
+      if (!update.is_changed) continue;
+
+      const existingSlotRecord = update.slot_number === 1 ? existingSlot1 : existingSlot2;
+
+      if (existingSlotRecord) {
+        await db.run(`
+          UPDATE observer_duty_allocations
+          SET observer_teacher_id = $1, allocation_type = 'manual', updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+        `, [update.new_teacher_id, existingSlotRecord.id]);
+      } else {
+        await db.run(`
+          INSERT INTO observer_duty_allocations (
+            department_id, day, period, timetable_id, class_name, subject,
+            class_teacher_id, observer_teacher_id, observer_slot_number, allocation_type, status, generation_version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual', $10, $11)
+        `, [
+          deptId, day.trim(), periodNum, timetableId, className, subjectName,
+          classTeacherId, update.new_teacher_id, update.slot_number, currentScheduleStatus, version
+        ]);
+      }
+
+      await db.run(`
+        INSERT INTO observer_manual_assignments (department_id, day, period, class_name, teacher_id, is_leader, reason, assigned_by)
+        VALUES ($1, $2, $3, $4, $5, false, $6, $7)
+      `, [deptId, day.trim(), periodNum, className, update.new_teacher_id, reason || 'Department Leader Manual Reassignment', leader.id]);
+
+      const auditDetails = {
+        department: leader.department_name,
+        department_id: deptId,
+        day: day.trim(),
+        period: `P${periodNum}`,
+        class_name: className,
+        subject: subjectName,
+        observer_position: `Observer ${update.slot_number}`,
+        previous_observer: update.prev_teacher_name,
+        previous_observer_id: update.prev_teacher_id,
+        new_observer: update.new_teacher_name,
+        new_observer_id: update.new_teacher_id,
+        reason: reason || 'Department Leader Manual Reassignment',
+        schedule_status: currentScheduleStatus,
+        generation_version: version,
+        changed_by: `Department Leader — ${leader.full_name}`,
+        server_timestamp: new Date().toISOString()
+      };
+
+      await logObserverAction(
+        leader.id,
+        `Department Leader (${leader.full_name})`,
+        `Department Leader updated Observer (${className} P${periodNum} Observer ${update.slot_number})`,
+        auditDetails,
+        deptId
+      );
+    }
+
+    invalidateCache(`dept_obs_`);
+
+    res.json({
+      success: true,
+      message: 'Observer Assignment Updated Successfully by Department Leader',
+      department_id: deptId,
+      day: day.trim(),
+      period: periodNum,
+      class_name: className,
+      schedule_status: currentScheduleStatus,
+      updates
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Teacher Schedule
+app.get('/api/leader/teacher-schedule', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+
+    const [teachers, selections, timetable] = await Promise.all([
+      db.all(`SELECT id, full_name as name, full_name, username, phone, email FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true ORDER BY full_name ASC`, [deptId]),
+      db.all(`SELECT * FROM teacher_selections WHERE department_id = $1 ORDER BY period ASC`, [deptId]),
+      db.all(`SELECT * FROM teacher_selection_timetable WHERE department_id = $1 AND status = 'active' ORDER BY period ASC`, [deptId])
+    ]);
+
+    const selectionMap = new Map();
+    selections.forEach(s => {
+      if (!selectionMap.has(s.teacher_id)) selectionMap.set(s.teacher_id, []);
+      selectionMap.get(s.teacher_id).push(s);
+    });
+
+    const teacherSchedules = teachers.map(t => ({
+      id: t.id,
+      teacher_id: t.id,
+      name: t.full_name,
+      teacher_name: t.full_name,
+      username: t.username,
+      phone: t.phone,
+      email: t.email,
+      teaching_periods_count: (selectionMap.get(t.id) || []).length,
+      selections: selectionMap.get(t.id) || []
+    }));
+
+    res.json({
+      success: true,
+      department_id: deptId,
+      department_name: leader.department_name,
+      teachers: teacherSchedules,
+      timetable
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Today's Overview (P1 to P9)
+app.get('/api/leader/today-overview', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+
+    const now = new Date();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istDate = new Date(utcTime + (3600000 * 5.5));
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDay = req.query.day || dayNames[istDate.getDay()];
+    const currentHour = istDate.getHours();
+    const currentMin = istDate.getMinutes();
+    const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+
+    let currentPeriod = 1;
+    if (currentTimeStr < '08:15') currentPeriod = 1;
+    else if (currentTimeStr < '09:00') currentPeriod = 2;
+    else if (currentTimeStr < '09:45') currentPeriod = 3;
+    else if (currentTimeStr < '11:15') currentPeriod = 4;
+    else if (currentTimeStr < '12:10') currentPeriod = 5;
+    else if (currentTimeStr < '12:55') currentPeriod = 6;
+    else if (currentTimeStr < '14:40') currentPeriod = 7;
+    else if (currentTimeStr < '15:20') currentPeriod = 8;
+    else currentPeriod = 9;
+
+    const [latestGen, assignedClasses, teachingSelections, observerAllocations] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      getDepartmentAssignedClasses(deptId),
+      db.all(`
+        SELECT ts.*, u.full_name as teacher_name
+        FROM teacher_selections ts
+        JOIN users u ON ts.teacher_id = u.id
+        WHERE ts.department_id = $1 AND ts.day = $2
+        ORDER BY ts.period ASC, ts.class_name ASC
+      `, [deptId, currentDay]),
+      db.all(`
+        SELECT a.*, u.full_name as observer_name
+        FROM observer_duty_allocations a
+        JOIN users u ON a.observer_teacher_id = u.id
+        WHERE a.department_id = $1 AND a.day = $2
+        ORDER BY a.period ASC, a.class_name ASC, a.observer_slot_number ASC
+      `, [deptId, currentDay])
+    ]);
+
+    // Construct period-by-period matrix (P1 to P9)
+    const periodsMatrix = [];
+    const timelineList = [];
+    for (let p = 1; p <= 9; p++) {
+      let statusLabel = 'Upcoming';
+      if (p < currentPeriod) statusLabel = 'Completed';
+      else if (p === currentPeriod) statusLabel = 'Ongoing';
+      else if (p === currentPeriod + 1) statusLabel = 'Next';
+
+      const pTeaching = teachingSelections.filter(ts => ts.period === p);
+      const pObservers = observerAllocations.filter(oa => oa.period === p);
+
+      const classItems = (assignedClasses || []).map(c => {
+        const teach = pTeaching.find(t => t.class_name.trim().toLowerCase() === c.name.trim().toLowerCase());
+        const obs1 = pObservers.find(o => o.class_name.trim().toLowerCase() === c.name.trim().toLowerCase() && o.observer_slot_number === 1);
+        const obs2 = pObservers.find(o => o.class_name.trim().toLowerCase() === c.name.trim().toLowerCase() && o.observer_slot_number === 2);
+
+        const row = {
+          period: p,
+          time_slot: STANDARD_PERIOD_TIMES[p]?.label || `P${p}`,
+          class_name: c.name,
+          subject_code: teach ? teach.subject : '—',
+          teaching_teacher_name: teach ? teach.teacher_name : 'Unassigned',
+          observer_1_name: obs1 ? obs1.observer_name : '—',
+          observer_2_name: obs2 ? obs2.observer_name : '—',
+          status: statusLabel
+        };
+        timelineList.push(row);
+
+        return {
+          class_name: c.name,
+          subject: teach ? teach.subject : '—',
+          class_teacher: teach ? teach.teacher_name : 'Unassigned',
+          observer_1: obs1 ? obs1.observer_name : '—',
+          observer_2: obs2 ? obs2.observer_name : '—'
+        };
+      });
+
+      periodsMatrix.push({
+        period: p,
+        time_slot: STANDARD_PERIOD_TIMES[p]?.label || `P${p}`,
+        status: statusLabel,
+        is_current: p === currentPeriod,
+        classes: classItems
+      });
+    }
+
+    res.json({
+      success: true,
+      department_id: deptId,
+      department_name: leader.department_name,
+      today: currentDay,
+      current_day: currentDay,
+      current_period: currentPeriod,
+      server_time: currentTimeStr,
+      timeline: timelineList,
+      periods: periodsMatrix
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Duty Balance
+app.get('/api/leader/duty-balance', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+
+    const [latestGen, teachers] = await Promise.all([
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.all(`SELECT id, full_name, full_name as name, username, phone FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true ORDER BY full_name ASC`, [deptId])
+    ]);
+
+    const version = latestGen ? latestGen.generation_version : 1;
+
+    const [teachingCounts, observerCounts] = await Promise.all([
+      db.all(`SELECT teacher_id, count(*)::int as count FROM teacher_selections WHERE department_id = $1 GROUP BY teacher_id`, [deptId]),
+      db.all(`SELECT observer_teacher_id as teacher_id, count(*)::int as count FROM observer_duty_allocations WHERE department_id = $1 AND generation_version = $2 GROUP BY observer_teacher_id`, [deptId, version])
+    ]);
+
+    const tMap = new Map();
+    teachingCounts.forEach(t => tMap.set(t.teacher_id, t.count));
+    const oMap = new Map();
+    observerCounts.forEach(o => oMap.set(o.teacher_id, o.count));
+
+    const balance = teachers.map(t => {
+      const teachCount = tMap.get(t.id) || 0;
+      const obsCount = oMap.get(t.id) || 0;
+      return {
+        id: t.id,
+        teacher_id: t.id,
+        name: t.full_name,
+        teacher_name: t.full_name,
+        username: t.username,
+        phone: t.phone,
+        teaching_duties: teachCount,
+        observer_duties: obsCount,
+        total_duties: teachCount + obsCount
+      };
+    });
+
+    res.json({
+      success: true,
+      department_id: deptId,
+      department_name: leader.department_name,
+      generation_version: version,
+      teachers: balance,
+      balance
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Observer Replacement Requests (Submit & List)
+app.post('/api/leader/replacement-request', async (req, res) => {
+  const {
+    user_id,
+    day,
+    period,
+    class_name,
+    original_observer_id,
+    current_observer_id,
+    replacement_teacher_id,
+    suggested_replacement_id,
+    reason
+  } = req.body;
+
+  try {
+    const leader = await getAuthenticatedLeaderDept(user_id);
+    const deptId = leader.department_id;
+    const periodNum = parseInt(period);
+
+    if (!day || !periodNum || !class_name) {
+      return res.status(400).json({ success: false, error: 'Day, Period, and Class are required.' });
+    }
+
+    const origId = original_observer_id || current_observer_id;
+    const replId = replacement_teacher_id || suggested_replacement_id;
+
+    await db.run(`
+      INSERT INTO department_observer_replacements (
+        department_id, day, period, class_name, current_observer_id, suggested_replacement_id, reason, status, requested_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+    `, [
+      deptId, day.trim(), periodNum, class_name.trim(),
+      origId ? parseInt(origId) : null,
+      replId ? parseInt(replId) : null,
+      reason || 'Observer replacement requested by Department Leader',
+      leader.id
+    ]);
+
+    await logObserverAction(
+      leader.id,
+      `Department Leader (${leader.full_name})`,
+      `Submitted Observer Replacement Request for ${class_name} (${day} P${periodNum})`,
+      { day, period: periodNum, class_name, reason },
+      deptId
+    );
+
+    res.json({ success: true, message: 'Observer replacement request submitted successfully.' });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/leader/replacement-requests', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+
+    const requests = await db.all(`
+      SELECT 
+        r.*,
+        u_curr.full_name as original_observer_name,
+        u_curr.full_name as current_observer_name,
+        u_sugg.full_name as replacement_teacher_name,
+        u_sugg.full_name as suggested_replacement_name
+      FROM department_observer_replacements r
+      LEFT JOIN users u_curr ON r.current_observer_id = u_curr.id
+      LEFT JOIN users u_sugg ON r.suggested_replacement_id = u_sugg.id
+      WHERE r.department_id = $1
+      ORDER BY r.created_at DESC
+    `, [deptId]);
+
+    res.json({
+      success: true,
+      requests
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Notifications API
+app.get('/api/leader/notifications', async (req, res) => {
+  try {
+    const leader = await getAuthenticatedLeaderDept(req.query.user_id);
+    const deptId = leader.department_id;
+
+    const logs = await db.all(`
+      SELECT * FROM observer_audit_logs
+      WHERE department_id = $1
+      ORDER BY created_at DESC LIMIT 50
+    `, [deptId]);
+
+    const notifications = logs.map(l => ({
+      id: l.id,
+      title: l.action,
+      message: `${l.user_name || 'System'}: ${l.action}`,
+      icon: 'fa-bell',
+      color: '#4f46e5',
+      created_at: l.created_at
+    }));
+
+    res.json({
+      success: true,
+      notifications
+    });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
+  }
+});
+
+// Leader Change Password
+app.post('/api/leader/profile/change-password', async (req, res) => {
+  const { user_id, current_password, new_password } = req.body;
+
+  try {
+    const leader = await getAuthenticatedLeaderDept(user_id);
+    const cleanCurrent = (current_password || '').toString().trim();
+    const cleanNew = (new_password || '').toString().trim();
+
+    if (!cleanNew || cleanNew.length < 4) {
+      return res.status(400).json({ error: 'New password must be at least 4 characters long.' });
+    }
+
+    const checkUser = await db.get(`SELECT id, password FROM users WHERE id = $1`, [leader.id]);
+    if (checkUser.password !== cleanCurrent) {
+      return res.status(400).json({ error: 'Current password is incorrect.' });
+    }
+
+    await db.run(`UPDATE users SET password = $1 WHERE id = $2`, [cleanNew, leader.id]);
+
+    res.json({ success: true, message: 'Password updated successfully.' });
+  } catch (err) {
+    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ error: err.message });
   }
 });
 

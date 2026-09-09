@@ -58,6 +58,46 @@ function clearClientCache(prefix = '') {
   }
 }
 
+// GLOBAL UI & MODAL UTILITIES
+function openModal(modalId) {
+  const el = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
+  if (el) {
+    el.classList.remove('hidden');
+  }
+}
+window.openModal = openModal;
+
+function closeModal(modalId) {
+  const el = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
+  if (el) {
+    el.classList.add('hidden');
+  }
+}
+window.closeModal = closeModal;
+
+function hideElement(elId) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (el) el.classList.add('hidden');
+}
+window.hideElement = hideElement;
+
+function showElement(elId) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (el) el.classList.remove('hidden');
+}
+window.showElement = showElement;
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+window.escapeHtml = escapeHtml;
+
 // Fast Debounce Utility for table search/filter
 function debounce(func, wait = 250) {
   let timeout;
@@ -177,8 +217,8 @@ function initLiveSync() {
     if (!currentUser || isSyncing) return;
     
     // Do not disrupt user if a modal or input is actively being edited
-    const openModal = document.querySelector('.modal-overlay:not(.hidden)');
-    if (openModal) return;
+    const activeModal = document.querySelector('.modal-overlay:not(.hidden)');
+    if (activeModal) return;
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
       return;
@@ -8329,10 +8369,10 @@ function renderObserverScheduleView(data) {
         ${r.leader_name ? `<span class="obs-badge-leader"><i class="fa-solid fa-user-tie"></i> ${escapeHtml(r.leader_name)}</span>` : '<span class="text-muted">Standby</span>'}
       </td>
       <td class="text-right" style="white-space:nowrap;">
-        <button type="button" class="btn btn-sm btn-primary" style="padding:3px 8px; font-size:0.75rem; font-weight:700; margin-right:4px; box-shadow:0 2px 6px rgba(79, 70, 229, 0.25);" onclick="openManualEditObserverModal('${escapeHtml(r.day)}', ${r.period}, '${escapeHtml(r.class_name)}', '${escapeHtml(r.subject)}', '${escapeHtml(r.class_teacher_name)}', ${r.observer_1_id || 'null'}, '${escapeHtml(r.observer_1_name || '')}', ${r.observer_2_id || 'null'}, '${escapeHtml(r.observer_2_name || '')}')" title="Edit Observer Assignment">
+        <button type="button" class="btn btn-sm btn-primary" style="padding:3px 8px; font-size:0.75rem; font-weight:700; margin-right:4px; box-shadow:0 2px 6px rgba(79, 70, 229, 0.25);" onclick="openManualEditObserverModal('${r.day}', ${r.period}, '${encodeURIComponent(r.class_name)}')" title="Edit Observer Assignment">
           <i class="fa-solid fa-user-pen"></i> Edit
         </button>
-        <button type="button" class="btn btn-sm btn-outline" style="padding:3px 8px; font-size:0.75rem;" onclick="trackSingleClassMovement('${escapeHtml(r.class_name)}'); switchObserverSubTab('movement');" title="View class observer movement">
+        <button type="button" class="btn btn-sm btn-outline" style="padding:3px 8px; font-size:0.75rem;" onclick="trackSingleClassMovement('${encodeURIComponent(r.class_name)}'); switchObserverSubTab('movement');" title="View class observer movement">
           <i class="fa-solid fa-person-walking"></i> Track
         </button>
       </td>
@@ -8776,9 +8816,30 @@ let observerManualEditData = {
 };
 
 // Open Manual Edit Modal directly from a row in the Observer Schedule Table
-async function openManualEditObserverModal(day, period, className, subject, classTeacher, obs1Id, obs1Name, obs2Id, obs2Name) {
+async function openManualEditObserverModal(day, period, rawClassName, subjectParam, classTeacherParam, obs1IdParam, obs1NameParam, obs2IdParam, obs2NameParam) {
   const deptId = observerState.departmentId || 1;
   const periodNum = parseInt(period);
+  const className = rawClassName ? decodeURIComponent(rawClassName) : 'Std 1';
+
+  // Find latest slot details from scheduleData if available
+  let subject = subjectParam ? decodeURIComponent(subjectParam) : 'General';
+  let classTeacher = classTeacherParam ? decodeURIComponent(classTeacherParam) : 'Unassigned';
+  let obs1Id = obs1IdParam && obs1IdParam !== 'null' ? parseInt(obs1IdParam) : null;
+  let obs1Name = obs1NameParam && obs1NameParam !== 'null' && obs1NameParam !== '—' ? decodeURIComponent(obs1NameParam) : null;
+  let obs2Id = obs2IdParam && obs2IdParam !== 'null' ? parseInt(obs2IdParam) : null;
+  let obs2Name = obs2NameParam && obs2NameParam !== 'null' && obs2NameParam !== '—' ? decodeURIComponent(obs2NameParam) : null;
+
+  if (observerState.scheduleData && observerState.scheduleData.schedule) {
+    const found = observerState.scheduleData.schedule.find(s => s.day === day && s.period === periodNum && s.class_name.trim().toLowerCase() === className.trim().toLowerCase());
+    if (found) {
+      subject = found.subject || subject;
+      classTeacher = found.class_teacher_name || classTeacher;
+      obs1Id = found.observer_1_id;
+      obs1Name = found.observer_1_name;
+      obs2Id = found.observer_2_id;
+      obs2Name = found.observer_2_name;
+    }
+  }
 
   observerManualEditData.slotContext = {
     deptId,
@@ -8787,10 +8848,10 @@ async function openManualEditObserverModal(day, period, className, subject, clas
     className,
     subject: subject || 'General',
     classTeacher: classTeacher || 'Unassigned',
-    obs1Id: obs1Id && obs1Id !== 'null' ? parseInt(obs1Id) : null,
-    obs1Name: obs1Name && obs1Name !== 'null' && obs1Name !== '—' ? obs1Name : null,
-    obs2Id: obs2Id && obs2Id !== 'null' ? parseInt(obs2Id) : null,
-    obs2Name: obs2Name && obs2Name !== 'null' && obs2Name !== '—' ? obs2Name : null
+    obs1Id,
+    obs1Name,
+    obs2Id,
+    obs2Name
   };
 
   // Set Modal Header Badges & Details
@@ -8810,20 +8871,32 @@ async function openManualEditObserverModal(day, period, className, subject, clas
   const deptName = deptSelect && deptSelect.options[deptSelect.selectedIndex] ? deptSelect.options[deptSelect.selectedIndex].text : 'MEDIA';
   if (deptPill) deptPill.textContent = `Dept: ${deptName}`;
 
-  document.getElementById('obs-edit-dept-id').value = deptId;
-  document.getElementById('obs-edit-target-title').innerHTML = `${escapeHtml(className)} — Period ${periodNum} <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(P${periodNum})</span>`;
-  document.getElementById('obs-edit-target-day').textContent = day;
-  document.getElementById('obs-edit-target-subject').textContent = subject || 'General';
-  document.getElementById('obs-edit-target-teacher').innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(classTeacher || 'Unassigned')}`;
+  const deptIdInput = document.getElementById('obs-edit-dept-id');
+  if (deptIdInput) deptIdInput.value = deptId;
+
+  const targetTitle = document.getElementById('obs-edit-target-title');
+  if (targetTitle) targetTitle.innerHTML = `${escapeHtml(className)} — Period ${periodNum} <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(P${periodNum})</span>`;
+  
+  const targetDay = document.getElementById('obs-edit-target-day');
+  if (targetDay) targetDay.textContent = day;
+
+  const targetSubject = document.getElementById('obs-edit-target-subject');
+  if (targetSubject) targetSubject.textContent = subject || 'General';
+
+  const targetTeacher = document.getElementById('obs-edit-target-teacher');
+  if (targetTeacher) targetTeacher.innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(classTeacher || 'Unassigned')}`;
 
   // Current Observer labels
   const curr1Name = observerManualEditData.slotContext.obs1Name || 'Unassigned';
   const curr2Name = observerManualEditData.slotContext.obs2Name || 'Unassigned';
-  document.getElementById('obs-edit-curr1-name').textContent = curr1Name;
-  document.getElementById('obs-edit-curr2-name').textContent = curr2Name;
+  const curr1Label = document.getElementById('obs-edit-curr1-name');
+  const curr2Label = document.getElementById('obs-edit-curr2-name');
+  if (curr1Label) curr1Label.textContent = curr1Name;
+  if (curr2Label) curr2Label.textContent = curr2Name;
 
   // Clear reason input & warnings
-  document.getElementById('obs-edit-reason').value = '';
+  const reasonInput = document.getElementById('obs-edit-reason');
+  if (reasonInput) reasonInput.value = '';
   hideElement('obs-edit-warning-1');
   hideElement('obs-edit-warning-2');
   hideElement('obs-edit-picker-container');

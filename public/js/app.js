@@ -9720,8 +9720,13 @@ async function loadLeaderDashboard(forceFresh = false) {
       sStatus.style.color = data.is_locked ? '#10b981' : '#f59e0b';
     }
 
-    // Render Live Period Monitoring
-    renderLeaderLivePeriodMonitoring(data.live_period);
+    leaderState.ongoingSlots = data.ongoing_period?.slots || [];
+    leaderState.nextSlots = data.next_period?.slots || [];
+    leaderState.allTodayPeriods = data.all_today_periods || {};
+    leaderState.currentDay = data.stats?.current_day || 'Today';
+
+    // Render Ongoing & Next Period Status Dual Cards
+    renderLeaderOngoingAndNextPeriod(data.ongoing_period, data.next_period, data.all_today_periods, data.is_school_hours);
 
     // Render Recent Notifications in Dashboard
     renderLeaderDashNotifications(data.notifications || []);
@@ -9730,51 +9735,162 @@ async function loadLeaderDashboard(forceFresh = false) {
   }
 }
 
-// 2. Render Live Period Monitoring Slots on Dashboard
-function renderLeaderLivePeriodMonitoring(livePeriod) {
-  const container = document.getElementById('leader-live-period-slots');
-  const clockBadge = document.getElementById('leader-live-clock-badge');
+// 2. Render Ongoing & Next Period Status Cards + Period Tabs
+function renderLeaderOngoingAndNextPeriod(ongoing, next, allPeriods, isSchoolHours) {
+  // Update Time and Day Pill
   const dayEl = document.getElementById('leader-live-day');
-  const periodEl = document.getElementById('leader-live-period');
-
-  if (livePeriod && dayEl && periodEl) {
-    dayEl.textContent = livePeriod.day || 'Today';
-    periodEl.textContent = `Period ${livePeriod.period} (${livePeriod.time_slot || 'Active'})`;
+  const timeEl = document.getElementById('leader-live-time');
+  if (dayEl) dayEl.textContent = ongoing?.day || 'Today';
+  if (timeEl) {
+    timeEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
-  if (!container) return;
+  // Populate Period Tabs P1-P9
+  const tabsContainer = document.getElementById('leader-dash-period-tabs');
+  if (tabsContainer) {
+    let tabsHtml = '';
+    for (let p = 1; p <= 9; p++) {
+      const pInfo = allPeriods?.[p];
+      const isOngoing = p === ongoing?.period;
+      const isNext = p === next?.period;
+      let badgeHtml = '';
+      if (isOngoing) {
+        badgeHtml = `<span style="background:#16a34a; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px; font-weight:800;">LIVE</span>`;
+      } else if (isNext) {
+        badgeHtml = `<span style="background:#2563eb; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px; font-weight:800;">NEXT</span>`;
+      }
 
-  const slots = livePeriod?.slots || [];
-  if (slots.length === 0) {
+      const activeStyle = isOngoing 
+        ? 'background:#15803d; color:#ffffff; border:1px solid #166534; font-weight:800;' 
+        : (isNext ? 'background:#1d4ed8; color:#ffffff; border:1px solid #1e40af; font-weight:700;' : 'background:#f8fafc; color:#475569; border:1px solid #e2e8f0; font-weight:600;');
+
+      tabsHtml += `
+        <button type="button" class="btn btn-sm" style="padding:5px 12px; border-radius:10px; white-space:nowrap; font-size:0.8rem; ${activeStyle}" onclick="selectLeaderDashPeriod(${p})">
+          P${p} <span style="font-size:0.72rem; opacity:0.85;">(${pInfo?.time_slot || ''})</span>${badgeHtml}
+        </button>
+      `;
+    }
+    tabsContainer.innerHTML = tabsHtml;
+  }
+
+  // 1. Render Ongoing Period Card
+  const ongoingPBox = document.getElementById('leader-ongoing-p-box');
+  const ongoingTimeBox = document.getElementById('leader-ongoing-time-box');
+  const ongoingStatusBadge = document.getElementById('leader-ongoing-status-badge');
+  const ongoingContainer = document.getElementById('leader-ongoing-slots-container');
+
+  if (ongoingPBox) ongoingPBox.textContent = `P${ongoing?.period || '1'}`;
+  if (ongoingTimeBox) ongoingTimeBox.textContent = ongoing?.time_slot ? `${ongoing.time_slot} IST` : 'Active Session';
+  if (ongoingStatusBadge) {
+    ongoingStatusBadge.textContent = isSchoolHours ? 'LIVE NOW' : 'ACTIVE SCHEDULE';
+  }
+
+  if (ongoingContainer) {
+    renderLeaderPeriodSlotsList(ongoingContainer, ongoing?.slots || [], ongoing?.day, ongoing?.period, true);
+  }
+
+  // 2. Render Next Period Card
+  const nextPBox = document.getElementById('leader-next-p-box');
+  const nextTimeBox = document.getElementById('leader-next-time-box');
+  const nextStatusBadge = document.getElementById('leader-next-status-badge');
+  const nextContainer = document.getElementById('leader-next-slots-container');
+
+  if (nextPBox) nextPBox.textContent = `P${next?.period || '2'}`;
+  if (nextTimeBox) nextTimeBox.textContent = next?.time_slot ? `${next.time_slot} IST` : 'Upcoming Session';
+  if (nextStatusBadge) {
+    nextStatusBadge.textContent = 'UPCOMING NEXT';
+  }
+
+  if (nextContainer) {
+    renderLeaderPeriodSlotsList(nextContainer, next?.slots || [], next?.day, next?.period, false);
+  }
+}
+
+// Helper: Render Period Slot Cards inside container
+function renderLeaderPeriodSlotsList(container, slots, day, period, isOngoing) {
+  if (!slots || slots.length === 0) {
     container.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align:center; padding:24px; color:#64748b; background:#f8fafc; border-radius:10px;">
+      <div style="text-align:center; padding:24px; color:#64748b; background:#ffffff; border-radius:10px; border:1px dashed #cbd5e1;">
         <i class="fa-solid fa-mug-hot" style="font-size:1.8rem; color:#94a3b8; margin-bottom:8px;"></i>
-        <div>No active observer duties currently ongoing for this period.</div>
+        <div style="font-weight:600; font-size:0.85rem;">No active observer duties scheduled for Period ${period}.</div>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = slots.map(s => `
-    <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:12px; padding:14px; position:relative;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <span class="badge badge-primary" style="font-weight:700; font-size:0.82rem;">${escapeHtml(s.class_name)}</span>
-        <span style="font-size:0.8rem; color:#64748b; font-weight:600;"><i class="fa-solid fa-book"></i> ${escapeHtml(s.subject_code || 'General')}</span>
-      </div>
-      <div style="font-size:0.82rem; color:#475569; margin-bottom:6px;">
-        <i class="fa-solid fa-chalkboard-user"></i> <strong>Teaching:</strong> ${escapeHtml(s.teaching_teacher_name || '—')}
-      </div>
-      <div style="border-top:1px dashed #cbd5e1; padding-top:6px; margin-top:6px; font-size:0.82rem;">
-        <div style="color:#4338ca; font-weight:700; margin-bottom:2px;">
-          <i class="fa-solid fa-user-shield"></i> Obs 1: <span style="color:#0f172a;">${escapeHtml(s.observer_1_name || 'Unassigned')}</span>
-        </div>
-        <div style="color:#047857; font-weight:700;">
-          <i class="fa-solid fa-user-shield"></i> Obs 2: <span style="color:#0f172a;">${escapeHtml(s.observer_2_name || 'Unassigned')}</span>
-        </div>
-      </div>
+  container.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      ${slots.map(s => {
+        const obs1Assigned = s.observer_1_name && s.observer_1_name !== 'Unassigned' && s.observer_1_name !== '—';
+        const obs2Assigned = s.observer_2_name && s.observer_2_name !== 'Unassigned' && s.observer_2_name !== '—';
+        
+        return `
+          <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); transition:all 0.2s ease;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge ${isOngoing ? 'badge-success' : 'badge-primary'}" style="font-weight:800; font-size:0.82rem; padding:3px 8px; border-radius:6px;">
+                  ${escapeHtml(s.class_name)}
+                </span>
+                <span style="font-size:0.8rem; color:#475569; font-weight:700;">
+                  <i class="fa-solid fa-book" style="color:#6366f1;"></i> ${escapeHtml(s.subject_code || s.subject || 'General')}
+                </span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px; font-size:0.75rem; font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="openLeaderManualEditModal('${escapeHtml(day || leaderState.currentDay)}', ${period}, '${escapeHtml(s.class_name)}')">
+                <i class="fa-solid fa-user-pen"></i> Edit Observer
+              </button>
+            </div>
+
+            <div style="font-size:0.8rem; color:#334155; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-chalkboard-user" style="color:#0891b2;"></i>
+              <span><strong>Teaching:</strong> ${escapeHtml(s.teaching_teacher_name || 'Unassigned')}</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; background:#f8fafc; border:1px solid #f1f5f9; border-radius:8px; padding:8px 10px;">
+              <div style="font-size:0.78rem;">
+                <div style="font-weight:800; color:#4338ca; margin-bottom:2px; font-size:0.72rem; text-transform:uppercase;">
+                  <i class="fa-solid fa-user-shield"></i> Observer 1
+                </div>
+                <div style="font-weight:700; color:${obs1Assigned ? '#0f172a' : '#94a3b8'};">
+                  ${escapeHtml(s.observer_1_name || 'Unassigned')}
+                </div>
+              </div>
+              <div style="font-size:0.78rem;">
+                <div style="font-weight:800; color:#047857; margin-bottom:2px; font-size:0.72rem; text-transform:uppercase;">
+                  <i class="fa-solid fa-user-shield"></i> Observer 2
+                </div>
+                <div style="font-weight:700; color:${obs2Assigned ? '#0f172a' : '#94a3b8'};">
+                  ${escapeHtml(s.observer_2_name || 'Unassigned')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
     </div>
-  `).join('');
+  `;
 }
+
+// Period Quick Switcher Handler on Dashboard
+function selectLeaderDashPeriod(pNum) {
+  const pData = leaderState.allTodayPeriods?.[pNum];
+  if (!pData) return;
+
+  const ongoingContainer = document.getElementById('leader-ongoing-slots-container');
+  const ongoingPBox = document.getElementById('leader-ongoing-p-box');
+  const ongoingTimeBox = document.getElementById('leader-ongoing-time-box');
+  const ongoingStatusBadge = document.getElementById('leader-ongoing-status-badge');
+
+  if (ongoingPBox) ongoingPBox.textContent = `P${pNum}`;
+  if (ongoingTimeBox) ongoingTimeBox.textContent = `${pData.time_slot} IST`;
+  if (ongoingStatusBadge) {
+    ongoingStatusBadge.textContent = pData.is_current ? 'LIVE NOW' : (pData.is_next ? 'UPCOMING NEXT' : `PERIOD ${pNum} VIEW`);
+  }
+
+  if (ongoingContainer) {
+    renderLeaderPeriodSlotsList(ongoingContainer, pData.slots || [], leaderState.currentDay, pNum, pData.is_current);
+  }
+}
+window.selectLeaderDashPeriod = selectLeaderDashPeriod;
 
 // 3. Render Notifications on Dashboard
 function renderLeaderDashNotifications(notifs) {
@@ -9888,11 +10004,26 @@ function renderLeaderObserverScheduleTable(slots, isLocked) {
 
 // 7. Open Leader Manual Observer Edit Modal
 async function openLeaderManualEditModal(day, period, className) {
-  const slot = leaderState.scheduleSlots.find(s => s.period == period && s.class_name == className);
-  if (!slot) return alert('Slot data not found.');
+  let slot = (leaderState.scheduleSlots || []).find(s => s.period == period && s.class_name == className);
+  if (!slot) slot = (leaderState.ongoingSlots || []).find(s => s.period == period && s.class_name == className);
+  if (!slot) slot = (leaderState.nextSlots || []).find(s => s.period == period && s.class_name == className);
+  if (!slot && leaderState.allTodayPeriods?.[period]?.slots) {
+    slot = leaderState.allTodayPeriods[period].slots.find(s => s.class_name == className);
+  }
+  if (!slot) {
+    slot = {
+      period,
+      class_name: className,
+      subject_code: 'General',
+      teaching_teacher_name: 'Teaching Faculty',
+      observer_1_name: 'Unassigned',
+      observer_2_name: 'Unassigned',
+      time_slot: `Period ${period}`
+    };
+  }
 
   leaderManualEditContext = {
-    day: day || leaderState.currentDay,
+    day: day || leaderState.currentDay || 'Today',
     period,
     className,
     slot,

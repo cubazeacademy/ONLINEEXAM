@@ -7698,21 +7698,69 @@ app.get('/api/leader/dashboard', async (req, res) => {
     const isLocked = Boolean(latestGen && latestGen.status === 'locked');
     const version = latestGen ? latestGen.generation_version : 1;
 
-    // Fetch current period live details
-    const [currentTeaching, currentObservers] = await Promise.all([
+    // Fetch all teaching and observer allocations for today
+    const [todayTeaching, todayObservers] = await Promise.all([
       db.all(`
         SELECT ts.*, u.full_name as teacher_name
         FROM teacher_selections ts
         JOIN users u ON ts.teacher_id = u.id
-        WHERE ts.department_id = $1 AND ts.day = $2 AND ts.period = $3
-      `, [deptId, currentDay, currentPeriod]),
+        WHERE ts.department_id = $1 AND ts.day = $2
+        ORDER BY ts.period ASC, ts.class_name ASC
+      `, [deptId, currentDay]),
       db.all(`
         SELECT a.*, u.full_name as observer_name
         FROM observer_duty_allocations a
         JOIN users u ON a.observer_teacher_id = u.id
-        WHERE a.department_id = $1 AND a.generation_version = $2 AND a.day = $3 AND a.period = $4
-      `, [deptId, version, currentDay, currentPeriod])
+        WHERE a.department_id = $1 AND a.generation_version = $2 AND a.day = $3
+        ORDER BY a.period ASC, a.class_name ASC, a.observer_slot_number ASC
+      `, [deptId, version, currentDay])
     ]);
+
+    const isSchoolHours = currentTimeStr >= '07:30' && currentTimeStr <= '16:15';
+    const nextPeriod = currentPeriod < 9 ? currentPeriod + 1 : 1;
+
+    const buildPeriodSlots = (pNum) => {
+      const pTeaching = todayTeaching.filter(ts => ts.period === pNum);
+      const pObservers = todayObservers.filter(oa => oa.period === pNum);
+
+      return (assignedClasses || []).map(c => {
+        const teach = pTeaching.find(t => t.class_name.trim().toLowerCase() === c.name.trim().toLowerCase());
+        const obs1 = pObservers.find(o => o.class_name.trim().toLowerCase() === c.name.trim().toLowerCase() && o.observer_slot_number === 1);
+        const obs2 = pObservers.find(o => o.class_name.trim().toLowerCase() === c.name.trim().toLowerCase() && o.observer_slot_number === 2);
+
+        return {
+          period: pNum,
+          time_slot: STANDARD_PERIOD_TIMES[pNum]?.label || `P${pNum}`,
+          class_name: c.name,
+          subject: teach ? teach.subject : '—',
+          subject_code: teach ? teach.subject : '—',
+          teaching_teacher_id: teach ? teach.teacher_id : null,
+          teaching_teacher_name: teach ? teach.teacher_name : 'Unassigned',
+          observer_1_id: obs1 ? obs1.observer_teacher_id : null,
+          observer_1_name: obs1 ? obs1.observer_name : 'Unassigned',
+          observer_2_id: obs2 ? obs2.observer_teacher_id : null,
+          observer_2_name: obs2 ? obs2.observer_name : 'Unassigned'
+        };
+      });
+    };
+
+    const ongoingSlots = buildPeriodSlots(currentPeriod);
+    const nextSlots = buildPeriodSlots(nextPeriod);
+
+    // Build all periods P1-P9 for instant interactive switcher
+    const allTodayPeriods = {};
+    for (let p = 1; p <= 9; p++) {
+      allTodayPeriods[p] = {
+        period: p,
+        time_slot: STANDARD_PERIOD_TIMES[p]?.label || `P${p}`,
+        is_current: p === currentPeriod,
+        is_next: p === nextPeriod,
+        slots: buildPeriodSlots(p)
+      };
+    }
+
+    const currentTeaching = todayTeaching.filter(ts => ts.period === currentPeriod);
+    const currentObservers = todayObservers.filter(oa => oa.period === currentPeriod);
 
     const busyTeacherIds = new Set();
     currentTeaching.forEach(t => busyTeacherIds.add(t.teacher_id));
@@ -7737,6 +7785,7 @@ app.get('/api/leader/dashboard', async (req, res) => {
         department_code: leader.department_code
       },
       is_locked: isLocked,
+      is_school_hours: isSchoolHours,
       stats: {
         total_teachers: totalTeachers,
         today_classes: todayTeachingRes ? todayTeachingRes.count : 0,
@@ -7746,21 +7795,36 @@ app.get('/api/leader/dashboard', async (req, res) => {
         standby_free_teachers: standbyFreeTeachers,
         pending_replacements: pendingReplacementsRes ? pendingReplacementsRes.count : 0,
         current_period: currentPeriod,
-        next_period: Math.min(9, currentPeriod + 1),
+        next_period: nextPeriod,
         current_day: currentDay,
         time_slot: STANDARD_PERIOD_TIMES[currentPeriod]?.label || `P${currentPeriod}`,
         is_schedule_locked: isLocked
       },
+      ongoing_period: {
+        period: currentPeriod,
+        day: currentDay,
+        time_slot: STANDARD_PERIOD_TIMES[currentPeriod]?.label || `P${currentPeriod}`,
+        status: isSchoolHours ? 'Ongoing Now' : 'Current Period Slot',
+        is_school_hours: isSchoolHours,
+        slots: ongoingSlots,
+        total_classes: ongoingSlots.length,
+        assigned_observers_count: ongoingSlots.reduce((acc, s) => acc + (s.observer_1_id ? 1 : 0) + (s.observer_2_id ? 1 : 0), 0)
+      },
+      next_period: {
+        period: nextPeriod,
+        day: currentDay,
+        time_slot: STANDARD_PERIOD_TIMES[nextPeriod]?.label || `P${nextPeriod}`,
+        status: 'Upcoming Next',
+        slots: nextSlots,
+        total_classes: nextSlots.length,
+        assigned_observers_count: nextSlots.reduce((acc, s) => acc + (s.observer_1_id ? 1 : 0) + (s.observer_2_id ? 1 : 0), 0)
+      },
+      all_today_periods: allTodayPeriods,
       live_period: {
         period: currentPeriod,
         day: currentDay,
         time_slot: STANDARD_PERIOD_TIMES[currentPeriod]?.label || `P${currentPeriod}`,
-        slots: currentObservers.map(o => ({
-          period: o.period,
-          class_name: o.class_name,
-          observer_1_name: o.observer_slot_number === 1 ? o.observer_name : null,
-          observer_2_name: o.observer_slot_number === 2 ? o.observer_name : null
-        }))
+        slots: ongoingSlots
       },
       current_period_summary: {
         teaching: currentTeaching,

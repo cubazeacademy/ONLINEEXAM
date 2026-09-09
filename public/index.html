@@ -3486,21 +3486,89 @@
             </div>
           </div>
 
-          <!-- LIVE PERIOD MONITORING HERO CARD -->
-          <div class="panel-card mt-6" style="border: 1.5px solid #e0e7ff; background:#ffffff;">
-            <div class="panel-header" style="background:#faf5ff; border-bottom:1.5px solid #e9d5ff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-              <div style="display:flex; align-items:center; gap:10px;">
-                <span class="live-pulsing-dot"></span>
-                <h3 style="margin:0; color:#581c87;"><i class="fa-solid fa-tower-broadcast"></i> Live Department Observer Monitoring</h3>
+          <!-- ONGOING & NEXT PERIOD SUPERVISION CARDS -->
+          <div class="today-schedule-hero-panel mt-6 mb-6" style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:16px; padding:20px; box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px; border-bottom:1px solid #f1f5f9; padding-bottom:14px;">
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div class="live-clock-pill" style="display:inline-flex; align-items:center; gap:6px; background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; font-weight:700; font-size:0.8rem; padding:4px 12px; border-radius:20px;">
+                  <span class="live-pulsing-dot" style="background:#16a34a; width:8px; height:8px; border-radius:50%; display:inline-block;"></span>
+                  <span>LIVE MONITORING</span>
+                  <span style="color:#cbd5e1;">|</span>
+                  <span id="leader-live-day">Today</span>
+                  <span id="leader-live-time" style="font-weight:600; color:#475569;">--:-- --</span>
+                </div>
+                <h3 style="margin:0; font-size:1.15rem; font-weight:800; color:#0f172a;">
+                  <i class="fa-solid fa-tower-broadcast" style="color:#6366f1;"></i> Ongoing &amp; Next Period Status
+                </h3>
               </div>
-              <div style="font-size:0.85rem; font-weight:700; color:#6b21a8;" id="leader-live-clock-badge">
-                <i class="fa-regular fa-clock"></i> Today: <span id="leader-live-day">--</span> &bull; <span id="leader-live-period">P--</span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button type="button" class="btn btn-sm btn-outline" onclick="loadLeaderDashboard(true)" title="Refresh Live Status">
+                  <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('leader-today-overview')">
+                  <i class="fa-solid fa-calendar-day"></i> View All P1–P9
+                </button>
               </div>
             </div>
-            <div class="panel-body" style="padding:20px;">
-              <div id="leader-live-period-slots" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
-                <!-- Dynamically populated live slots -->
+
+            <!-- PERIOD SELECTOR TABS -->
+            <div style="display:flex; align-items:center; gap:6px; overflow-x:auto; padding-bottom:10px; margin-bottom:14px;" id="leader-dash-period-tabs">
+              <!-- Dynamically populated period tabs P1-P9 -->
+            </div>
+
+            <!-- DUAL CARDS GRID: ONGOING & NEXT -->
+            <div class="grid grid-cols-2 gap-6" id="leader-ongoing-next-grid">
+              
+              <!-- CARD 1: ONGOING PERIOD STATUS -->
+              <div class="panel-card" style="border:1.5px solid #bbf7d0; background:#fafffd; border-radius:14px; overflow:hidden; margin:0;">
+                <div style="background:linear-gradient(135deg, #15803d 0%, #166534 100%); color:#ffffff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="background:rgba(255,255,255,0.2); width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.2rem;" id="leader-ongoing-p-box">
+                      P--
+                    </div>
+                    <div>
+                      <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; opacity:0.9;">
+                        <span class="live-pulsing-dot" style="background:#ffffff; width:6px; height:6px; display:inline-block; border-radius:50%; margin-right:4px;"></span> ONGOING PERIOD
+                      </div>
+                      <div style="font-weight:700; font-size:0.95rem;" id="leader-ongoing-time-box">--:-- – --:--</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background:rgba(255,255,255,0.25); color:#ffffff; font-weight:800; font-size:0.75rem; padding:4px 10px; border-radius:12px;" id="leader-ongoing-status-badge">
+                    LIVE NOW
+                  </span>
+                </div>
+                <div style="padding:16px;">
+                  <div id="leader-ongoing-slots-container">
+                    <!-- Dynamic Ongoing Slots -->
+                  </div>
+                </div>
               </div>
+
+              <!-- CARD 2: NEXT PERIOD STATUS -->
+              <div class="panel-card" style="border:1.5px solid #bfdbfe; background:#f8fbff; border-radius:14px; overflow:hidden; margin:0;">
+                <div style="background:linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%); color:#ffffff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="background:rgba(255,255,255,0.2); width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.2rem;" id="leader-next-p-box">
+                      P--
+                    </div>
+                    <div>
+                      <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; opacity:0.9;">
+                        <i class="fa-solid fa-arrow-right-long" style="margin-right:4px;"></i> NEXT PERIOD
+                      </div>
+                      <div style="font-weight:700; font-size:0.95rem;" id="leader-next-time-box">--:-- – --:--</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background:rgba(255,255,255,0.25); color:#ffffff; font-weight:800; font-size:0.75rem; padding:4px 10px; border-radius:12px;" id="leader-next-status-badge">
+                    UPCOMING NEXT
+                  </span>
+                </div>
+                <div style="padding:16px;">
+                  <div id="leader-next-slots-container">
+                    <!-- Dynamic Next Slots -->
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
 

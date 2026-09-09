@@ -598,7 +598,7 @@ async function runMigration() {
     console.log('📦 7. Migrating Department Leaders & Replacement tables...');
     try {
       await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;`);
-      await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('admin', 'student', 'teacher', 'department_leader'));`);
+      await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('super_admin', 'admin', 'student', 'teacher', 'department_leader'));`);
     } catch (e) {
       console.log('Users role constraint note:', e.message);
     }
@@ -661,6 +661,17 @@ async function runMigration() {
         ON CONFLICT (username) DO NOTHING;
       `, [mediaDeptId]);
       console.log('✅ Seeded default Admin user.');
+    }
+
+    // Seed default Super Admin user if not exists
+    const superAdminCheck = await client.query(`SELECT count(*)::int as count FROM users WHERE role = 'super_admin'`);
+    if (!superAdminCheck.rows[0] || superAdminCheck.rows[0].count === 0) {
+      await client.query(`
+        INSERT INTO users (username, password, full_name, email, role, department_id)
+        VALUES ('superadmin', 'sinan@123', 'Super Administrator', 'superadmin@onlineexam.com', 'super_admin', $1)
+        ON CONFLICT (username) DO NOTHING;
+      `, [mediaDeptId]);
+      console.log('✅ Seeded default Super Admin user.');
     }
 
     const duration = Date.now() - startTime;

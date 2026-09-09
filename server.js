@@ -4817,6 +4817,819 @@ app.get(['/api/teaching/admin/audit-logs', '/api/teaching/admin/logs'], async (r
   }
 });
 
+// =============================================================================
+// SUPER ADMIN — MANUAL TEACHER SUBJECT SELECTION OVERRIDE ENDPOINTS
+// =============================================================================
+
+// Helper: Strictly verify that caller is a Super Admin
+async function verifySuperAdminUser(req) {
+  try {
+    const adminId = req.body.admin_id || req.query.admin_id || req.headers['x-admin-id'] || req.headers['x-user-id'];
+    const adminRole = req.body.admin_role || req.body.user_role || req.query.admin_role || req.headers['x-user-role'];
+    const adminUsername = req.body.admin_username || req.query.admin_username || req.headers['x-username'];
+
+    // 1. If non-super-admin role is claimed, reject immediately
+    if (adminRole && adminRole !== 'super_admin') {
+      return { authorized: false, error: 'Unauthorized: Super Admin access required.' };
+    }
+
+    // 2. If user ID is passed, check actual user record in DB
+    if (adminId && !isNaN(parseInt(adminId))) {
+      const user = await db.get(`SELECT id, username, full_name, role, is_active FROM users WHERE id = $1`, [parseInt(adminId)]);
+      if (!user || user.is_active === false) {
+        return { authorized: false, error: 'User account not found or inactive.' };
+      }
+      if (user.role !== 'super_admin') {
+        return { authorized: false, error: 'Unauthorized: Super Admin access required.' };
+      }
+      return { authorized: true, user };
+    }
+
+    // 3. If username is passed, check in DB
+    if (adminUsername) {
+      const user = await db.get(`SELECT id, username, full_name, role, is_active FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`, [adminUsername.toString()]);
+      if (!user || user.is_active === false) {
+        return { authorized: false, error: 'User account not found or inactive.' };
+      }
+      if (user.role !== 'super_admin') {
+        return { authorized: false, error: 'Unauthorized: Super Admin access required.' };
+      }
+      return { authorized: true, user };
+    }
+
+    // 4. If caller claims super_admin role without explicit ID, verify against default super_admin account
+    if (adminRole === 'super_admin') {
+      const defaultSuperAdmin = await db.get(`SELECT id, username, full_name, role FROM users WHERE role = 'super_admin' LIMIT 1`);
+      if (defaultSuperAdmin) {
+        return { authorized: true, user: defaultSuperAdmin };
+      }
+    }
+
+    return { authorized: false, error: 'Unauthorized: Super Admin access required.' };
+  } catch (err) {
+    return { authorized: false, error: 'Authorization error: ' + err.message };
+  }
+}
+
+// 1. Super Admin: List Departments
+app.get('/api/teaching/super-admin/departments', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  try {
+    const depts = await db.all(`
+      SELECT 
+        d.id, 
+        d.name, 
+        d.code, 
+        COALESCE(d.status, 'active') as status, 
+        COALESCE(d.active_days, st.active_days, 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday') as active_days,
+        COUNT(DISTINCT u.id)::int as teacher_count,
+        COUNT(DISTINCT s.id)::int as total_selections
+      FROM departments d
+      LEFT JOIN users u ON d.id = u.department_id AND u.role = 'teacher' AND u.is_active = true
+      LEFT JOIN teacher_selections s ON d.id = s.department_id
+      LEFT JOIN teacher_selection_settings st ON d.id = st.department_id
+      WHERE d.status = 'active' OR d.status IS NULL
+      GROUP BY d.id, d.name, d.code, d.status, d.active_days, st.active_days
+      ORDER BY d.name ASC
+    `);
+    res.json({ success: true, departments: depts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Super Admin: List Teachers for a Department (Department-Isolated)
+app.get('/api/teaching/super-admin/teachers', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const deptId = req.query.department_id ? parseInt(req.query.department_id) : null;
+  if (!deptId || isNaN(deptId)) {
+    return res.status(400).json({ error: 'Valid department_id query parameter is required.' });
+  }
+
+  try {
+    const dept = await db.get(`SELECT id, name FROM departments WHERE id = $1`, [deptId]);
+    if (!dept) {
+      return res.status(404).json({ error: 'Department not found.' });
+    }
+
+    const teachers = await db.all(`
+      SELECT 
+        u.id, 
+        u.username, 
+        u.full_name, 
+        u.email, 
+        u.phone, 
+        u.department_id,
+        $1::int as expected_department_id,
+        COALESCE(d.name, 'MEDIA') as department_name,
+        COUNT(ts.id)::int as selection_count,
+        MAX(ts.submitted_at) as last_submitted_at
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN teacher_selections ts ON u.id = ts.teacher_id AND ts.department_id = $1
+      WHERE u.role = 'teacher' AND u.department_id = $1 AND u.is_active = true
+      GROUP BY u.id, u.username, u.full_name, u.email, u.phone, u.department_id, d.name
+      ORDER BY u.full_name ASC
+    `, [deptId]);
+
+    res.json({
+      success: true,
+      department: dept,
+      teachers
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Super Admin: Form Data for Department (Classes, Subjects, Days, Periods)
+app.get('/api/teaching/super-admin/form-data', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const deptId = req.query.department_id ? parseInt(req.query.department_id) : null;
+  if (!deptId || isNaN(deptId)) {
+    return res.status(400).json({ error: 'Valid department_id is required.' });
+  }
+
+  try {
+    const [dept, assignedClasses, subjects, observerGen] = await Promise.all([
+      db.get(`SELECT id, name, code, active_days FROM departments WHERE id = $1`, [deptId]),
+      getDepartmentAssignedClasses(deptId),
+      db.all(`SELECT id, name, code FROM teacher_selection_subjects WHERE department_id = $1 AND status = 'active' ORDER BY name ASC`, [deptId]),
+      db.get(`SELECT status, locked_at FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId])
+    ]);
+
+    if (!dept) return res.status(404).json({ error: 'Department not found.' });
+
+    let activeDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    if (dept.active_days && typeof dept.active_days === 'string') {
+      const list = dept.active_days.split(',').map(d => d.trim()).filter(Boolean);
+      if (list.length > 0) activeDays = list;
+    }
+
+    const isObserverLocked = (observerGen && observerGen.status === 'locked');
+
+    res.json({
+      success: true,
+      department: dept,
+      classes: assignedClasses,
+      subjects: subjects && subjects.length > 0 ? subjects : [{ id: 1, name: 'General' }],
+      active_days: activeDays,
+      periods: [1, 2, 3, 4, 5, 6, 7],
+      is_observer_locked: isObserverLocked,
+      observer_locked_at: observerGen ? observerGen.locked_at : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Super Admin: Get Teacher Active Selections (Department-Isolated)
+app.get('/api/teaching/super-admin/selections', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const deptId = req.query.department_id ? parseInt(req.query.department_id) : null;
+  const teacherId = req.query.teacher_id ? parseInt(req.query.teacher_id) : null;
+
+  if (!deptId || !teacherId || isNaN(deptId) || isNaN(teacherId)) {
+    return res.status(400).json({ error: 'Both department_id and teacher_id query parameters are required.' });
+  }
+
+  try {
+    const [teacher, dept, selections, observerGen, selectionStatus] = await Promise.all([
+      db.get(`SELECT id, username, full_name, email, phone, role, department_id FROM users WHERE id = $1 AND role = 'teacher'`, [teacherId]),
+      db.get(`SELECT id, name, code FROM departments WHERE id = $1`, [deptId]),
+      db.all(`
+        SELECT 
+          ts.id, 
+          ts.department_id, 
+          ts.teacher_id, 
+          ts.timetable_id, 
+          ts.day, 
+          ts.period, 
+          ts.class_name, 
+          ts.subject, 
+          COALESCE(ts.status, 'confirmed') as status, 
+          ts.selected_at, 
+          ts.submitted_at,
+          COALESCE(d.name, 'MEDIA') as department_name,
+          u.full_name as teacher_name
+        FROM teacher_selections ts
+        LEFT JOIN departments d ON ts.department_id = d.id
+        LEFT JOIN users u ON ts.teacher_id = u.id
+        WHERE ts.teacher_id = $1 AND ts.department_id = $2
+        ORDER BY 
+          CASE ts.day 
+            WHEN 'Sunday' THEN 1 
+            WHEN 'Monday' THEN 2 
+            WHEN 'Tuesday' THEN 3 
+            WHEN 'Wednesday' THEN 4 
+            WHEN 'Thursday' THEN 5 
+            WHEN 'Friday' THEN 6 
+            WHEN 'Saturday' THEN 7 
+            ELSE 8 
+          END,
+          ts.period ASC,
+          ts.id ASC
+      `, [teacherId, deptId]),
+      db.get(`SELECT status, locked_at FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      getDepartmentSelectionStatus(deptId)
+    ]);
+
+    if (!dept) return res.status(404).json({ error: 'Department not found.' });
+    if (!teacher) return res.status(404).json({ error: 'Teacher not found.' });
+
+    // Enforce Backend Department Isolation
+    if (teacher.department_id !== deptId) {
+      return res.status(400).json({ error: 'Teacher does not belong to this department.' });
+    }
+
+    const isObserverLocked = (observerGen && observerGen.status === 'locked');
+
+    res.json({
+      success: true,
+      teacher,
+      department: dept,
+      selections,
+      selection_count: selections.length,
+      is_observer_locked: isObserverLocked,
+      observer_locked_at: observerGen ? observerGen.locked_at : null,
+      selection_window: {
+        is_open: selectionStatus.isOpen,
+        is_locked: selectionStatus.isLocked,
+        message: selectionStatus.message
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: Ensure Timetable Slot exists for Department + Day + Period + Class + Subject
+async function ensureTimetableSlot(client, deptId, day, period, className, subject) {
+  let slot = await client.query(`
+    SELECT id FROM teacher_selection_timetable 
+    WHERE department_id = $1 AND day = $2 AND period = $3 AND LOWER(TRIM(class_name)) = LOWER(TRIM($4))
+    LIMIT 1
+  `, [deptId, day, period, className]);
+
+  if (slot.rows.length > 0) {
+    // Optionally update subject if needed
+    if (subject) {
+      await client.query(`
+        UPDATE teacher_selection_timetable 
+        SET subject = $1, status = 'active'
+        WHERE id = $2
+      `, [subject, slot.rows[0].id]);
+    }
+    return slot.rows[0].id;
+  }
+
+  // Create slot if it doesn't exist
+  const newSlot = await client.query(`
+    INSERT INTO teacher_selection_timetable (department_id, day, period, class_name, subject, status)
+    VALUES ($1, $2, $3, $4, $5, 'active')
+    ON CONFLICT (department_id, day, period, class_name) 
+    DO UPDATE SET subject = EXCLUDED.subject, status = 'active'
+    RETURNING id
+  `, [deptId, day, period, className, subject || 'General']);
+
+  return newSlot.rows[0].id;
+}
+
+// 5. Super Admin: Add Selection (Atomic Database Transaction)
+app.post('/api/teaching/super-admin/add-selection', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const {
+    department_id,
+    teacher_id,
+    day,
+    period,
+    class_name,
+    subject,
+    reason,
+    confirm_locked_override
+  } = req.body;
+
+  const deptId = parseInt(department_id);
+  const teacherId = parseInt(teacher_id);
+  const periodNum = parseInt(period);
+  const cleanDay = (day || '').trim();
+  const cleanClass = (class_name || '').trim();
+  const cleanSubject = (subject || '').trim();
+  const cleanReason = (reason || 'Super Admin manual addition').trim();
+
+  // Basic Validation
+  if (!deptId || !teacherId || !cleanDay || !periodNum || !cleanClass || !cleanSubject) {
+    return res.status(400).json({ error: 'All fields (Department, Teacher, Day, Period, Class, Subject) are required.' });
+  }
+
+  if (isNaN(periodNum) || periodNum < 1 || periodNum > 10) {
+    return res.status(400).json({ error: 'Invalid period number.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Verify Teacher and Department Isolation
+    const teacherRes = await client.query(`
+      SELECT u.id, u.full_name, u.role, u.department_id, COALESCE(d.name, 'MEDIA') as department_name
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE u.id = $1 AND u.role = 'teacher' AND u.is_active = true
+      FOR UPDATE OF u
+    `, [teacherId]);
+
+    if (teacherRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Teacher not found or is inactive.' });
+    }
+
+    const teacher = teacherRes.rows[0];
+    if (teacher.department_id !== deptId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Teacher does not belong to the selected department.' });
+    }
+
+    // 2. Validate Class & Department association
+    const assignedClasses = await getDepartmentAssignedClasses(deptId);
+    const assignedNames = new Set(assignedClasses.map(c => c.name.trim().toLowerCase()));
+    if (!assignedNames.has(cleanClass.toLowerCase())) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Class "${cleanClass}" is not assigned to this department.` });
+    }
+
+    // 3. Ensure Timetable relationship
+    const timetableId = await ensureTimetableSlot(client, deptId, cleanDay, periodNum, cleanClass, cleanSubject);
+
+    // 4. Check for duplicate active selection
+    const dupCheck = await client.query(`
+      SELECT id FROM teacher_selections 
+      WHERE teacher_id = $1 AND department_id = $2 AND day = $3 AND period = $4 AND LOWER(TRIM(class_name)) = LOWER(TRIM($5)) AND LOWER(TRIM(subject)) = LOWER(TRIM($6))
+    `, [teacherId, deptId, cleanDay, periodNum, cleanClass, cleanSubject]);
+
+    if (dupCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This exact selection already exists for this teacher.' });
+    }
+
+    // 5. Check Teacher Clash on same Day + Period
+    const teacherClash = await client.query(`
+      SELECT id, class_name, subject FROM teacher_selections 
+      WHERE teacher_id = $1 AND day = $2 AND period = $3
+    `, [teacherId, cleanDay, periodNum]);
+
+    if (teacherClash.rows.length > 0) {
+      await client.query('ROLLBACK');
+      const tc = teacherClash.rows[0];
+      return res.status(400).json({
+        error: `Teacher already has a selection (${tc.class_name} - ${tc.subject}) for ${cleanDay} Period ${periodNum}. Use Edit to replace it.`
+      });
+    }
+
+    // 6. Check Class Clash (Class already selected by another teacher in this department for this Day + Period)
+    const classClash = await client.query(`
+      SELECT s.id, u.full_name as teacher_name 
+      FROM teacher_selections s 
+      JOIN users u ON s.teacher_id = u.id 
+      WHERE s.department_id = $1 AND s.day = $2 AND s.period = $3 AND LOWER(TRIM(s.class_name)) = LOWER(TRIM($4))
+    `, [deptId, cleanDay, periodNum, cleanClass]);
+
+    if (classClash.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `Class "${cleanClass}" is already selected by ${classClash.rows[0].teacher_name} for ${cleanDay} Period ${periodNum}.`
+      });
+    }
+
+    // 7. Check Locked Observer Schedule Impact
+    const obsGenRes = await client.query(`
+      SELECT status, locked_at FROM observer_generation 
+      WHERE department_id = $1 
+      ORDER BY generation_version DESC, id DESC LIMIT 1
+    `, [deptId]);
+
+    const isLocked = obsGenRes.rows.length > 0 && obsGenRes.rows[0].status === 'locked';
+    if (isLocked && confirm_locked_override !== true) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        code: 'LOCKED_SCHEDULE_WARNING',
+        requires_confirmation: true,
+        warning: 'LOCKED_SCHEDULE_IMPACT',
+        message: 'Warning: This selection is already used by a locked/finalized Observer Schedule. Adding a selection may affect schedule consistency. Explicit confirmation is required to proceed.'
+      });
+    }
+
+    // 8. Atomic Insert into teacher_selections
+    const insertRes = await client.query(`
+      INSERT INTO teacher_selections (teacher_id, timetable_id, department_id, day, period, class_name, subject, status, selected_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', CURRENT_TIMESTAMP)
+      RETURNING id
+    `, [teacherId, timetableId, deptId, cleanDay, periodNum, cleanClass, cleanSubject]);
+
+    const newSelectionId = insertRes.rows[0].id;
+
+    // 9. Atomic Insert into Audit Log
+    const auditDetails = {
+      action: 'SUPER_ADMIN_OVERRIDE_ADD',
+      super_admin_id: auth.user.id,
+      super_admin_name: auth.user.full_name || auth.user.username,
+      teacher_id: teacher.id,
+      teacher_name: teacher.full_name,
+      department_id: deptId,
+      department_name: teacher.department_name,
+      added_selection: {
+        id: newSelectionId,
+        day: cleanDay,
+        period: periodNum,
+        class_name: cleanClass,
+        subject: cleanSubject,
+        timetable_id: timetableId
+      },
+      reason: cleanReason,
+      locked_schedule_impact: isLocked,
+      timestamp: new Date().toISOString()
+    };
+
+    await client.query(`
+      INSERT INTO teacher_selection_audit_logs (department_id, user_id, user_name, action, details, created_at)
+      VALUES ($1, $2, $3, 'SUPER_ADMIN_OVERRIDE_ADD', $4, CURRENT_TIMESTAMP)
+    `, [deptId, auth.user.id, auth.user.full_name || auth.user.username, JSON.stringify(auditDetails)]);
+
+    await client.query('COMMIT');
+    invalidateCache('/api/teaching');
+
+    res.json({
+      success: true,
+      message: 'Selection added successfully via Super Admin override.',
+      selection_id: newSelectionId,
+      locked_schedule_impact: isLocked
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Database transaction error: ' + err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 6. Super Admin: Edit Selection (Complete Replacement in Atomic Transaction)
+app.post('/api/teaching/super-admin/edit-selection', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const {
+    department_id,
+    teacher_id,
+    selection_id,
+    new_day,
+    new_period,
+    new_class_name,
+    new_subject,
+    reason,
+    confirm_locked_override
+  } = req.body;
+
+  const deptId = parseInt(department_id);
+  const teacherId = parseInt(teacher_id);
+  const selectionId = parseInt(selection_id);
+  const newPeriodNum = parseInt(new_period);
+  const cleanNewDay = (new_day || '').trim();
+  const cleanNewClass = (new_class_name || '').trim();
+  const cleanNewSubject = (new_subject || '').trim();
+  const cleanReason = (reason || 'Super Admin manual edit replacement').trim();
+
+  if (!deptId || !teacherId || !selectionId || !cleanNewDay || !newPeriodNum || !cleanNewClass || !cleanNewSubject) {
+    return res.status(400).json({ error: 'All fields (Department, Teacher, Selection ID, New Day, New Period, New Class, New Subject) are required.' });
+  }
+
+  if (isNaN(newPeriodNum) || newPeriodNum < 1 || newPeriodNum > 10) {
+    return res.status(400).json({ error: 'Invalid period number.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Fetch and Lock existing selection record
+    const oldSelRes = await client.query(`
+      SELECT s.*, u.full_name as teacher_name, COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selections s
+      JOIN users u ON s.teacher_id = u.id
+      LEFT JOIN departments d ON s.department_id = d.id
+      WHERE s.id = $1 AND s.teacher_id = $2 AND s.department_id = $3
+      FOR UPDATE OF s
+    `, [selectionId, teacherId, deptId]);
+
+    if (oldSelRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Selection record not found or does not belong to this teacher and department.' });
+    }
+
+    const oldSelection = oldSelRes.rows[0];
+
+    // 2. Validate New Class is assigned to department
+    const assignedClasses = await getDepartmentAssignedClasses(deptId);
+    const assignedNames = new Set(assignedClasses.map(c => c.name.trim().toLowerCase()));
+    if (!assignedNames.has(cleanNewClass.toLowerCase())) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `New Class "${cleanNewClass}" is not assigned to this department.` });
+    }
+
+    // 3. Ensure Timetable relationship for target slot
+    const newTimetableId = await ensureTimetableSlot(client, deptId, cleanNewDay, newPeriodNum, cleanNewClass, cleanNewSubject);
+
+    // 4. Check Clash for Teacher (Another selection for this teacher on target Day + Period)
+    const teacherClash = await client.query(`
+      SELECT id, class_name, subject FROM teacher_selections 
+      WHERE teacher_id = $1 AND day = $2 AND period = $3 AND id != $4
+    `, [teacherId, cleanNewDay, newPeriodNum, selectionId]);
+
+    if (teacherClash.rows.length > 0) {
+      await client.query('ROLLBACK');
+      const tc = teacherClash.rows[0];
+      return res.status(400).json({
+        error: `Teacher already has another active selection (${tc.class_name} - ${tc.subject}) on ${cleanNewDay} Period ${newPeriodNum}.`
+      });
+    }
+
+    // 5. Check Class Clash (Class on target Day + Period taken by another teacher)
+    const classClash = await client.query(`
+      SELECT s.id, u.full_name as teacher_name 
+      FROM teacher_selections s 
+      JOIN users u ON s.teacher_id = u.id 
+      WHERE s.department_id = $1 AND s.day = $2 AND s.period = $3 AND LOWER(TRIM(s.class_name)) = LOWER(TRIM($4)) AND s.id != $5
+    `, [deptId, cleanNewDay, newPeriodNum, cleanNewClass, selectionId]);
+
+    if (classClash.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `Class "${cleanNewClass}" is already selected by ${classClash.rows[0].teacher_name} for ${cleanNewDay} Period ${newPeriodNum}.`
+      });
+    }
+
+    // 6. Check Locked Observer Schedule Impact
+    const obsGenRes = await client.query(`
+      SELECT status, locked_at FROM observer_generation 
+      WHERE department_id = $1 
+      ORDER BY generation_version DESC, id DESC LIMIT 1
+    `, [deptId]);
+
+    const isLocked = obsGenRes.rows.length > 0 && obsGenRes.rows[0].status === 'locked';
+    if (isLocked && confirm_locked_override !== true) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        code: 'LOCKED_SCHEDULE_WARNING',
+        requires_confirmation: true,
+        warning: 'LOCKED_SCHEDULE_IMPACT',
+        message: 'Warning: This selection is already used by a locked/finalized Observer Schedule. Changing it may affect schedule consistency. Explicit confirmation is required to proceed.'
+      });
+    }
+
+    // 7. COMPLETE REPLACEMENT: Update canonical record in-place inside transaction
+    await client.query(`
+      UPDATE teacher_selections
+      SET 
+        timetable_id = $1,
+        day = $2,
+        period = $3,
+        class_name = $4,
+        subject = $5,
+        status = 'confirmed',
+        selected_at = CURRENT_TIMESTAMP
+      WHERE id = $6
+    `, [newTimetableId, cleanNewDay, newPeriodNum, cleanNewClass, cleanNewSubject, selectionId]);
+
+    // 8. Insert Complete Before/After Audit Log
+    const auditDetails = {
+      action: 'SUPER_ADMIN_OVERRIDE_EDIT',
+      super_admin_id: auth.user.id,
+      super_admin_name: auth.user.full_name || auth.user.username,
+      teacher_id: oldSelection.teacher_id,
+      teacher_name: oldSelection.teacher_name,
+      department_id: deptId,
+      department_name: oldSelection.department_name,
+      before: {
+        id: oldSelection.id,
+        day: oldSelection.day,
+        period: oldSelection.period,
+        class_name: oldSelection.class_name,
+        subject: oldSelection.subject,
+        timetable_id: oldSelection.timetable_id
+      },
+      after: {
+        id: selectionId,
+        day: cleanNewDay,
+        period: newPeriodNum,
+        class_name: cleanNewClass,
+        subject: cleanNewSubject,
+        timetable_id: newTimetableId
+      },
+      reason: cleanReason,
+      locked_schedule_impact: isLocked,
+      timestamp: new Date().toISOString()
+    };
+
+    await client.query(`
+      INSERT INTO teacher_selection_audit_logs (department_id, user_id, user_name, action, details, created_at)
+      VALUES ($1, $2, $3, 'SUPER_ADMIN_OVERRIDE_EDIT', $4, CURRENT_TIMESTAMP)
+    `, [deptId, auth.user.id, auth.user.full_name || auth.user.username, JSON.stringify(auditDetails)]);
+
+    await client.query('COMMIT');
+    invalidateCache('/api/teaching');
+
+    res.json({
+      success: true,
+      message: 'Selection completely replaced successfully via Super Admin override.',
+      selection_id: selectionId,
+      locked_schedule_impact: isLocked
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Database transaction error: ' + err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 7. Super Admin: Remove Selection (Atomic Transaction with Audit Preservation)
+app.post('/api/teaching/super-admin/remove-selection', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const {
+    department_id,
+    teacher_id,
+    selection_id,
+    reason,
+    confirm_locked_override
+  } = req.body;
+
+  const deptId = parseInt(department_id);
+  const teacherId = parseInt(teacher_id);
+  const selectionId = parseInt(selection_id);
+  const cleanReason = (reason || 'Super Admin manual removal').trim();
+
+  if (!deptId || !teacherId || !selectionId) {
+    return res.status(400).json({ error: 'Department ID, Teacher ID, and Selection ID are required.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Fetch and Lock existing selection record
+    const selRes = await client.query(`
+      SELECT s.*, u.full_name as teacher_name, COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selections s
+      JOIN users u ON s.teacher_id = u.id
+      LEFT JOIN departments d ON s.department_id = d.id
+      WHERE s.id = $1 AND s.teacher_id = $2 AND s.department_id = $3
+      FOR UPDATE OF s
+    `, [selectionId, teacherId, deptId]);
+
+    if (selRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Selection record not found or already removed.' });
+    }
+
+    const selection = selRes.rows[0];
+
+    // 2. Check Locked Observer Schedule Impact
+    const obsGenRes = await client.query(`
+      SELECT status, locked_at FROM observer_generation 
+      WHERE department_id = $1 
+      ORDER BY generation_version DESC, id DESC LIMIT 1
+    `, [deptId]);
+
+    const isLocked = obsGenRes.rows.length > 0 && obsGenRes.rows[0].status === 'locked';
+    if (isLocked && confirm_locked_override !== true) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        code: 'LOCKED_SCHEDULE_WARNING',
+        requires_confirmation: true,
+        warning: 'LOCKED_SCHEDULE_IMPACT',
+        message: 'Warning: This selection is already used by a locked/finalized Observer Schedule. Removing it may affect schedule consistency. Explicit confirmation is required to proceed.'
+      });
+    }
+
+    // 3. Remove from teacher_selections
+    await client.query(`DELETE FROM teacher_selections WHERE id = $1`, [selectionId]);
+
+    // 4. Insert Audit Log preserving complete removed record
+    const auditDetails = {
+      action: 'SUPER_ADMIN_OVERRIDE_REMOVE',
+      super_admin_id: auth.user.id,
+      super_admin_name: auth.user.full_name || auth.user.username,
+      teacher_id: selection.teacher_id,
+      teacher_name: selection.teacher_name,
+      department_id: deptId,
+      department_name: selection.department_name,
+      removed_selection: {
+        id: selection.id,
+        day: selection.day,
+        period: selection.period,
+        class_name: selection.class_name,
+        subject: selection.subject,
+        timetable_id: selection.timetable_id,
+        selected_at: selection.selected_at
+      },
+      reason: cleanReason,
+      locked_schedule_impact: isLocked,
+      timestamp: new Date().toISOString()
+    };
+
+    await client.query(`
+      INSERT INTO teacher_selection_audit_logs (department_id, user_id, user_name, action, details, created_at)
+      VALUES ($1, $2, $3, 'SUPER_ADMIN_OVERRIDE_REMOVE', $4, CURRENT_TIMESTAMP)
+    `, [deptId, auth.user.id, auth.user.full_name || auth.user.username, JSON.stringify(auditDetails)]);
+
+    await client.query('COMMIT');
+    invalidateCache('/api/teaching');
+
+    res.json({
+      success: true,
+      message: 'Selection removed successfully via Super Admin override.',
+      removed_selection_id: selectionId,
+      locked_schedule_impact: isLocked
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Database transaction error: ' + err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 8. Super Admin: Retrieve Override Audit Logs (Department/Teacher scoped)
+app.get('/api/teaching/super-admin/audit-logs', async (req, res) => {
+  const auth = await verifySuperAdminUser(req);
+  if (!auth.authorized) {
+    return res.status(403).json({ error: auth.error });
+  }
+
+  const deptId = req.query.department_id && req.query.department_id !== 'all' ? parseInt(req.query.department_id) : null;
+  const teacherId = req.query.teacher_id && req.query.teacher_id !== 'all' ? parseInt(req.query.teacher_id) : null;
+
+  try {
+    let sql = `
+      SELECT 
+        a.id, 
+        a.department_id, 
+        a.user_id, 
+        a.user_name, 
+        a.action, 
+        a.details, 
+        a.created_at,
+        COALESCE(d.name, 'MEDIA') as department_name
+      FROM teacher_selection_audit_logs a
+      LEFT JOIN departments d ON a.department_id = d.id
+      WHERE a.action LIKE 'SUPER_ADMIN_OVERRIDE_%'
+    `;
+    const params = [];
+
+    if (deptId && !isNaN(deptId)) {
+      params.push(deptId);
+      sql += ` AND a.department_id = $${params.length}`;
+    }
+
+    if (teacherId && !isNaN(teacherId)) {
+      params.push(teacherId);
+      sql += ` AND (a.details->>'teacher_id')::int = $${params.length}`;
+    }
+
+    sql += ` ORDER BY a.created_at DESC LIMIT 100`;
+
+    const logs = await db.all(sql, params);
+    res.json({ success: true, logs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // CSV Export Endpoint (Department-aware)
 app.get('/api/teaching/admin/export/:type', async (req, res) => {
   const { type } = req.params;

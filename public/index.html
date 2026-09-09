@@ -147,6 +147,13 @@
           <i class="fa-solid fa-user-tie"></i> <span>Department Leaders</span>
         </a>
 
+        <div class="nav-category sa-only-nav hidden" id="nav-category-super-admin" style="color: #f59e0b; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-crown" style="color: #f59e0b;"></i> SUPER ADMIN
+        </div>
+        <a href="#super-admin-override" id="nav-link-super-admin-override" class="nav-item sa-only-nav hidden" onclick="switchTab('super-admin-override')" style="border-left: 3px solid #f59e0b;">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color: #f59e0b;"></i> <span>Teacher Subject Override</span>
+        </a>
+
         <div class="nav-category">SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
         <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
           <i class="fa-solid fa-sliders"></i> <span>Exam Settings</span>
@@ -275,6 +282,263 @@
 
       <!-- VIEW PAGES -->
       <div class="content-container">
+
+        <!-- ========================================== -->
+        <!-- SUPER ADMIN: SUBJECT SELECTION OVERRIDE    -->
+        <!-- ========================================== -->
+        <section id="view-super-admin-override" class="tab-view hidden">
+          <!-- HERO BANNER -->
+          <div class="hero-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%); position: relative; overflow: hidden; border-radius: 16px; padding: 26px 28px; color: #fff; margin-bottom: 24px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);">
+            <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+              <span class="badge" style="background: #f59e0b; color: #0f172a; font-weight: 800; font-size: 0.72rem; padding: 4px 10px; border-radius: 20px; letter-spacing: 0.5px;">
+                <i class="fa-solid fa-shield-halved"></i> SUPER ADMIN ONLY
+              </span>
+              <span class="badge" style="background: rgba(255,255,255,0.18); color: #e0e7ff; font-size: 0.72rem; padding: 4px 10px; border-radius: 20px;">
+                <i class="fa-solid fa-atom"></i> ATOMIC TRANSACTIONS
+              </span>
+              <span class="badge" style="background: rgba(52, 211, 153, 0.2); color: #6ee7b7; font-size: 0.72rem; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(52, 211, 153, 0.3);">
+                <i class="fa-solid fa-clock-rotate-left"></i> FULL AUDIT TRAIL
+              </span>
+            </div>
+            <h2 style="font-size: 1.55rem; font-weight: 800; margin: 0 0 6px 0; color: #fff;">
+              <i class="fa-solid fa-wand-magic-sparkles" style="color: #f59e0b;"></i> Manual Teacher Subject Selection Override
+            </h2>
+            <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; max-width: 820px; line-height: 1.5;">
+              Administrative override engine to manually <strong>Add</strong>, <strong>Edit</strong> (complete replacement), or <strong>Remove</strong> teacher allocations even after selection window closure or finalization. Department isolation, database integrity, and complete audit history are guaranteed.
+            </p>
+            <i class="fa-solid fa-crown hero-watermark" style="position: absolute; right: 20px; bottom: -15px; font-size: 8rem; color: rgba(255,255,255,0.04); pointer-events: none;"></i>
+          </div>
+
+          <!-- STEP 1: DEPARTMENT-FIRST SELECTOR -->
+          <div class="card glass-panel mb-4" style="background: #ffffff; border-radius: 14px; border: 1.5px solid #e2e8f0; padding: 20px 22px; box-shadow: 0 4px 16px rgba(0,0,0,0.03);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h4 style="margin: 0; font-size: 1.02rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                  <span style="background: #eff6ff; color: #3b82f6; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 800;">1</span>
+                  Department-First Teacher Selection
+                </h4>
+                <p style="margin: 2px 0 0 34px; font-size: 0.8rem; color: #64748b;">
+                  Select a department to isolate teachers. Only teachers belonging to that department will be available.
+                </p>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+              <div class="form-group mb-0">
+                <label style="font-weight: 700; font-size: 0.84rem; color: #1e293b; margin-bottom: 6px; display: block;">
+                  <i class="fa-solid fa-building-user" style="color: #4f46e5;"></i> Select Department <span class="text-danger">*</span>
+                </label>
+                <select id="sa-override-dept-select" class="form-control" style="font-weight: 700; font-size: 0.92rem; height: 44px; border: 2px solid #cbd5e1; border-radius: 10px;" onchange="onSuperAdminDeptSelected(this.value)">
+                  <option value="">-- Choose Department --</option>
+                </select>
+              </div>
+
+              <div class="form-group mb-0">
+                <label style="font-weight: 700; font-size: 0.84rem; color: #1e293b; margin-bottom: 6px; display: block;">
+                  <i class="fa-solid fa-chalkboard-user" style="color: #059669;"></i> Select Teacher <span class="text-danger">*</span>
+                </label>
+                <select id="sa-override-teacher-select" class="form-control" style="font-weight: 700; font-size: 0.92rem; height: 44px; border: 2px solid #cbd5e1; border-radius: 10px;" onchange="onSuperAdminTeacherSelected(this.value)" disabled>
+                  <option value="">-- Select Department First --</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- TEACHER OVERVIEW & ACTIONS CARD (Visible when teacher is selected) -->
+          <div id="sa-override-teacher-card" class="card glass-panel mb-4 hidden" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 14px; border: 1.5px solid #e2e8f0; padding: 20px 22px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 800;" id="sa-override-avatar">
+                  T
+                </div>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;" id="sa-override-teacher-name">
+                      --
+                    </h3>
+                    <span class="badge badge-primary" id="sa-override-dept-badge" style="font-size: 0.72rem; padding: 3px 8px;">MEDIA</span>
+                    <span class="badge" id="sa-override-count-badge" style="background: #e0e7ff; color: #3730a3; font-weight: 700; font-size: 0.72rem; padding: 3px 8px;">
+                      0 Active Selections
+                    </span>
+                  </div>
+                  <div style="font-size: 0.8rem; color: #64748b; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <span><i class="fa-solid fa-user"></i> <strong id="sa-override-username">--</strong></span>
+                    <span><i class="fa-solid fa-phone"></i> <span id="sa-override-phone">--</span></span>
+                    <span id="sa-override-obs-locked-pill" class="badge hidden" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.7rem;">
+                      <i class="fa-solid fa-lock"></i> Observer Schedule Locked
+                    </span>
+                    <span id="sa-override-window-status-pill" class="badge" style="background: #f1f5f9; color: #475569; font-size: 0.7rem;">
+                      Window Status: --
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ACTION BUTTONS -->
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="loadSuperAdminTeacherSelections()" title="Refresh Selections">
+                  <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+                <button type="button" class="btn btn-primary" onclick="openSuperAdminAddModal()" style="font-weight: 700; background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);">
+                  <i class="fa-solid fa-plus"></i> Add Selection
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ACTIVE SELECTIONS TABLE CARD -->
+          <div id="sa-override-selections-card" class="card glass-panel mb-4 hidden" style="background: #ffffff; border-radius: 14px; border: 1.5px solid #e2e8f0; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.03);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-solid fa-calendar-check" style="color: #4f46e5;"></i> Active Teacher Subject Selections
+                </h4>
+                <p style="margin: 3px 0 0 0; font-size: 0.8rem; color: #64748b;">
+                  Current canonical active allocations for this teacher in this department.
+                </p>
+              </div>
+            </div>
+
+            <!-- SEARCH & FILTERS TOOLBAR -->
+            <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+              <!-- Quick Search Input -->
+              <div style="flex: 1 1 200px; min-width: 180px;">
+                <div class="input-with-icon" style="position: relative;">
+                  <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 0.85rem;"></i>
+                  <input type="text" id="sa-override-search-input" class="form-control" placeholder="Search Day, Period, Class, Subject..." style="padding-left: 34px; height: 38px; font-size: 0.85rem;" oninput="filterSuperAdminSelectionsTable()">
+                </div>
+              </div>
+
+              <!-- Day Filter -->
+              <div style="min-width: 130px;">
+                <select id="sa-override-filter-day" class="form-control" style="height: 38px; font-size: 0.82rem; font-weight: 600;" onchange="filterSuperAdminSelectionsTable()">
+                  <option value="all">All Days</option>
+                  <option value="Sunday">Sunday</option>
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                </select>
+              </div>
+
+              <!-- Period Filter -->
+              <div style="min-width: 120px;">
+                <select id="sa-override-filter-period" class="form-control" style="height: 38px; font-size: 0.82rem; font-weight: 600;" onchange="filterSuperAdminSelectionsTable()">
+                  <option value="all">All Periods</option>
+                  <option value="1">Period 1</option>
+                  <option value="2">Period 2</option>
+                  <option value="3">Period 3</option>
+                  <option value="4">Period 4</option>
+                  <option value="5">Period 5</option>
+                  <option value="6">Period 6</option>
+                  <option value="7">Period 7</option>
+                </select>
+              </div>
+
+              <!-- Class Filter -->
+              <div style="min-width: 130px;">
+                <select id="sa-override-filter-class" class="form-control" style="height: 38px; font-size: 0.82rem; font-weight: 600;" onchange="filterSuperAdminSelectionsTable()">
+                  <option value="all">All Classes</option>
+                </select>
+              </div>
+
+              <!-- Clear Filters -->
+              <div>
+                <button type="button" class="btn btn-outline btn-sm" style="height: 38px; font-size: 0.8rem;" onclick="resetSuperAdminSelectionFilters()">
+                  <i class="fa-solid fa-xmark"></i> Clear
+                </button>
+              </div>
+            </div>
+
+            <!-- TABLE CONTAINER -->
+            <div class="table-responsive" style="border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+              <table class="data-table" style="font-size: 0.88rem; width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                    <th style="padding: 12px 14px; width: 40px; text-align: center;">#</th>
+                    <th style="padding: 12px 14px;">Day</th>
+                    <th style="padding: 12px 14px;">Period</th>
+                    <th style="padding: 12px 14px;">Class</th>
+                    <th style="padding: 12px 14px;">Subject</th>
+                    <th style="padding: 12px 14px;">Department</th>
+                    <th style="padding: 12px 14px;">Status / Timestamp</th>
+                    <th style="padding: 12px 14px; text-align: right; width: 180px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-override-selections-tbody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- EMPTY STATE -->
+            <div id="sa-override-empty-state" class="empty-state hidden" style="padding: 40px 20px; text-align: center;">
+              <div style="width: 56px; height: 56px; border-radius: 50%; background: #f1f5f9; display: inline-flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #94a3b8; margin-bottom: 12px;">
+                <i class="fa-solid fa-calendar-xmark"></i>
+              </div>
+              <h4 style="margin: 0 0 6px 0; font-size: 1rem; color: #334155;">No Active Selections Found</h4>
+              <p style="margin: 0 0 16px 0; font-size: 0.82rem; color: #64748b; max-width: 400px; display: inline-block;">
+                This teacher currently has no active subject selections in this department. You can add one using the button below.
+              </p>
+              <div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openSuperAdminAddModal()">
+                  <i class="fa-solid fa-plus"></i> Add First Selection
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- INITIAL PLACEHOLDER (When no teacher is selected yet) -->
+          <div id="sa-override-placeholder" class="card glass-panel" style="background: #ffffff; border-radius: 14px; border: 1.5px dashed #cbd5e1; padding: 60px 20px; text-align: center;">
+            <div style="width: 64px; height: 64px; border-radius: 50%; background: #eff6ff; display: inline-flex; align-items: center; justify-content: center; font-size: 1.8rem; color: #3b82f6; margin-bottom: 14px;">
+              <i class="fa-solid fa-user-gear"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; font-size: 1.15rem; font-weight: 700; color: #0f172a;">
+              Select a Department &amp; Teacher
+            </h3>
+            <p style="margin: 0; font-size: 0.85rem; color: #64748b; max-width: 460px; display: inline-block; line-height: 1.5;">
+              Choose a department and teacher above to inspect existing allocations, add new periods, edit/replace existing slots, or remove selections with full audit logging.
+            </p>
+          </div>
+
+          <!-- AUDIT LOG HISTORY SECTION (Collapsible) -->
+          <div id="sa-override-audit-section" class="card glass-panel mt-4 hidden" style="background: #ffffff; border-radius: 14px; border: 1.5px solid #e2e8f0; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.03);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h4 style="margin: 0; font-size: 1.02rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-solid fa-clock-rotate-left" style="color: #059669;"></i> Override Audit History
+                  <span class="badge" id="sa-override-audit-count-badge" style="background: #ecfdf5; color: #065f46; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px;">0 Logs</span>
+                </h4>
+                <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: #64748b;">
+                  Permanent audit trail of all manual overrides performed for this teacher/department.
+                </p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="loadSuperAdminOverrideAuditLogs()">
+                <i class="fa-solid fa-rotate"></i> Refresh Logs
+              </button>
+            </div>
+
+            <div class="table-responsive" style="max-height: 280px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px;">
+              <table class="data-table" style="font-size: 0.82rem; width: 100%;">
+                <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 2;">
+                  <tr>
+                    <th style="padding: 10px 12px;">Date &amp; Time</th>
+                    <th style="padding: 10px 12px;">Action</th>
+                    <th style="padding: 10px 12px;">Super Admin</th>
+                    <th style="padding: 10px 12px;">Previous State (Before)</th>
+                    <th style="padding: 10px 12px;">New State (After)</th>
+                    <th style="padding: 10px 12px;">Reason / Admin Note</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-override-audit-tbody">
+                  <!-- Audit logs rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
 
         <!-- ========================================== -->
         <!-- ADMIN 1: DASHBOARD VIEW                    -->
@@ -5658,6 +5922,318 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- SUPER ADMIN OVERRIDE MODALS                                                -->
+  <!-- ========================================================================= -->
+
+  <!-- MODAL 1: SUPER ADMIN ADD SELECTION -->
+  <div id="modal-super-admin-add-selection" class="modal-overlay hidden">
+    <div class="modal-content max-w-md" style="max-width: 540px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #fff;">
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            <span class="badge" style="background: #f59e0b; color: #000; font-size: 0.68rem; font-weight: 800; padding: 2px 6px; border-radius: 10px;">SUPER ADMIN</span>
+            <span class="badge" id="sa-add-dept-pill" style="background: rgba(255,255,255,0.18); color: #e0e7ff; font-size: 0.68rem; padding: 2px 6px; border-radius: 10px;">Dept: --</span>
+          </div>
+          <h3 style="color:#fff; margin:0; font-size:1.15rem;"><i class="fa-solid fa-plus-circle" style="color:#38bdf8;"></i> Add Teacher Selection</h3>
+        </div>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-super-admin-add-selection')">&times;</button>
+      </div>
+
+      <form id="form-super-admin-add-selection" onsubmit="saveSuperAdminAddSelection(event)">
+        <div class="modal-body" style="padding: 20px 24px;">
+          <!-- TEACHER INFO BANNER -->
+          <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Target Teacher</div>
+              <div style="font-size: 1rem; font-weight: 800; color: #0f172a;" id="sa-add-teacher-name-display">--</div>
+            </div>
+            <div id="sa-add-obs-locked-badge" class="badge hidden" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.72rem;">
+              <i class="fa-solid fa-lock"></i> Observer Locked
+            </div>
+          </div>
+
+          <!-- DAY & PERIOD ROW -->
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group mb-0">
+              <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">Day <span class="text-danger">*</span></label>
+              <select id="sa-add-day-select" class="form-control" required style="font-weight: 600; font-size: 0.88rem;">
+                <option value="Sunday">Sunday</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">Period <span class="text-danger">*</span></label>
+              <select id="sa-add-period-select" class="form-control" required style="font-weight: 600; font-size: 0.88rem;">
+                <option value="1">Period 1</option>
+                <option value="2">Period 2</option>
+                <option value="3">Period 3</option>
+                <option value="4">Period 4</option>
+                <option value="5">Period 5</option>
+                <option value="6">Period 6</option>
+                <option value="7">Period 7</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- CLASS & SUBJECT ROW -->
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group mb-0">
+              <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">Class <span class="text-danger">*</span></label>
+              <select id="sa-add-class-select" class="form-control" required style="font-weight: 600; font-size: 0.88rem;">
+                <!-- Populated dynamically with department classes -->
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">Subject <span class="text-danger">*</span></label>
+              <select id="sa-add-subject-select" class="form-control" required style="font-weight: 600; font-size: 0.88rem;">
+                <!-- Populated dynamically with department subjects -->
+              </select>
+            </div>
+          </div>
+
+          <!-- REASON / NOTE FIELD -->
+          <div class="form-group mb-3">
+            <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">
+              Reason / Admin Note <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="sa-add-reason" class="form-control" placeholder="e.g. Timetable correction / Department request" required style="font-size: 0.88rem;">
+            <small class="text-muted" style="font-size: 0.74rem;">This reason will be recorded permanently in the audit trail.</small>
+          </div>
+
+          <!-- LOCKED OBSERVER WARNING BOX IF APPLICABLE -->
+          <div id="sa-add-locked-warning-box" class="hidden" style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 12px 14px; font-size: 0.82rem; color: #92400e; margin-bottom: 8px;">
+            <div style="display: flex; gap: 8px; align-items: flex-start;">
+              <i class="fa-solid fa-triangle-exclamation" style="margin-top: 2px; color: #d97706; font-size: 1rem;"></i>
+              <div>
+                <strong>Warning:</strong> The Observer Schedule for this department is currently <strong>LOCKED</strong>. Adding this selection will not automatically alter observer duties.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-super-admin-add-selection')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-sa-add" style="background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); font-weight: 700;">
+            <i class="fa-solid fa-check"></i> Add Selection
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: SUPER ADMIN EDIT SELECTION (COMPLETE REPLACEMENT) -->
+  <div id="modal-super-admin-edit-selection" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg" style="max-width: 600px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #fff;">
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            <span class="badge" style="background: #f59e0b; color: #000; font-size: 0.68rem; font-weight: 800; padding: 2px 6px; border-radius: 10px;">SUPER ADMIN</span>
+            <span class="badge" id="sa-edit-dept-pill" style="background: rgba(255,255,255,0.18); color: #e0e7ff; font-size: 0.68rem; padding: 2px 6px; border-radius: 10px;">Dept: --</span>
+          </div>
+          <h3 style="color:#fff; margin:0; font-size:1.15rem;"><i class="fa-solid fa-arrows-rotate" style="color:#38bdf8;"></i> Complete Replacement (Edit Selection)</h3>
+        </div>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-super-admin-edit-selection')">&times;</button>
+      </div>
+
+      <form id="form-super-admin-edit-selection" onsubmit="saveSuperAdminEditSelection(event)">
+        <input type="hidden" id="sa-edit-selection-id">
+        <div class="modal-body" style="padding: 20px 24px; max-height: calc(85vh - 140px); overflow-y: auto;">
+          <!-- TEACHER HEADER -->
+          <div style="font-size: 0.85rem; color: #475569; margin-bottom: 14px;">
+            Editing selection for <strong id="sa-edit-teacher-name-display" style="color: #0f172a;">Teacher</strong> (<span id="sa-edit-dept-name-display" style="color: #4f46e5; font-weight: 700;">Department</span>).
+          </div>
+
+          <!-- COMPARISON BOX (OLD -> NEW) -->
+          <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <!-- OLD SELECTION SUMMARY -->
+            <div style="margin-bottom: 10px;">
+              <div style="font-size: 0.72rem; color: #b91c1c; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+                <i class="fa-solid fa-circle-minus"></i> Current / Old Selection (Will be Replaced)
+              </div>
+              <div id="sa-edit-old-summary" style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-top: 4px; padding: 8px 12px; background: #fff; border-radius: 8px; border: 1px solid #cbd5e1;">
+                --
+              </div>
+            </div>
+
+            <!-- REPLACEMENT ARROW -->
+            <div style="text-align: center; margin: 8px 0; color: #6366f1; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span style="height: 1px; flex: 1; background: #cbd5e1;"></span>
+              <span><i class="fa-solid fa-arrow-down"></i> COMPLETELY REPLACED WITH <i class="fa-solid fa-arrow-down"></i></span>
+              <span style="height: 1px; flex: 1; background: #cbd5e1;"></span>
+            </div>
+
+            <!-- NEW SELECTION FIELDS -->
+            <div>
+              <div style="font-size: 0.72rem; color: #047857; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                <i class="fa-solid fa-circle-plus"></i> New Selection (Active Result)
+              </div>
+
+              <!-- DAY & PERIOD -->
+              <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                <div class="form-group mb-0">
+                  <label style="font-weight: 700; font-size: 0.8rem; color: #0f172a;">New Day <span class="text-danger">*</span></label>
+                  <select id="sa-edit-new-day-select" class="form-control" required style="font-weight: 600; font-size: 0.86rem; background: #fff;">
+                    <option value="Sunday">Sunday</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                  </select>
+                </div>
+                <div class="form-group mb-0">
+                  <label style="font-weight: 700; font-size: 0.8rem; color: #0f172a;">New Period <span class="text-danger">*</span></label>
+                  <select id="sa-edit-new-period-select" class="form-control" required style="font-weight: 600; font-size: 0.86rem; background: #fff;">
+                    <option value="1">Period 1</option>
+                    <option value="2">Period 2</option>
+                    <option value="3">Period 3</option>
+                    <option value="4">Period 4</option>
+                    <option value="5">Period 5</option>
+                    <option value="6">Period 6</option>
+                    <option value="7">Period 7</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- CLASS & SUBJECT -->
+              <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group mb-0">
+                  <label style="font-weight: 700; font-size: 0.8rem; color: #0f172a;">New Class <span class="text-danger">*</span></label>
+                  <select id="sa-edit-new-class-select" class="form-control" required style="font-weight: 600; font-size: 0.86rem; background: #fff;">
+                    <!-- Populated dynamically -->
+                  </select>
+                </div>
+                <div class="form-group mb-0">
+                  <label style="font-weight: 700; font-size: 0.8rem; color: #0f172a;">New Subject <span class="text-danger">*</span></label>
+                  <select id="sa-edit-new-subject-select" class="form-control" required style="font-weight: 600; font-size: 0.86rem; background: #fff;">
+                    <!-- Populated dynamically -->
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- REASON FIELD -->
+          <div class="form-group mb-3">
+            <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">
+              Reason for Replacement / Admin Note <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="sa-edit-reason" class="form-control" placeholder="e.g. Schedule correction requested by department head" required style="font-size: 0.88rem;">
+            <small class="text-muted" style="font-size: 0.74rem;">This will completely replace the existing selection. The previous value will be preserved in the audit history.</small>
+          </div>
+
+          <!-- LOCKED OBSERVER WARNING BOX IF APPLICABLE -->
+          <div id="sa-edit-locked-warning-box" class="hidden" style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 12px 14px; font-size: 0.82rem; color: #92400e; margin-bottom: 8px;">
+            <div style="display: flex; gap: 8px; align-items: flex-start;">
+              <i class="fa-solid fa-triangle-exclamation" style="margin-top: 2px; color: #d97706; font-size: 1rem;"></i>
+              <div>
+                <strong>Warning:</strong> The Observer Schedule is currently <strong>LOCKED</strong>. Replacing this selection will preserve locked observer duty integrity without silent modification.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-super-admin-edit-selection')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-sa-edit" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); font-weight: 700;">
+            <i class="fa-solid fa-check"></i> Confirm Replacement
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: SUPER ADMIN REMOVE SELECTION -->
+  <div id="modal-super-admin-remove-selection" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 480px;">
+      <div class="modal-header" style="background: #fef2f2; color: #991b1b; border-bottom: 1.5px solid #fecaca;">
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            <span class="badge" style="background: #b91c1c; color: #fff; font-size: 0.68rem; font-weight: 800; padding: 2px 6px; border-radius: 10px;">SUPER ADMIN</span>
+          </div>
+          <h3 style="color:#991b1b; margin:0; font-size:1.15rem;"><i class="fa-solid fa-trash-can" style="color:#ef4444;"></i> Remove Teacher Selection?</h3>
+        </div>
+        <button class="btn-close" onclick="closeModal('modal-super-admin-remove-selection')">&times;</button>
+      </div>
+
+      <form id="form-super-admin-remove-selection" onsubmit="executeSuperAdminRemoveSelection(event)">
+        <input type="hidden" id="sa-remove-selection-id">
+        <div class="modal-body" style="padding: 20px 22px;">
+          <p style="font-size: 0.86rem; color: #475569; margin-top: 0;">
+            Are you sure you want to remove the following active selection from the canonical dataset?
+          </p>
+
+          <!-- SELECTION DETAILS CARD -->
+          <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+            <div style="font-size: 0.82rem; color: #64748b; margin-bottom: 4px;">
+              <strong>Teacher:</strong> <span id="sa-remove-teacher-name" style="color: #0f172a; font-weight: 700;">--</span> &bull; 
+              <strong>Dept:</strong> <span id="sa-remove-dept-name" style="color: #4f46e5; font-weight: 700;">--</span>
+            </div>
+            <hr style="margin: 8px 0; border: 0; border-top: 1px solid #e2e8f0;">
+            <div style="font-size: 1rem; font-weight: 800; color: #0f172a;" id="sa-remove-slot-summary">
+              --
+            </div>
+          </div>
+
+          <!-- REASON FIELD -->
+          <div class="form-group mb-3">
+            <label style="font-weight: 700; font-size: 0.84rem; color: #0f172a;">
+              Reason for Removal <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="sa-remove-reason" class="form-control" placeholder="e.g. Allocation cancellation / Teacher transferred" required style="font-size: 0.88rem;">
+            <small class="text-muted" style="font-size: 0.74rem;">The selection will be removed from active data, but fully preserved in the audit log.</small>
+          </div>
+
+          <!-- LOCKED OBSERVER WARNING -->
+          <div id="sa-remove-locked-warning-box" class="hidden" style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 10px 12px; font-size: 0.8rem; color: #92400e;">
+            <i class="fa-solid fa-triangle-exclamation" style="color: #d97706;"></i> <strong>Note:</strong> The Observer Schedule is LOCKED. Removing this selection will not silently delete locked observer duties.
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 22px; display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-super-admin-remove-selection')">Cancel</button>
+          <button type="submit" class="btn btn-danger" id="btn-save-sa-remove" style="font-weight: 700;">
+            <i class="fa-solid fa-trash-can"></i> Remove Selection
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: LOCKED OBSERVER SCHEDULE CONFIRMATION DIALOG -->
+  <div id="modal-super-admin-locked-confirm" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 480px;">
+      <div class="modal-header" style="background: #fffbeb; color: #92400e; border-bottom: 1.5px solid #fde68a;">
+        <h3 style="color: #92400e; margin: 0; font-size: 1.1rem;"><i class="fa-solid fa-triangle-exclamation" style="color: #d97706;"></i> Locked Observer Schedule Impact</h3>
+        <button class="btn-close" onclick="closeModal('modal-super-admin-locked-confirm')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 22px;">
+        <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 10px; padding: 14px; margin-bottom: 14px; color: #991b1b; font-size: 0.85rem; line-height: 1.5;">
+          <strong>⚠️ LOCKED SCHEDULE IMPACT:</strong>
+          <p style="margin: 6px 0 0 0;" id="sa-locked-confirm-message">
+            This selection is currently used by a locked/finalized Observer Schedule. Changing this selection may affect schedule consistency.
+          </p>
+        </div>
+        <p style="font-size: 0.82rem; color: #64748b; margin: 0;">
+          The locked Observer Schedule will remain protected and will NOT be automatically regenerated. Do you wish to proceed with this Super Admin override?
+        </p>
+      </div>
+      <div class="modal-footer" style="padding: 14px 22px; display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-super-admin-locked-confirm')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-sa-locked-proceed" style="background: #d97706; border-color: #b45309; font-weight: 700;">
+          <i class="fa-solid fa-check"></i> Proceed with Override
+        </button>
+      </div>
     </div>
   </div>
 

@@ -230,8 +230,9 @@ function initLiveSync() {
 
     try {
       isSyncing = true;
-      if (currentUser.role === 'admin') {
-        if (viewId === 'admin-teaching-dashboard') await loadAdminTeachingDashboard(true);
+      if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
+        if (viewId === 'super-admin-override') await loadSuperAdminTeacherSelections(true);
+        else if (viewId === 'admin-teaching-dashboard') await loadAdminTeachingDashboard(true);
         else if (viewId === 'admin-teaching-teachers') await loadAdminTeachingTeachers(true);
         else if (viewId === 'admin-teaching-reports') await loadAdminTeachingReports(true);
         else if (viewId === 'admin-teaching-timetable') await loadAdminTeachingTimetable(true);
@@ -340,18 +341,30 @@ function showPortalLayout() {
   const role = currentUser.role || 'student';
 
   if (roleBadge) {
-    roleBadge.textContent = role === 'department_leader' ? 'DEPT LEADER' : role.toUpperCase();
-    if (role === 'admin') roleBadge.className = 'badge badge-role';
-    else if (role === 'teacher') roleBadge.className = 'badge badge-primary';
-    else if (role === 'department_leader') roleBadge.className = 'badge badge-warning';
-    else roleBadge.className = 'badge badge-success';
+    if (role === 'super_admin') {
+      roleBadge.textContent = 'SUPER ADMIN';
+      roleBadge.className = 'badge badge-warning';
+    } else if (role === 'department_leader') {
+      roleBadge.textContent = 'DEPT LEADER';
+      roleBadge.className = 'badge badge-warning';
+    } else if (role === 'admin') {
+      roleBadge.textContent = 'ADMIN';
+      roleBadge.className = 'badge badge-role';
+    } else if (role === 'teacher') {
+      roleBadge.textContent = 'TEACHER';
+      roleBadge.className = 'badge badge-primary';
+    } else {
+      roleBadge.textContent = 'STUDENT';
+      roleBadge.className = 'badge badge-success';
+    }
   }
 
   if (rolePill) {
     let roleLabel = 'Student';
-    if (role === 'admin') roleLabel = 'Admin';
-    if (role === 'teacher') roleLabel = 'Teacher';
-    if (role === 'department_leader') roleLabel = 'Dept Leader';
+    if (role === 'super_admin') roleLabel = 'Super Admin';
+    else if (role === 'admin') roleLabel = 'Admin';
+    else if (role === 'teacher') roleLabel = 'Teacher';
+    else if (role === 'department_leader') roleLabel = 'Dept Leader';
     rolePill.textContent = `@${currentUser.username || 'user'} - ${roleLabel}`;
   }
 
@@ -370,16 +383,24 @@ function showPortalLayout() {
   if (navStudent) navStudent.classList.add('hidden');
   if (navLeader) navLeader.classList.add('hidden');
 
-  if (role === 'admin') {
+  if (role === 'super_admin') {
+    if (navAdmin) navAdmin.classList.remove('hidden');
+    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.remove('hidden'));
+    switchTab('super-admin-override');
+  } else if (role === 'admin') {
+    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
     if (navAdmin) navAdmin.classList.remove('hidden');
     switchTab('admin-teaching-dashboard');
   } else if (role === 'teacher') {
+    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
     if (navTeacher) navTeacher.classList.remove('hidden');
     switchTab('teacher-dashboard');
   } else if (role === 'department_leader') {
+    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
     if (navLeader) navLeader.classList.remove('hidden');
     switchTab('leader-dashboard');
   } else {
+    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
     if (navStudent) navStudent.classList.remove('hidden');
     switchTab('student-dashboard');
   }
@@ -438,6 +459,7 @@ function switchTab(tabId) {
 
   // Update Top Title
   const titleMap = {
+    'super-admin-override': 'Super Admin: Teacher Subject Selection Override',
     'admin-dashboard': 'Exam Dashboard Overview',
     'admin-students': 'Student Accounts Management',
     'admin-classes': 'Classes & Batches Management',
@@ -475,6 +497,10 @@ function switchTab(tabId) {
     'student-results': 'My Exam Performance & Results',
     'student-profile': 'Student Profile Settings'
   };
+
+  if (tabId === 'super-admin-override') {
+    initSuperAdminOverrideView();
+  }
 
   const pageTitle = document.getElementById('page-title');
   if (pageTitle) {
@@ -10558,6 +10584,819 @@ function exportLeaderObserverCSV() {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// =============================================================================
+// SUPER ADMIN — MANUAL TEACHER SUBJECT SELECTION OVERRIDE MODULE
+// =============================================================================
+
+let superAdminOverrideState = {
+  departments: [],
+  selectedDeptId: null,
+  teachers: [],
+  selectedTeacherId: null,
+  selectedTeacher: null,
+  formData: {
+    classes: [],
+    subjects: [],
+    active_days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    periods: [1, 2, 3, 4, 5, 6, 7],
+    is_observer_locked: false
+  },
+  selections: [],
+  auditLogs: [],
+  searchQuery: '',
+  filterDay: 'all',
+  filterPeriod: 'all',
+  filterClass: 'all',
+  pendingLockedAction: null // Holds { type, payload } for confirmation callback
+};
+
+// 1. Initialize Super Admin Override View
+async function initSuperAdminOverrideView() {
+  await loadSuperAdminOverrideDepartments();
+}
+
+// 2. Load Departments into Dropdown
+async function loadSuperAdminOverrideDepartments() {
+  const select = document.getElementById('sa-override-dept-select');
+  if (!select) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/super-admin/departments?admin_id=${currentUser.id}&admin_role=${currentUser.role}`));
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to load departments');
+    }
+    const data = await res.json();
+    superAdminOverrideState.departments = data.departments || [];
+
+    let html = '<option value="">-- Choose Department --</option>';
+    superAdminOverrideState.departments.forEach(d => {
+      const isSelected = superAdminOverrideState.selectedDeptId && superAdminOverrideState.selectedDeptId == d.id;
+      html += `<option value="${d.id}" ${isSelected ? 'selected' : ''}>${escapeHtml(d.name)} (${d.teacher_count || 0} Teachers, ${d.total_selections || 0} Selections)</option>`;
+    });
+    select.innerHTML = html;
+
+    if (superAdminOverrideState.selectedDeptId) {
+      select.value = superAdminOverrideState.selectedDeptId;
+      await onSuperAdminDeptSelected(superAdminOverrideState.selectedDeptId);
+    }
+  } catch (err) {
+    console.error('Super Admin departments load error:', err);
+  }
+}
+
+// 3. Department Selection Handler (Department-First Isolation)
+async function onSuperAdminDeptSelected(deptId) {
+  const teacherSelect = document.getElementById('sa-override-teacher-select');
+  const teacherCard = document.getElementById('sa-override-teacher-card');
+  const selectionsCard = document.getElementById('sa-override-selections-card');
+  const auditSection = document.getElementById('sa-override-audit-section');
+  const placeholder = document.getElementById('sa-override-placeholder');
+
+  superAdminOverrideState.selectedDeptId = deptId ? parseInt(deptId) : null;
+  superAdminOverrideState.selectedTeacherId = null;
+  superAdminOverrideState.selectedTeacher = null;
+  superAdminOverrideState.selections = [];
+  superAdminOverrideState.auditLogs = [];
+
+  if (!deptId) {
+    if (teacherSelect) {
+      teacherSelect.innerHTML = '<option value="">-- Select Department First --</option>';
+      teacherSelect.disabled = true;
+    }
+    if (teacherCard) teacherCard.classList.add('hidden');
+    if (selectionsCard) selectionsCard.classList.add('hidden');
+    if (auditSection) auditSection.classList.add('hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
+    return;
+  }
+
+  if (teacherSelect) {
+    teacherSelect.innerHTML = '<option value="">Loading teachers...</option>';
+    teacherSelect.disabled = true;
+  }
+
+  try {
+    const [teachersRes, formDataRes] = await Promise.all([
+      fetch(apiUrl(`/api/teaching/super-admin/teachers?department_id=${deptId}&admin_id=${currentUser.id}&admin_role=${currentUser.role}`)),
+      fetch(apiUrl(`/api/teaching/super-admin/form-data?department_id=${deptId}&admin_id=${currentUser.id}&admin_role=${currentUser.role}`))
+    ]);
+
+    if (!teachersRes.ok) {
+      const err = await teachersRes.json();
+      throw new Error(err.error || 'Failed to fetch teachers for department');
+    }
+    const teachersData = await teachersRes.json();
+    superAdminOverrideState.teachers = teachersData.teachers || [];
+
+    if (formDataRes.ok) {
+      const formJson = await formDataRes.json();
+      superAdminOverrideState.formData = {
+        classes: formJson.classes || [],
+        subjects: formJson.subjects || [],
+        active_days: formJson.active_days || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+        periods: formJson.periods || [1, 2, 3, 4, 5, 6, 7],
+        is_observer_locked: formJson.is_observer_locked || false
+      };
+    }
+
+    let tHtml = '<option value="">-- Select Teacher (' + superAdminOverrideState.teachers.length + ' Available) --</option>';
+    superAdminOverrideState.teachers.forEach(t => {
+      tHtml += `<option value="${t.id}">${escapeHtml(t.full_name)} (@${escapeHtml(t.username)}) &bull; ${t.selection_count || 0} active</option>`;
+    });
+
+    if (teacherSelect) {
+      teacherSelect.innerHTML = tHtml;
+      teacherSelect.disabled = false;
+    }
+
+    if (teacherCard) teacherCard.classList.add('hidden');
+    if (selectionsCard) selectionsCard.classList.add('hidden');
+    if (auditSection) auditSection.classList.add('hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
+
+  } catch (err) {
+    alert('Error loading department teachers: ' + err.message);
+    if (teacherSelect) {
+      teacherSelect.innerHTML = '<option value="">-- Failed to Load Teachers --</option>';
+      teacherSelect.disabled = true;
+    }
+  }
+}
+
+// 4. Teacher Selection Handler
+async function onSuperAdminTeacherSelected(teacherId) {
+  const teacherCard = document.getElementById('sa-override-teacher-card');
+  const selectionsCard = document.getElementById('sa-override-selections-card');
+  const auditSection = document.getElementById('sa-override-audit-section');
+  const placeholder = document.getElementById('sa-override-placeholder');
+
+  superAdminOverrideState.selectedTeacherId = teacherId ? parseInt(teacherId) : null;
+
+  if (!teacherId) {
+    superAdminOverrideState.selectedTeacher = null;
+    superAdminOverrideState.selections = [];
+    if (teacherCard) teacherCard.classList.add('hidden');
+    if (selectionsCard) selectionsCard.classList.add('hidden');
+    if (auditSection) auditSection.classList.add('hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
+    return;
+  }
+
+  await loadSuperAdminTeacherSelections();
+}
+
+// 5. Load Active Selections for Selected Teacher & Department
+async function loadSuperAdminTeacherSelections(silent = false) {
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const teacherId = superAdminOverrideState.selectedTeacherId;
+  if (!deptId || !teacherId) return;
+
+  const teacherCard = document.getElementById('sa-override-teacher-card');
+  const selectionsCard = document.getElementById('sa-override-selections-card');
+  const auditSection = document.getElementById('sa-override-audit-section');
+  const placeholder = document.getElementById('sa-override-placeholder');
+
+  try {
+    const res = await fetch(apiUrl(`/api/teaching/super-admin/selections?department_id=${deptId}&teacher_id=${teacherId}&admin_id=${currentUser.id}&admin_role=${currentUser.role}`));
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to fetch teacher selections');
+    }
+
+    const data = await res.json();
+    superAdminOverrideState.selectedTeacher = data.teacher;
+    superAdminOverrideState.selections = data.selections || [];
+
+    renderSuperAdminTeacherOverview(data);
+    populateSuperAdminClassFilter();
+    renderSuperAdminSelectionsTable();
+
+    if (teacherCard) teacherCard.classList.remove('hidden');
+    if (selectionsCard) selectionsCard.classList.remove('hidden');
+    if (auditSection) auditSection.classList.remove('hidden');
+    if (placeholder) placeholder.classList.add('hidden');
+
+    loadSuperAdminOverrideAuditLogs();
+
+  } catch (err) {
+    if (!silent) alert('Error loading teacher selections: ' + err.message);
+  }
+}
+
+// 6. Render Teacher Overview Card
+function renderSuperAdminTeacherOverview(data) {
+  const t = data.teacher || {};
+  const d = data.department || {};
+  const isObsLocked = data.is_observer_locked || false;
+  const win = data.selection_window || {};
+
+  const nameEl = document.getElementById('sa-override-teacher-name');
+  const userEl = document.getElementById('sa-override-username');
+  const phoneEl = document.getElementById('sa-override-phone');
+  const deptBadge = document.getElementById('sa-override-dept-badge');
+  const countBadge = document.getElementById('sa-override-count-badge');
+  const obsLockedPill = document.getElementById('sa-override-obs-locked-pill');
+  const winStatusPill = document.getElementById('sa-override-window-status-pill');
+  const avatarEl = document.getElementById('sa-override-avatar');
+
+  if (nameEl) nameEl.textContent = t.full_name || 'Teacher';
+  if (userEl) userEl.textContent = `@${t.username || ''}`;
+  if (phoneEl) phoneEl.textContent = t.phone || t.email || 'No contact details';
+  if (deptBadge) deptBadge.textContent = d.name || 'Department';
+  if (countBadge) countBadge.textContent = `${(data.selections || []).length} Active Selections`;
+  if (avatarEl) avatarEl.textContent = t.full_name ? t.full_name.charAt(0).toUpperCase() : 'T';
+
+  if (obsLockedPill) {
+    if (isObsLocked) obsLockedPill.classList.remove('hidden');
+    else obsLockedPill.classList.add('hidden');
+  }
+
+  if (winStatusPill) {
+    if (win.is_locked) {
+      winStatusPill.className = 'badge badge-danger';
+      winStatusPill.innerHTML = '<i class="fa-solid fa-lock"></i> Teacher Window: LOCKED';
+    } else if (!win.is_open) {
+      winStatusPill.className = 'badge badge-warning';
+      winStatusPill.innerHTML = '<i class="fa-solid fa-door-closed"></i> Teacher Window: CLOSED';
+    } else {
+      winStatusPill.className = 'badge badge-success';
+      winStatusPill.innerHTML = '<i class="fa-solid fa-door-open"></i> Teacher Window: OPEN';
+    }
+  }
+}
+
+// 7. Populate Class Filter Dropdown
+function populateSuperAdminClassFilter() {
+  const classFilter = document.getElementById('sa-override-filter-class');
+  if (!classFilter) return;
+
+  const currentVal = classFilter.value;
+  const classes = superAdminOverrideState.formData.classes || [];
+
+  let html = '<option value="all">All Classes</option>';
+  classes.forEach(c => {
+    html += `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`;
+  });
+
+  classFilter.innerHTML = html;
+  if (currentVal) classFilter.value = currentVal;
+}
+
+// 8. Filter Selections Table
+function filterSuperAdminSelectionsTable() {
+  const searchInput = document.getElementById('sa-override-search-input');
+  const dayFilter = document.getElementById('sa-override-filter-day');
+  const periodFilter = document.getElementById('sa-override-filter-period');
+  const classFilter = document.getElementById('sa-override-filter-class');
+
+  superAdminOverrideState.searchQuery = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  superAdminOverrideState.filterDay = dayFilter ? dayFilter.value : 'all';
+  superAdminOverrideState.filterPeriod = periodFilter ? periodFilter.value : 'all';
+  superAdminOverrideState.filterClass = classFilter ? classFilter.value : 'all';
+
+  renderSuperAdminSelectionsTable();
+}
+
+// 9. Reset Filters
+function resetSuperAdminSelectionFilters() {
+  const searchInput = document.getElementById('sa-override-search-input');
+  const dayFilter = document.getElementById('sa-override-filter-day');
+  const periodFilter = document.getElementById('sa-override-filter-period');
+  const classFilter = document.getElementById('sa-override-filter-class');
+
+  if (searchInput) searchInput.value = '';
+  if (dayFilter) dayFilter.value = 'all';
+  if (periodFilter) periodFilter.value = 'all';
+  if (classFilter) classFilter.value = 'all';
+
+  superAdminOverrideState.searchQuery = '';
+  superAdminOverrideState.filterDay = 'all';
+  superAdminOverrideState.filterPeriod = 'all';
+  superAdminOverrideState.filterClass = 'all';
+
+  renderSuperAdminSelectionsTable();
+}
+
+// 10. Render Selections Table with Filter Application
+function renderSuperAdminSelectionsTable() {
+  const tbody = document.getElementById('sa-override-selections-tbody');
+  const emptyState = document.getElementById('sa-override-empty-state');
+  if (!tbody) return;
+
+  const allSelections = superAdminOverrideState.selections || [];
+  const query = superAdminOverrideState.searchQuery;
+  const fDay = superAdminOverrideState.filterDay;
+  const fPeriod = superAdminOverrideState.filterPeriod;
+  const fClass = superAdminOverrideState.filterClass;
+
+  const filtered = allSelections.filter(s => {
+    if (fDay !== 'all' && s.day !== fDay) return false;
+    if (fPeriod !== 'all' && s.period != fPeriod) return false;
+    if (fClass !== 'all' && s.class_name.toLowerCase() !== fClass.toLowerCase()) return false;
+    if (query) {
+      const text = `${s.day} Period ${s.period} ${s.class_name} ${s.subject} ${s.department_name || ''}`.toLowerCase();
+      if (!text.includes(query)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    if (emptyState) emptyState.classList.remove('hidden');
+    return;
+  }
+
+  if (emptyState) emptyState.classList.add('hidden');
+
+  let html = '';
+  filtered.forEach((s, idx) => {
+    const timeFormatted = s.selected_at ? new Date(s.selected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Confirmed';
+
+    html += `
+      <tr style="border-bottom: 1px solid #e2e8f0; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <td style="padding: 12px 14px; text-align: center; color: #94a3b8; font-weight: 700;">${idx + 1}</td>
+        <td style="padding: 12px 14px; font-weight: 700;">${getDayBadgeHtml(s.day)}</td>
+        <td style="padding: 12px 14px;">
+          <span class="badge" style="background: #e0e7ff; color: #3730a3; font-weight: 800; font-size: 0.76rem; padding: 4px 8px; border-radius: 8px;">
+            Period ${s.period}
+          </span>
+        </td>
+        <td style="padding: 12px 14px; font-weight: 800; color: #0f172a;">
+          <i class="fa-solid fa-chalkboard text-muted" style="margin-right: 4px;"></i> ${escapeHtml(s.class_name)}
+        </td>
+        <td style="padding: 12px 14px; font-weight: 700; color: #4338ca;">
+          <i class="fa-solid fa-book-bookmark text-muted" style="margin-right: 4px;"></i> ${escapeHtml(s.subject)}
+        </td>
+        <td style="padding: 12px 14px; color: #64748b; font-size: 0.82rem;">
+          ${escapeHtml(s.department_name || 'MEDIA')}
+        </td>
+        <td style="padding: 12px 14px; font-size: 0.8rem; color: #64748b;">
+          <span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px;"><i class="fa-solid fa-check"></i> Active</span>
+          <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 2px;">${timeFormatted}</div>
+        </td>
+        <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+          <div style="display: flex; gap: 6px; justify-content: flex-end;">
+            <button type="button" class="btn btn-sm btn-outline" onclick="openSuperAdminEditModal(${s.id})" title="Completely replace Day/Period/Class/Subject" style="font-weight: 700; color: #0284c7; border-color: #bae6fd;">
+              <i class="fa-solid fa-pen-to-square"></i> Edit
+            </button>
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="openSuperAdminRemoveModal(${s.id})" title="Remove active selection" style="font-weight: 700; border-color: #fecaca;">
+              <i class="fa-solid fa-trash-can"></i> Remove
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// 11. Open Add Selection Modal
+function openSuperAdminAddModal() {
+  const teacher = superAdminOverrideState.selectedTeacher;
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const dept = (superAdminOverrideState.departments || []).find(d => d.id == deptId);
+  if (!teacher || !deptId) return alert('Please select a department and teacher first.');
+
+  const nameEl = document.getElementById('sa-add-teacher-name-display');
+  const deptPill = document.getElementById('sa-add-dept-pill');
+  const lockedBadge = document.getElementById('sa-add-obs-locked-badge');
+  const lockedWarningBox = document.getElementById('sa-add-locked-warning-box');
+  const daySelect = document.getElementById('sa-add-day-select');
+  const classSelect = document.getElementById('sa-add-class-select');
+  const subjectSelect = document.getElementById('sa-add-subject-select');
+  const reasonInput = document.getElementById('sa-add-reason');
+
+  if (nameEl) nameEl.textContent = `${teacher.full_name} (@${teacher.username})`;
+  if (deptPill) deptPill.textContent = `Dept: ${dept ? dept.name : 'Department'}`;
+
+  const isObsLocked = superAdminOverrideState.formData.is_observer_locked;
+  if (lockedBadge) {
+    if (isObsLocked) lockedBadge.classList.remove('hidden');
+    else lockedBadge.classList.add('hidden');
+  }
+  if (lockedWarningBox) {
+    if (isObsLocked) lockedWarningBox.classList.remove('hidden');
+    else lockedWarningBox.classList.add('hidden');
+  }
+
+  // Populate Active Days
+  if (daySelect) {
+    const days = superAdminOverrideState.formData.active_days || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let dHtml = '';
+    days.forEach(d => {
+      dHtml += `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`;
+    });
+    daySelect.innerHTML = dHtml;
+  }
+
+  // Populate Classes
+  if (classSelect) {
+    const classes = superAdminOverrideState.formData.classes || [];
+    let cHtml = '';
+    classes.forEach(c => {
+      cHtml += `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`;
+    });
+    classSelect.innerHTML = cHtml;
+  }
+
+  // Populate Subjects
+  if (subjectSelect) {
+    const subjects = superAdminOverrideState.formData.subjects || [];
+    let sHtml = '';
+    subjects.forEach(s => {
+      sHtml += `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`;
+    });
+    subjectSelect.innerHTML = sHtml;
+  }
+
+  if (reasonInput) reasonInput.value = '';
+
+  openModal('modal-super-admin-add-selection');
+}
+
+// 12. Save Super Admin Add Selection
+async function saveSuperAdminAddSelection(e, confirmedLocked = false) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const teacherId = superAdminOverrideState.selectedTeacherId;
+  const day = document.getElementById('sa-add-day-select').value;
+  const period = parseInt(document.getElementById('sa-add-period-select').value);
+  const className = document.getElementById('sa-add-class-select').value;
+  const subject = document.getElementById('sa-add-subject-select').value;
+  const reason = document.getElementById('sa-add-reason').value.trim();
+
+  const btn = document.getElementById('btn-save-sa-add');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/super-admin/add-selection'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser.id,
+        admin_role: currentUser.role,
+        admin_name: currentUser.full_name || currentUser.username,
+        department_id: deptId,
+        teacher_id: teacherId,
+        day,
+        period,
+        class_name: className,
+        subject,
+        reason,
+        confirm_locked_override: confirmedLocked
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (data.code === 'LOCKED_SCHEDULE_WARNING' || data.requires_confirmation) {
+        closeModal('modal-super-admin-add-selection');
+        superAdminOverrideState.pendingLockedAction = () => saveSuperAdminAddSelection(null, true);
+        const msgEl = document.getElementById('sa-locked-confirm-message');
+        if (msgEl) msgEl.textContent = data.message || 'This selection is currently used by a locked/finalized Observer Schedule.';
+        openModal('modal-super-admin-locked-confirm');
+        return;
+      }
+      throw new Error(data.error || 'Failed to add selection.');
+    }
+
+    closeModal('modal-super-admin-add-selection');
+    closeModal('modal-super-admin-locked-confirm');
+
+    await loadSuperAdminTeacherSelections();
+    alert('✅ ' + (data.message || 'Selection added successfully via Super Admin override.'));
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 13. Open Edit Modal (Complete Replacement)
+function openSuperAdminEditModal(selectionId) {
+  const selection = (superAdminOverrideState.selections || []).find(s => s.id == selectionId);
+  const teacher = superAdminOverrideState.selectedTeacher;
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const dept = (superAdminOverrideState.departments || []).find(d => d.id == deptId);
+  if (!selection || !teacher) return alert('Selection not found.');
+
+  document.getElementById('sa-edit-selection-id').value = selection.id;
+  const nameEl = document.getElementById('sa-edit-teacher-name-display');
+  const deptEl = document.getElementById('sa-edit-dept-name-display');
+  const deptPill = document.getElementById('sa-edit-dept-pill');
+  const oldSummaryEl = document.getElementById('sa-edit-old-summary');
+  const newDaySelect = document.getElementById('sa-edit-new-day-select');
+  const newPeriodSelect = document.getElementById('sa-edit-new-period-select');
+  const newClassSelect = document.getElementById('sa-edit-new-class-select');
+  const newSubjectSelect = document.getElementById('sa-edit-new-subject-select');
+  const reasonInput = document.getElementById('sa-edit-reason');
+  const lockedWarningBox = document.getElementById('sa-edit-locked-warning-box');
+
+  if (nameEl) nameEl.textContent = `${teacher.full_name} (@${teacher.username})`;
+  if (deptEl) deptEl.textContent = dept ? dept.name : 'Department';
+  if (deptPill) deptPill.textContent = `Dept: ${dept ? dept.name : 'Department'}`;
+  if (oldSummaryEl) {
+    oldSummaryEl.innerHTML = `<strong>${escapeHtml(selection.day)} Period ${selection.period}</strong> &bull; Class: <span style="color:#0f172a;">${escapeHtml(selection.class_name)}</span> &bull; Subject: <span style="color:#4338ca;">${escapeHtml(selection.subject)}</span>`;
+  }
+
+  // Populate Days
+  if (newDaySelect) {
+    const days = superAdminOverrideState.formData.active_days || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let dHtml = '';
+    days.forEach(d => {
+      const sel = (d === selection.day) ? 'selected' : '';
+      dHtml += `<option value="${escapeHtml(d)}" ${sel}>${escapeHtml(d)}</option>`;
+    });
+    newDaySelect.innerHTML = dHtml;
+  }
+
+  // Set Period
+  if (newPeriodSelect) newPeriodSelect.value = selection.period;
+
+  // Populate Classes
+  if (newClassSelect) {
+    const classes = superAdminOverrideState.formData.classes || [];
+    let cHtml = '';
+    classes.forEach(c => {
+      const sel = (c.name.toLowerCase() === selection.class_name.toLowerCase()) ? 'selected' : '';
+      cHtml += `<option value="${escapeHtml(c.name)}" ${sel}>${escapeHtml(c.name)}</option>`;
+    });
+    newClassSelect.innerHTML = cHtml;
+  }
+
+  // Populate Subjects
+  if (newSubjectSelect) {
+    const subjects = superAdminOverrideState.formData.subjects || [];
+    let sHtml = '';
+    subjects.forEach(s => {
+      const sel = (s.name.toLowerCase() === selection.subject.toLowerCase()) ? 'selected' : '';
+      sHtml += `<option value="${escapeHtml(s.name)}" ${sel}>${escapeHtml(s.name)}</option>`;
+    });
+    newSubjectSelect.innerHTML = sHtml;
+  }
+
+  if (reasonInput) reasonInput.value = '';
+
+  const isObsLocked = superAdminOverrideState.formData.is_observer_locked;
+  if (lockedWarningBox) {
+    if (isObsLocked) lockedWarningBox.classList.remove('hidden');
+    else lockedWarningBox.classList.add('hidden');
+  }
+
+  openModal('modal-super-admin-edit-selection');
+}
+
+// 14. Save Edit (Complete Replacement)
+async function saveSuperAdminEditSelection(e, confirmedLocked = false) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const teacherId = superAdminOverrideState.selectedTeacherId;
+  const selectionId = parseInt(document.getElementById('sa-edit-selection-id').value);
+  const newDay = document.getElementById('sa-edit-new-day-select').value;
+  const newPeriod = parseInt(document.getElementById('sa-edit-new-period-select').value);
+  const newClass = document.getElementById('sa-edit-new-class-select').value;
+  const newSubject = document.getElementById('sa-edit-new-subject-select').value;
+  const reason = document.getElementById('sa-edit-reason').value.trim();
+
+  const btn = document.getElementById('btn-save-sa-edit');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/super-admin/edit-selection'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser.id,
+        admin_role: currentUser.role,
+        admin_name: currentUser.full_name || currentUser.username,
+        department_id: deptId,
+        teacher_id: teacherId,
+        selection_id: selectionId,
+        new_day: newDay,
+        new_period: newPeriod,
+        new_class_name: newClass,
+        new_subject: newSubject,
+        reason,
+        confirm_locked_override: confirmedLocked
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (data.code === 'LOCKED_SCHEDULE_WARNING' || data.requires_confirmation) {
+        closeModal('modal-super-admin-edit-selection');
+        superAdminOverrideState.pendingLockedAction = () => saveSuperAdminEditSelection(null, true);
+        const msgEl = document.getElementById('sa-locked-confirm-message');
+        if (msgEl) msgEl.textContent = data.message || 'This selection is currently used by a locked/finalized Observer Schedule.';
+        openModal('modal-super-admin-locked-confirm');
+        return;
+      }
+      throw new Error(data.error || 'Failed to replace selection.');
+    }
+
+    closeModal('modal-super-admin-edit-selection');
+    closeModal('modal-super-admin-locked-confirm');
+
+    await loadSuperAdminTeacherSelections();
+    alert('✅ ' + (data.message || 'Selection completely replaced successfully via Super Admin override.'));
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 15. Open Remove Modal
+function openSuperAdminRemoveModal(selectionId) {
+  const selection = (superAdminOverrideState.selections || []).find(s => s.id == selectionId);
+  const teacher = superAdminOverrideState.selectedTeacher;
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const dept = (superAdminOverrideState.departments || []).find(d => d.id == deptId);
+  if (!selection || !teacher) return alert('Selection not found.');
+
+  document.getElementById('sa-remove-selection-id').value = selection.id;
+  const teacherNameEl = document.getElementById('sa-remove-teacher-name');
+  const deptNameEl = document.getElementById('sa-remove-dept-name');
+  const summaryEl = document.getElementById('sa-remove-slot-summary');
+  const reasonInput = document.getElementById('sa-remove-reason');
+  const lockedWarningBox = document.getElementById('sa-remove-locked-warning-box');
+
+  if (teacherNameEl) teacherNameEl.textContent = `${teacher.full_name} (@${teacher.username})`;
+  if (deptNameEl) deptNameEl.textContent = dept ? dept.name : 'Department';
+  if (summaryEl) {
+    summaryEl.innerHTML = `<strong>${escapeHtml(selection.day)} Period ${selection.period}</strong> &bull; Class: <span style="color:#0f172a;">${escapeHtml(selection.class_name)}</span> &bull; Subject: <span style="color:#4338ca;">${escapeHtml(selection.subject)}</span>`;
+  }
+  if (reasonInput) reasonInput.value = '';
+
+  const isObsLocked = superAdminOverrideState.formData.is_observer_locked;
+  if (lockedWarningBox) {
+    if (isObsLocked) lockedWarningBox.classList.remove('hidden');
+    else lockedWarningBox.classList.add('hidden');
+  }
+
+  openModal('modal-super-admin-remove-selection');
+}
+
+// 16. Execute Remove Selection
+async function executeSuperAdminRemoveSelection(e, confirmedLocked = false) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const teacherId = superAdminOverrideState.selectedTeacherId;
+  const selectionId = parseInt(document.getElementById('sa-remove-selection-id').value);
+  const reason = document.getElementById('sa-remove-reason').value.trim();
+
+  const btn = document.getElementById('btn-save-sa-remove');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl('/api/teaching/super-admin/remove-selection'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_id: currentUser.id,
+        admin_role: currentUser.role,
+        admin_name: currentUser.full_name || currentUser.username,
+        department_id: deptId,
+        teacher_id: teacherId,
+        selection_id: selectionId,
+        reason,
+        confirm_locked_override: confirmedLocked
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (data.code === 'LOCKED_SCHEDULE_WARNING' || data.requires_confirmation) {
+        closeModal('modal-super-admin-remove-selection');
+        superAdminOverrideState.pendingLockedAction = () => executeSuperAdminRemoveSelection(null, true);
+        const msgEl = document.getElementById('sa-locked-confirm-message');
+        if (msgEl) msgEl.textContent = data.message || 'This selection is currently used by a locked/finalized Observer Schedule.';
+        openModal('modal-super-admin-locked-confirm');
+        return;
+      }
+      throw new Error(data.error || 'Failed to remove selection.');
+    }
+
+    closeModal('modal-super-admin-remove-selection');
+    closeModal('modal-super-admin-locked-confirm');
+
+    await loadSuperAdminTeacherSelections();
+    alert('✅ ' + (data.message || 'Selection removed successfully via Super Admin override.'));
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 17. Execute Pending Locked Schedule Action after confirmation
+document.addEventListener('DOMContentLoaded', () => {
+  const proceedBtn = document.getElementById('btn-sa-locked-proceed');
+  if (proceedBtn) {
+    proceedBtn.onclick = () => {
+      if (typeof superAdminOverrideState.pendingLockedAction === 'function') {
+        const action = superAdminOverrideState.pendingLockedAction;
+        superAdminOverrideState.pendingLockedAction = null;
+        action();
+      }
+    };
+  }
+});
+
+// 18. Load Super Admin Override Audit Logs
+async function loadSuperAdminOverrideAuditLogs() {
+  const deptId = superAdminOverrideState.selectedDeptId;
+  const teacherId = superAdminOverrideState.selectedTeacherId;
+  if (!deptId) return;
+
+  const tbody = document.getElementById('sa-override-audit-tbody');
+  const countBadge = document.getElementById('sa-override-audit-count-badge');
+  if (!tbody) return;
+
+  try {
+    let url = `/api/teaching/super-admin/audit-logs?department_id=${deptId}&admin_id=${currentUser.id}&admin_role=${currentUser.role}`;
+    if (teacherId) url += `&teacher_id=${teacherId}`;
+
+    const res = await fetch(apiUrl(url));
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const logs = data.logs || [];
+    superAdminOverrideState.auditLogs = logs;
+
+    if (countBadge) countBadge.textContent = `${logs.length} Logs`;
+
+    if (logs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #94a3b8;">No override audit logs recorded yet for this teacher/department.</td></tr>`;
+      return;
+    }
+
+    let html = '';
+    logs.forEach(log => {
+      const details = typeof log.details === 'string' ? JSON.parse(log.details) : (log.details || {});
+      const dateFormatted = new Date(log.created_at).toLocaleString();
+
+      let actionBadge = `<span class="badge badge-primary">${escapeHtml(log.action)}</span>`;
+      if (log.action === 'SUPER_ADMIN_OVERRIDE_ADD') {
+        actionBadge = `<span class="badge" style="background:#ecfdf5; color:#047857; font-weight:800;"><i class="fa-solid fa-plus"></i> ADD OVERRIDE</span>`;
+      } else if (log.action === 'SUPER_ADMIN_OVERRIDE_EDIT') {
+        actionBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-weight:800;"><i class="fa-solid fa-arrows-rotate"></i> EDIT (REPLACED)</span>`;
+      } else if (log.action === 'SUPER_ADMIN_OVERRIDE_REMOVE') {
+        actionBadge = `<span class="badge" style="background:#fef2f2; color:#b91c1c; font-weight:800;"><i class="fa-solid fa-trash-can"></i> REMOVE OVERRIDE</span>`;
+      }
+
+      // Format Before State
+      let beforeHtml = '<span class="text-muted">None</span>';
+      if (details.before) {
+        beforeHtml = `<strong>${escapeHtml(details.before.day)} P${details.before.period}</strong><br><span style="color:#475569;">${escapeHtml(details.before.class_name)} (${escapeHtml(details.before.subject)})</span>`;
+      } else if (details.removed_selection) {
+        beforeHtml = `<strong>${escapeHtml(details.removed_selection.day)} P${details.removed_selection.period}</strong><br><span style="color:#475569;">${escapeHtml(details.removed_selection.class_name)} (${escapeHtml(details.removed_selection.subject)})</span>`;
+      }
+
+      // Format After State
+      let afterHtml = '<span class="text-muted">Removed</span>';
+      if (details.after) {
+        afterHtml = `<strong>${escapeHtml(details.after.day)} P${details.after.period}</strong><br><span style="color:#0f172a; font-weight:700;">${escapeHtml(details.after.class_name)} (${escapeHtml(details.after.subject)})</span>`;
+      } else if (details.added_selection) {
+        afterHtml = `<strong>${escapeHtml(details.added_selection.day)} P${details.added_selection.period}</strong><br><span style="color:#0f172a; font-weight:700;">${escapeHtml(details.added_selection.class_name)} (${escapeHtml(details.added_selection.subject)})</span>`;
+      }
+
+      const lockedImpactNote = details.locked_schedule_impact ? `<div style="color:#d97706; font-size:0.72rem; font-weight:700; margin-top:3px;"><i class="fa-solid fa-lock"></i> Locked Schedule Impacted</div>` : '';
+
+      html += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 10px 12px; font-size: 0.76rem; color: #64748b; white-space: nowrap;">${dateFormatted}</td>
+          <td style="padding: 10px 12px;">${actionBadge}</td>
+          <td style="padding: 10px 12px; font-weight: 700; color: #0f172a; font-size: 0.8rem;">
+            ${escapeHtml(log.user_name || 'Super Admin')}
+          </td>
+          <td style="padding: 10px 12px; font-size: 0.8rem;">${beforeHtml}</td>
+          <td style="padding: 10px 12px; font-size: 0.8rem;">${afterHtml}</td>
+          <td style="padding: 10px 12px; font-size: 0.8rem; color: #334155;">
+            <em>${escapeHtml(details.reason || log.action)}</em>
+            ${lockedImpactNote}
+          </td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+  } catch (err) {
+    console.error('Audit log load error:', err);
+  }
 }
 
 

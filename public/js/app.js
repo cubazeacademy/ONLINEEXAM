@@ -9908,55 +9908,71 @@ async function openLeaderManualEditModal(day, period, className) {
   const reasonInput = document.getElementById('leader-obs-edit-reason');
   const obs1Tag = document.getElementById('leader-obs1-current-tag');
   const obs2Tag = document.getElementById('leader-obs2-current-tag');
+  const select1 = document.getElementById('leader-select-obs1');
+  const select2 = document.getElementById('leader-select-obs2');
 
   if (deptPill) deptPill.textContent = `Dept: ${leaderState.department?.name || '--'}`;
   if (titleEl) titleEl.innerHTML = `${escapeHtml(className)} — Period ${period} <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(${escapeHtml(slot.time_slot || '')})</span>`;
   if (dayEl) dayEl.textContent = day;
-  if (subjEl) subjEl.textContent = slot.subject_code || 'General';
-  if (teachEl) teachEl.innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(slot.teaching_teacher_name || 'None')}`;
+  if (subjEl) subjEl.textContent = slot.subject_code || slot.subject || 'General';
+  if (teachEl) teachEl.innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(slot.teaching_teacher_name || slot.class_teacher_name || 'None')}`;
   if (reasonInput) reasonInput.value = '';
   if (obs1Tag) obs1Tag.textContent = `Current: ${slot.observer_1_name || 'Unassigned'}`;
   if (obs2Tag) obs2Tag.textContent = `Current: ${slot.observer_2_name || 'Unassigned'}`;
 
-  // Populate Observer 1 & 2 dropdowns with eligibility
-  populateLeaderObserverDropdowns(slot);
+  if (select1) select1.innerHTML = `<option value="">Loading eligible teachers...</option>`;
+  if (select2) select2.innerHTML = `<option value="">Loading eligible teachers...</option>`;
 
   openModal('modal-leader-observer-manual-edit');
+
+  try {
+    const deptId = leaderState.department?.id;
+    const res = await fetch(apiUrl(`/api/observer/slot-eligibility?department_id=${deptId}&day=${encodeURIComponent(day)}&period=${period}&class_name=${encodeURIComponent(className)}&current_obs1_id=${slot.observer_1_id || ''}&current_obs2_id=${slot.observer_2_id || ''}`));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch eligible teachers');
+    const teachers = data.teachers || [];
+    populateLeaderObserverDropdowns(teachers, slot.observer_1_id, slot.observer_2_id);
+  } catch (err) {
+    console.error('Error loading slot eligibility for leader:', err);
+    if (select1) select1.innerHTML = `<option value="">Error loading teachers</option>`;
+    if (select2) select2.innerHTML = `<option value="">Error loading teachers</option>`;
+  }
 }
 
 // 8. Populate Observer Dropdowns with Eligibility Rules
-function populateLeaderObserverDropdowns(slot) {
+function populateLeaderObserverDropdowns(candidates, currentObs1Id, currentObs2Id) {
   const select1 = document.getElementById('leader-select-obs1');
   const select2 = document.getElementById('leader-select-obs2');
   if (!select1 || !select2) return;
 
-  const candidates = slot.available_observers || [];
-
-  const buildOptions = (currentSelectedId) => {
+  const buildOptions = (currentSelectedId, otherSelectedId) => {
     let html = `<option value="">-- Select Observer --</option>`;
     candidates.forEach(c => {
       const isSelected = c.teacher_id == currentSelectedId;
-      const isBlocked = c.is_blocked && !isSelected;
-      const blockedLabel = c.blocked_reason ? ` [BLOCKED: ${c.blocked_reason}]` : '';
-      const leaderLabel = c.is_leader ? ' [LEADER / STANDBY]' : '';
-      const dutyLabel = c.duty_count !== undefined ? ` (${c.duty_count} duties)` : '';
+      const isOther = otherSelectedId && c.teacher_id == otherSelectedId;
+      const isBlocked = !c.is_eligible && !isSelected;
+      let labelPrefix = c.is_eligible ? '✅ ' : '❌ ';
+      if (c.is_leader) labelPrefix = '👑 ';
+      let badgeInfo = '';
+      if (c.duty_count !== undefined) badgeInfo += ` [${c.duty_count} duties]`;
+      if (!c.is_eligible && c.hard_block_reason) badgeInfo += ` (Blocked: ${c.hard_block_reason})`;
 
       html += `
         <option value="${c.teacher_id}" 
           ${isSelected ? 'selected' : ''} 
-          ${isBlocked ? 'disabled style="color:#94a3b8;"' : ''}
-          data-blocked="${c.is_blocked}"
+          ${(isBlocked || isOther) ? 'disabled style="color:#94a3b8;"' : ''}
+          data-blocked="${!c.is_eligible}"
           data-leader="${c.is_leader || false}"
           data-duty="${c.duty_count || 0}">
-          ${escapeHtml(c.teacher_name)}${leaderLabel}${dutyLabel}${blockedLabel}
+          ${labelPrefix}${escapeHtml(c.teacher_name)}${badgeInfo}
         </option>
       `;
     });
     return html;
   };
 
-  select1.innerHTML = buildOptions(slot.observer_1_id);
-  select2.innerHTML = buildOptions(slot.observer_2_id);
+  select1.innerHTML = buildOptions(currentObs1Id, currentObs2Id);
+  select2.innerHTML = buildOptions(currentObs2Id, currentObs1Id);
 
   onLeaderManualEditSelectionChanged();
 }
@@ -10262,26 +10278,43 @@ async function loadLeaderAbsencesAndRequests(forceFresh = false) {
 }
 
 // 16. Open Leader Replacement Request Modal
+let leaderReplCurrentSlots = [];
+
 async function openModalLeaderReplacementRequest() {
-  const classSelect = document.getElementById('leader-repl-class');
-  const origSelect = document.getElementById('leader-repl-orig-observer');
   const newSelect = document.getElementById('leader-repl-new-teacher');
   const reasonEl = document.getElementById('leader-repl-reason');
 
   if (reasonEl) reasonEl.value = '';
 
+  // Ensure department teachers are loaded
+  if (!leaderState.teachers || leaderState.teachers.length === 0) {
+    try {
+      if (newSelect) newSelect.innerHTML = '<option value="">Loading teachers...</option>';
+      const data = await fetchJsonWithCache(`/api/leader/teacher-schedule?user_id=${currentUser.id}`, 2000);
+      if (data.teachers && data.teachers.length > 0) {
+        leaderState.teachers = data.teachers;
+      }
+    } catch (e) {
+      console.warn('Could not fetch leader teachers list:', e);
+    }
+  }
+
   // Populate Teachers in Replacement Select
-  if (newSelect && leaderState.teachers.length > 0) {
-    newSelect.innerHTML = leaderState.teachers.map(t => 
-      `<option value="${t.id}">${escapeHtml(t.name)} (@${escapeHtml(t.username || '')})</option>`
-    ).join('');
+  if (newSelect) {
+    if (leaderState.teachers && leaderState.teachers.length > 0) {
+      newSelect.innerHTML = leaderState.teachers.map(t => 
+        `<option value="${t.id || t.teacher_id}">${escapeHtml(t.teacher_name || t.name || t.full_name)} (@${escapeHtml(t.username || '')})</option>`
+      ).join('');
+    } else {
+      newSelect.innerHTML = '<option value="">No teachers available in your department</option>';
+    }
   }
 
   await onLeaderReplSlotChanged();
   openModal('modal-leader-request-replacement');
 }
 
-// 17. Slot Changed in Replacement Modal
+// 17. Slot Changed in Replacement Modal (Day or Period change)
 async function onLeaderReplSlotChanged() {
   const day = document.getElementById('leader-repl-day')?.value || 'Sunday';
   const period = document.getElementById('leader-repl-period')?.value || 1;
@@ -10291,26 +10324,51 @@ async function onLeaderReplSlotChanged() {
 
   try {
     const data = await fetchJsonWithCache(`/api/leader/observer-schedule?user_id=${currentUser.id}&day=${encodeURIComponent(day)}`, 1500);
-    const slots = (data.schedule || []).filter(s => s.period == period);
+    leaderReplCurrentSlots = (data.schedule || []).filter(s => s.period == period);
 
-    if (slots.length === 0) {
+    if (leaderReplCurrentSlots.length === 0) {
       classSelect.innerHTML = '<option value="">No classes in this period</option>';
-      origSelect.innerHTML = '<option value="">No observers</option>';
+      origSelect.innerHTML = '<option value="">No observers assigned</option>';
       return;
     }
 
-    classSelect.innerHTML = slots.map(s => 
-      `<option value="${escapeHtml(s.class_name)}">${escapeHtml(s.class_name)} (${escapeHtml(s.subject_code || '')})</option>`
+    classSelect.innerHTML = leaderReplCurrentSlots.map(s => 
+      `<option value="${escapeHtml(s.class_name)}">${escapeHtml(s.class_name)} (${escapeHtml(s.subject_code || s.subject || '')})</option>`
     ).join('');
 
-    const currentSlot = slots[0];
-    origSelect.innerHTML = `
-      ${currentSlot.observer_1_id ? `<option value="${currentSlot.observer_1_id}">Obs 1: ${escapeHtml(currentSlot.observer_1_name)}</option>` : ''}
-      ${currentSlot.observer_2_id ? `<option value="${currentSlot.observer_2_id}">Obs 2: ${escapeHtml(currentSlot.observer_2_name)}</option>` : ''}
-    `;
+    onLeaderReplClassChanged();
   } catch (e) {
-    // Silent fallback
+    console.error('Error loading replacement slots:', e);
   }
+}
+
+// 17.1 Class changed in Replacement Modal
+function onLeaderReplClassChanged() {
+  const classSelect = document.getElementById('leader-repl-class');
+  const origSelect = document.getElementById('leader-repl-orig-observer');
+  if (!classSelect || !origSelect) return;
+
+  const selectedClassName = classSelect.value;
+  const currentSlot = leaderReplCurrentSlots.find(s => s.class_name.trim().toLowerCase() === selectedClassName.trim().toLowerCase()) || leaderReplCurrentSlots[0];
+
+  if (!currentSlot) {
+    origSelect.innerHTML = '<option value="">No observers found</option>';
+    return;
+  }
+
+  let options = '';
+  if (currentSlot.observer_1_id) {
+    options += `<option value="${currentSlot.observer_1_id}">Obs 1: ${escapeHtml(currentSlot.observer_1_name || 'Observer 1')}</option>`;
+  }
+  if (currentSlot.observer_2_id) {
+    options += `<option value="${currentSlot.observer_2_id}">Obs 2: ${escapeHtml(currentSlot.observer_2_name || 'Observer 2')}</option>`;
+  }
+
+  if (!options) {
+    options = '<option value="">No observers assigned to this class</option>';
+  }
+
+  origSelect.innerHTML = options;
 }
 
 // 18. Submit Leader Replacement Request

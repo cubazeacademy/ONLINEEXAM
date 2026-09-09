@@ -8077,6 +8077,10 @@ app.post('/api/leader/observer/manual-edit', async (req, res) => {
     }
 
     invalidateCache(`dept_obs_`);
+    invalidateCache('/api/leader');
+    invalidateCache('/api/observer');
+    invalidateCache('/api/teaching');
+    invalidateCache('/api/teacher');
 
     res.json({
       success: true,
@@ -8295,80 +8299,53 @@ app.get('/api/leader/duty-balance', async (req, res) => {
   }
 });
 
-// Leader Observer Replacement Requests (Submit & List)
-app.post('/api/leader/replacement-request', async (req, res) => {
-  const {
-    user_id,
-    day,
-    period,
-    class_name,
-    original_observer_id,
-    current_observer_id,
-    replacement_teacher_id,
-    suggested_replacement_id,
-    reason
-  } = req.body;
-
-  try {
-    const leader = await getAuthenticatedLeaderDept(user_id);
-    const deptId = leader.department_id;
-    const periodNum = parseInt(period);
-
-    if (!day || !periodNum || !class_name) {
-      return res.status(400).json({ success: false, error: 'Day, Period, and Class are required.' });
-    }
-
-    const origId = original_observer_id || current_observer_id;
-    const replId = replacement_teacher_id || suggested_replacement_id;
-
-    await db.run(`
-      INSERT INTO department_observer_replacements (
-        department_id, day, period, class_name, current_observer_id, suggested_replacement_id, reason, status, requested_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
-    `, [
-      deptId, day.trim(), periodNum, class_name.trim(),
-      origId ? parseInt(origId) : null,
-      replId ? parseInt(replId) : null,
-      reason || 'Observer replacement requested by Department Leader',
-      leader.id
-    ]);
-
-    await logObserverAction(
-      leader.id,
-      `Department Leader (${leader.full_name})`,
-      `Submitted Observer Replacement Request for ${class_name} (${day} P${periodNum})`,
-      { day, period: periodNum, class_name, reason },
-      deptId
-    );
-
-    res.json({ success: true, message: 'Observer replacement request submitted successfully.' });
-  } catch (err) {
-    res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });
-  }
-});
-
+// Leader Direct Observer Replacement History Log
 app.get('/api/leader/replacement-requests', async (req, res) => {
   try {
     const leader = await getAuthenticatedLeaderDept(req.query.user_id);
     const deptId = leader.department_id;
 
-    const requests = await db.all(`
+    const logs = await db.all(`
       SELECT 
-        r.*,
-        u_curr.full_name as original_observer_name,
-        u_curr.full_name as current_observer_name,
-        u_sugg.full_name as replacement_teacher_name,
-        u_sugg.full_name as suggested_replacement_name
-      FROM department_observer_replacements r
-      LEFT JOIN users u_curr ON r.current_observer_id = u_curr.id
-      LEFT JOIN users u_sugg ON r.suggested_replacement_id = u_sugg.id
-      WHERE r.department_id = $1
-      ORDER BY r.created_at DESC
+        l.id,
+        l.user_id,
+        l.user_name,
+        l.action,
+        l.details,
+        l.department_id,
+        l.created_at
+      FROM observer_audit_logs l
+      WHERE l.department_id = $1 AND (l.action ILIKE '%Observer%' OR l.details::text ILIKE '%observer%')
+      ORDER BY l.created_at DESC LIMIT 100
     `, [deptId]);
+
+    const formatted = (logs || []).map(l => {
+      let parsed = {};
+      try {
+        parsed = typeof l.details === 'string' ? JSON.parse(l.details) : (l.details || {});
+      } catch (e) {
+        parsed = {};
+      }
+      return {
+        id: l.id,
+        day: parsed.day || '—',
+        period: parsed.period || '—',
+        class_name: parsed.class_name || '—',
+        previous_observer_name: parsed.previous_observer || parsed.current_observer_name || '—',
+        original_observer_name: parsed.previous_observer || parsed.current_observer_name || '—',
+        new_observer_name: parsed.new_observer || parsed.replacement_teacher_name || '—',
+        replacement_teacher_name: parsed.new_observer || parsed.replacement_teacher_name || '—',
+        reason: parsed.reason || l.action || 'Direct Observer Replacement by Department Leader',
+        status: 'Updated',
+        changed_by: parsed.changed_by || l.user_name || 'Department Leader',
+        created_at: l.created_at
+      };
+    });
 
     res.json({
       success: true,
-      requests
+      requests: formatted,
+      replacements: formatted
     });
   } catch (err) {
     res.status(err.message.includes('Unauthorized') || err.message.includes('Forbidden') ? 403 : 500).json({ success: false, error: err.message });

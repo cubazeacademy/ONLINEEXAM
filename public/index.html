@@ -175,7 +175,7 @@
           <i class="fa-solid fa-scale-balanced"></i> <span>Duty Balance</span>
         </a>
         <a href="#leader-absences" class="nav-item" onclick="switchTab('leader-absences')">
-          <i class="fa-solid fa-user-slash"></i> <span>Absence &amp; Replacements</span>
+          <i class="fa-solid fa-clock-rotate-left"></i> <span>Observer Changes Log</span>
         </a>
         <a href="#leader-notifications" class="nav-item" onclick="switchTab('leader-notifications')">
           <i class="fa-solid fa-bell"></i> <span>Notifications</span>
@@ -3528,9 +3528,9 @@
                   <span style="font-size:0.75rem; color:#64748b;">Track P1–P9 live activities</span>
                 </button>
                 <button type="button" class="btn btn-outline" style="padding:16px; text-align:left; display:flex; flex-direction:column; gap:6px; height:auto;" onclick="switchTab('leader-absences')">
-                  <i class="fa-solid fa-user-slash" style="font-size:1.4rem; color:#ea580c;"></i>
-                  <span style="font-weight:700; font-size:0.9rem; color:#0f172a;">Absences &amp; Replacements</span>
-                  <span style="font-size:0.75rem; color:#64748b;">Request emergency covers</span>
+                  <i class="fa-solid fa-clock-rotate-left" style="font-size:1.4rem; color:#ea580c;"></i>
+                  <span style="font-weight:700; font-size:0.9rem; color:#0f172a;">Replacement Log</span>
+                  <span style="font-size:0.75rem; color:#64748b;">View observer changes history</span>
                 </button>
               </div>
             </div>
@@ -3556,7 +3556,7 @@
             <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <div>
                 <h3 style="margin:0;"><i class="fa-solid fa-user-shield" style="color:var(--primary);"></i> Department Observer Schedule</h3>
-                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Full observer assignment matrix. You may manually edit Observer 1 and Observer 2 assignments for any locked slot.</p>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Full observer assignment matrix. You can directly edit and replace Observer 1 and Observer 2 for any class slot.</p>
               </div>
               <div style="display:flex; gap:8px;">
                 <button type="button" class="btn btn-sm btn-outline" onclick="exportLeaderObserverCSV()">
@@ -3674,11 +3674,12 @@
                       <th>Observer 1</th>
                       <th>Observer 2</th>
                       <th>Status</th>
+                      <th class="text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody id="table-leader-today-overview-body">
                     <tr>
-                      <td colspan="8" class="text-center p-6 text-muted">Loading today's overview...</td>
+                      <td colspan="9" class="text-center p-6 text-muted">Loading today's overview...</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3725,17 +3726,22 @@
           </div>
         </section>
 
-        <!-- LEADER 6: ABSENCES & REPLACEMENTS -->
+        <!-- LEADER 6: OBSERVER DIRECT REPLACEMENT & AUDIT LOG -->
         <section id="view-leader-absences" class="tab-view hidden">
           <div class="panel-card">
             <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <div>
-                <h3 style="margin:0;"><i class="fa-solid fa-user-slash" style="color:var(--primary);"></i> Observer Absence &amp; Replacement Management</h3>
-                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Record faculty absences and submit or manage emergency observer replacement requests.</p>
+                <h3 style="margin:0;"><i class="fa-solid fa-clock-rotate-left" style="color:var(--primary);"></i> Direct Observer Replacement History &amp; Audit Log</h3>
+                <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748b;">Audit record of all direct observer changes made in your department. All updates take effect immediately across all portals without requiring Admin approval.</p>
               </div>
-              <button type="button" class="btn btn-primary" onclick="openModalLeaderReplacementRequest()">
-                <i class="fa-solid fa-plus"></i> Request Observer Replacement
-              </button>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-primary" onclick="switchTab('leader-observer-schedule')">
+                  <i class="fa-solid fa-user-pen"></i> Direct Replace in Schedule
+                </button>
+                <button type="button" class="btn btn-outline" onclick="loadLeaderAbsencesAndRequests(true)">
+                  <i class="fa-solid fa-rotate"></i> Refresh Log
+                </button>
+              </div>
             </div>
 
             <div class="panel-body p-0">
@@ -3745,16 +3751,16 @@
                     <tr>
                       <th>Date / Day</th>
                       <th>Period &amp; Class</th>
-                      <th>Original Observer</th>
-                      <th>Replacement Teacher</th>
-                      <th>Reason</th>
-                      <th>Status</th>
-                      <th>Submitted At</th>
+                      <th>Previous Observer</th>
+                      <th>New Observer</th>
+                      <th>Reason / Note</th>
+                      <th>Changed By</th>
+                      <th>Timestamp</th>
                     </tr>
                   </thead>
                   <tbody id="table-leader-replacements-body">
                     <tr>
-                      <td colspan="7" class="text-center p-6 text-muted">No replacement requests submitted yet.</td>
+                      <td colspan="7" class="text-center p-6 text-muted">No observer changes recorded yet.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -5581,84 +5587,6 @@
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-leader-observer-manual-edit')">Cancel</button>
           <button type="submit" class="btn btn-primary" id="btn-save-leader-obs-edit" style="background:#4f46e5; border-color:#4338ca;">
             <i class="fa-solid fa-check"></i> Save Observer Change
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL: LEADER REQUEST OBSERVER REPLACEMENT -->
-  <div id="modal-leader-request-replacement" class="modal-overlay hidden">
-    <div class="modal-content max-w-md" style="max-width: 520px;">
-      <div class="modal-header" style="background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%); color: #fff;">
-        <h3 style="color:#fff; margin:0;"><i class="fa-solid fa-user-slash" style="color:#fed7aa;"></i> Request Observer Replacement</h3>
-        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-leader-request-replacement')">&times;</button>
-      </div>
-      <form id="form-leader-request-replacement" onsubmit="submitLeaderReplacementRequest(event)">
-        <div class="modal-body" style="padding: 20px 24px;">
-          <p style="font-size:0.85rem; color:#475569; margin-top:0;">
-            Submit an emergency absence replacement for an assigned observer duty slot in your department.
-          </p>
-
-          <div class="form-row">
-            <div class="form-group col-6">
-              <label style="font-weight:700; font-size:0.82rem;">Day / Date <span class="text-danger">*</span></label>
-              <select id="leader-repl-day" class="form-control" required onchange="onLeaderReplSlotChanged()">
-                <option value="Sunday">Sunday</option>
-                <option value="Monday">Monday</option>
-                <option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option>
-                <option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-                <option value="Saturday">Saturday</option>
-              </select>
-            </div>
-            <div class="form-group col-6">
-              <label style="font-weight:700; font-size:0.82rem;">Period <span class="text-danger">*</span></label>
-              <select id="leader-repl-period" class="form-control" required onchange="onLeaderReplSlotChanged()">
-                <option value="1">Period 1</option>
-                <option value="2">Period 2</option>
-                <option value="3">Period 3</option>
-                <option value="4">Period 4</option>
-                <option value="5">Period 5</option>
-                <option value="6">Period 6</option>
-                <option value="7">Period 7</option>
-                <option value="8">Period 8</option>
-                <option value="9">Period 9</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label style="font-weight:700; font-size:0.82rem;">Class Slot <span class="text-danger">*</span></label>
-            <select id="leader-repl-class" class="form-control" required onchange="onLeaderReplClassChanged()">
-              <!-- Populated dynamically -->
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label style="font-weight:700; font-size:0.82rem;">Original Absent Observer <span class="text-danger">*</span></label>
-            <select id="leader-repl-orig-observer" class="form-control" required>
-              <!-- Populated with observers from selected slot -->
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label style="font-weight:700; font-size:0.82rem;">Proposed Replacement Teacher <span class="text-danger">*</span></label>
-            <select id="leader-repl-new-teacher" class="form-control" required>
-              <!-- Populated with eligible teachers -->
-            </select>
-          </div>
-
-          <div class="form-group mb-0">
-            <label style="font-weight:700; font-size:0.82rem;">Reason for Absence / Replacement <span class="text-danger">*</span></label>
-            <textarea id="leader-repl-reason" class="form-control" rows="2" placeholder="e.g. Medical leave / emergency unavailability" required></textarea>
-          </div>
-        </div>
-        <div class="modal-footer" style="padding: 12px 24px; display:flex; justify-content:space-between;">
-          <button type="button" class="btn btn-outline" onclick="closeModal('modal-leader-request-replacement')">Cancel</button>
-          <button type="submit" class="btn btn-primary" style="background:#ea580c; border-color:#c2410c;">
-            <i class="fa-solid fa-paper-plane"></i> Submit Request
           </button>
         </div>
       </form>

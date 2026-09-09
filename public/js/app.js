@@ -10026,7 +10026,7 @@ function onLeaderManualEditSelectionChanged() {
   }
 }
 
-// 10. Submit Leader Observer Manual Edit
+// 10. Submit Leader Observer Manual Edit (Direct Atomic Replacement)
 async function handleLeaderObserverManualEditSubmit(e) {
   e.preventDefault();
   if (!leaderManualEditContext) return alert('No active slot context.');
@@ -10064,11 +10064,30 @@ async function handleLeaderObserverManualEditSubmit(e) {
     if (!res.ok) throw new Error(data.error || 'Failed to update observer assignment');
 
     closeModal('modal-leader-observer-manual-edit');
-    alert(`✅ Observer Assignment Updated Successfully\n\nClass: ${leaderManualEditContext.className} (Period ${leaderManualEditContext.period})\nSchedule remains LOCKED.`);
 
-    clearClientCache('/api/leader/observer-schedule');
+    // Build clean success message
+    let updateSummary = '';
+    if (data.updates && data.updates.length > 0) {
+      updateSummary = data.updates.map(u => 
+        `Observer ${u.slot_number}:\n${u.prev_teacher_name || 'Unassigned'} → ${u.new_teacher_name}`
+      ).join('\n\n');
+    } else {
+      updateSummary = 'Observer assignment updated successfully.';
+    }
+
+    alert(`✅ Observer Updated Successfully\n\n${updateSummary}\n\nClass:\n${leaderManualEditContext.className}\n\nPeriod:\nP${leaderManualEditContext.period}`);
+
+    // Invalidate client caches
+    clearClientCache('/api/leader');
+    clearClientCache('/api/observer');
+    clearClientCache('/api/teaching');
+
+    // Refresh all views immediately
     loadLeaderObserverSchedule(true);
     loadLeaderDashboard(true);
+    loadLeaderTodayOverview(true);
+    loadLeaderDutyBalance(true);
+    loadLeaderAbsencesAndRequests(true);
   } catch (err) {
     alert(err.message);
   } finally {
@@ -10171,7 +10190,7 @@ async function loadLeaderTodayOverview(forceFresh = false) {
 
     const timeline = data.timeline || [];
     if (timeline.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-6 text-muted">No scheduled classes or duties for today.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center p-6 text-muted">No scheduled classes or duties for today.</td></tr>`;
       return;
     }
 
@@ -10191,12 +10210,17 @@ async function loadLeaderTodayOverview(forceFresh = false) {
           <td style="color:#4f46e5; font-weight:700;">${escapeHtml(row.observer_1_name || 'Unassigned')}</td>
           <td style="color:#059669; font-weight:700;">${escapeHtml(row.observer_2_name || 'Unassigned')}</td>
           <td>${statusBadge}</td>
+          <td class="text-right">
+            <button type="button" class="btn btn-sm btn-outline" style="font-size:0.8rem; border-color:#cbd5e1;" onclick="openLeaderManualEditModal('${escapeHtml(data.today || 'Sunday')}', ${row.period}, '${escapeHtml(row.class_name)}')">
+              <i class="fa-solid fa-user-pen" style="color:#4f46e5;"></i> Edit Observer
+            </button>
+          </td>
         </tr>
       `;
     }).join('');
   } catch (err) {
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
     }
   }
 }
@@ -10243,7 +10267,7 @@ async function loadLeaderDutyBalance(forceFresh = false) {
   }
 }
 
-// 15. Load Absences & Replacement Requests View
+// 15. Load Observer Direct Replacement History & Audit Log
 async function loadLeaderAbsencesAndRequests(forceFresh = false) {
   if (!currentUser || currentUser.role !== 'department_leader') return;
 
@@ -10251,22 +10275,22 @@ async function loadLeaderAbsencesAndRequests(forceFresh = false) {
 
   try {
     const data = await fetchJsonWithCache(`/api/leader/replacement-requests?user_id=${currentUser.id}`, 2000, forceFresh);
-    if (!data.success) throw new Error(data.error || 'Failed to load replacement requests');
+    if (!data.success) throw new Error(data.error || 'Failed to load replacement history');
 
-    const requests = data.requests || [];
-    if (requests.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-muted">No replacement requests submitted yet.</td></tr>`;
+    const list = data.requests || data.replacements || [];
+    if (list.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-muted">No observer changes recorded yet in your department.</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = requests.map(r => `
+    tbody.innerHTML = list.map(r => `
       <tr>
-        <td><strong>${escapeHtml(r.day || r.date)}</strong></td>
+        <td><strong>${escapeHtml(r.day || '—')}</strong></td>
         <td><span class="badge badge-primary">P${r.period}</span> ${escapeHtml(r.class_name)}</td>
-        <td style="color:#b91c1c; font-weight:700;"><i class="fa-solid fa-user-slash"></i> ${escapeHtml(r.original_observer_name || '—')}</td>
-        <td style="color:#047857; font-weight:700;"><i class="fa-solid fa-user-check"></i> ${escapeHtml(r.replacement_teacher_name || '—')}</td>
-        <td style="font-size:0.82rem; color:#475569;">${escapeHtml(r.reason)}</td>
-        <td><span class="badge ${r.status === 'approved' ? 'badge-success' : 'badge-warning'}">${escapeHtml(r.status.toUpperCase())}</span></td>
+        <td style="color:#b91c1c; font-weight:700;"><i class="fa-solid fa-user-slash"></i> ${escapeHtml(r.previous_observer_name || r.original_observer_name || '—')}</td>
+        <td style="color:#047857; font-weight:700;"><i class="fa-solid fa-user-check"></i> ${escapeHtml(r.new_observer_name || r.replacement_teacher_name || '—')}</td>
+        <td style="font-size:0.82rem; color:#475569;">${escapeHtml(r.reason || 'Direct Replacement')}</td>
+        <td style="font-size:0.82rem; font-weight:600; color:#334155;">${escapeHtml(r.changed_by || 'Department Leader')}</td>
         <td style="font-size:0.8rem; color:#94a3b8;">${new Date(r.created_at).toLocaleString()}</td>
       </tr>
     `).join('');
@@ -10274,141 +10298,6 @@ async function loadLeaderAbsencesAndRequests(forceFresh = false) {
     if (tbody) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</td></tr>`;
     }
-  }
-}
-
-// 16. Open Leader Replacement Request Modal
-let leaderReplCurrentSlots = [];
-
-async function openModalLeaderReplacementRequest() {
-  const newSelect = document.getElementById('leader-repl-new-teacher');
-  const reasonEl = document.getElementById('leader-repl-reason');
-
-  if (reasonEl) reasonEl.value = '';
-
-  // Ensure department teachers are loaded
-  if (!leaderState.teachers || leaderState.teachers.length === 0) {
-    try {
-      if (newSelect) newSelect.innerHTML = '<option value="">Loading teachers...</option>';
-      const data = await fetchJsonWithCache(`/api/leader/teacher-schedule?user_id=${currentUser.id}`, 2000);
-      if (data.teachers && data.teachers.length > 0) {
-        leaderState.teachers = data.teachers;
-      }
-    } catch (e) {
-      console.warn('Could not fetch leader teachers list:', e);
-    }
-  }
-
-  // Populate Teachers in Replacement Select
-  if (newSelect) {
-    if (leaderState.teachers && leaderState.teachers.length > 0) {
-      newSelect.innerHTML = leaderState.teachers.map(t => 
-        `<option value="${t.id || t.teacher_id}">${escapeHtml(t.teacher_name || t.name || t.full_name)} (@${escapeHtml(t.username || '')})</option>`
-      ).join('');
-    } else {
-      newSelect.innerHTML = '<option value="">No teachers available in your department</option>';
-    }
-  }
-
-  await onLeaderReplSlotChanged();
-  openModal('modal-leader-request-replacement');
-}
-
-// 17. Slot Changed in Replacement Modal (Day or Period change)
-async function onLeaderReplSlotChanged() {
-  const day = document.getElementById('leader-repl-day')?.value || 'Sunday';
-  const period = document.getElementById('leader-repl-period')?.value || 1;
-  const classSelect = document.getElementById('leader-repl-class');
-  const origSelect = document.getElementById('leader-repl-orig-observer');
-  if (!classSelect || !origSelect) return;
-
-  try {
-    const data = await fetchJsonWithCache(`/api/leader/observer-schedule?user_id=${currentUser.id}&day=${encodeURIComponent(day)}`, 1500);
-    leaderReplCurrentSlots = (data.schedule || []).filter(s => s.period == period);
-
-    if (leaderReplCurrentSlots.length === 0) {
-      classSelect.innerHTML = '<option value="">No classes in this period</option>';
-      origSelect.innerHTML = '<option value="">No observers assigned</option>';
-      return;
-    }
-
-    classSelect.innerHTML = leaderReplCurrentSlots.map(s => 
-      `<option value="${escapeHtml(s.class_name)}">${escapeHtml(s.class_name)} (${escapeHtml(s.subject_code || s.subject || '')})</option>`
-    ).join('');
-
-    onLeaderReplClassChanged();
-  } catch (e) {
-    console.error('Error loading replacement slots:', e);
-  }
-}
-
-// 17.1 Class changed in Replacement Modal
-function onLeaderReplClassChanged() {
-  const classSelect = document.getElementById('leader-repl-class');
-  const origSelect = document.getElementById('leader-repl-orig-observer');
-  if (!classSelect || !origSelect) return;
-
-  const selectedClassName = classSelect.value;
-  const currentSlot = leaderReplCurrentSlots.find(s => s.class_name.trim().toLowerCase() === selectedClassName.trim().toLowerCase()) || leaderReplCurrentSlots[0];
-
-  if (!currentSlot) {
-    origSelect.innerHTML = '<option value="">No observers found</option>';
-    return;
-  }
-
-  let options = '';
-  if (currentSlot.observer_1_id) {
-    options += `<option value="${currentSlot.observer_1_id}">Obs 1: ${escapeHtml(currentSlot.observer_1_name || 'Observer 1')}</option>`;
-  }
-  if (currentSlot.observer_2_id) {
-    options += `<option value="${currentSlot.observer_2_id}">Obs 2: ${escapeHtml(currentSlot.observer_2_name || 'Observer 2')}</option>`;
-  }
-
-  if (!options) {
-    options = '<option value="">No observers assigned to this class</option>';
-  }
-
-  origSelect.innerHTML = options;
-}
-
-// 18. Submit Leader Replacement Request
-async function submitLeaderReplacementRequest(e) {
-  e.preventDefault();
-  const day = document.getElementById('leader-repl-day')?.value;
-  const period = document.getElementById('leader-repl-period')?.value;
-  const className = document.getElementById('leader-repl-class')?.value;
-  const origObserverId = document.getElementById('leader-repl-orig-observer')?.value;
-  const newTeacherId = document.getElementById('leader-repl-new-teacher')?.value;
-  const reason = document.getElementById('leader-repl-reason')?.value.trim();
-
-  if (!day || !period || !className || !origObserverId || !newTeacherId || !reason) {
-    return alert('Please fill in all fields.');
-  }
-
-  try {
-    const res = await fetch(apiUrl('/api/leader/replacement-request'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: currentUser.id,
-        day,
-        period,
-        class_name: className,
-        original_observer_id: origObserverId,
-        replacement_teacher_id: newTeacherId,
-        reason
-      })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit replacement request');
-
-    closeModal('modal-leader-request-replacement');
-    alert('✅ Observer replacement request submitted successfully.');
-    clearClientCache('/api/leader/replacement-requests');
-    loadLeaderAbsencesAndRequests(true);
-  } catch (err) {
-    alert(err.message);
   }
 }
 

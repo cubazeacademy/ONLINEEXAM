@@ -9364,8 +9364,8 @@ function renderAdminLeadersTable() {
 
   if (searchQuery) {
     list = list.filter(l => 
-      (l.teacher_name || '').toLowerCase().includes(searchQuery) ||
-      (l.username || '').toLowerCase().includes(searchQuery) ||
+      (l.teacher_name || l.leader_name || l.full_name || '').toLowerCase().includes(searchQuery) ||
+      (l.username || l.leader_username || '').toLowerCase().includes(searchQuery) ||
       (l.department_name || '').toLowerCase().includes(searchQuery) ||
       (l.full_name || '').toLowerCase().includes(searchQuery)
     );
@@ -9377,6 +9377,10 @@ function renderAdminLeadersTable() {
   }
 
   tbody.innerHTML = list.map(l => {
+    const leaderId = parseInt(l.id || l.leader_record_id || 0);
+    const teacherName = l.teacher_name || l.leader_name || l.full_name || 'Assigned Leader';
+    const leaderUsername = l.username || l.leader_username || 'unassigned';
+    const deptName = l.department_name || `Dept #${l.department_id}`;
     const isActive = l.status === 'active';
     const statusBadge = isActive 
       ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Active</span>`
@@ -9390,31 +9394,35 @@ function renderAdminLeadersTable() {
       ? new Date(l.created_at).toLocaleDateString()
       : '—';
 
+    const safeTeacherEsc = escapeHtml(teacherName);
+    const safeDeptEsc = escapeHtml(deptName);
+    const safeUserEsc = escapeHtml(leaderUsername);
+
     return `
       <tr style="${!isActive ? 'opacity: 0.65; background:#f8fafc;' : ''}">
         <td>
-          <strong style="color:var(--primary); font-size:0.92rem;"><i class="fa-solid fa-building-user"></i> ${escapeHtml(l.department_name)}</strong>
+          <strong style="color:var(--primary); font-size:0.92rem;"><i class="fa-solid fa-building-user"></i> ${safeDeptEsc}</strong>
           <div style="font-size:0.75rem; color:#64748b;">Dept ID: #${l.department_id}</div>
         </td>
         <td>
-          <div style="font-weight:700; color:#0f172a;">${escapeHtml(l.teacher_name)}</div>
-          <div style="font-size:0.75rem; color:#64748b;">${escapeHtml(l.full_name || '')}</div>
+          <div style="font-weight:700; color:#0f172a;">${safeTeacherEsc}</div>
+          <div style="font-size:0.75rem; color:#64748b;">${escapeHtml(l.full_name || teacherName)}</div>
         </td>
         <td>
-          <code style="font-weight:700; background:#f1f5f9; padding:2px 6px; border-radius:4px; color:#334155;">@${escapeHtml(l.username)}</code>
+          <code style="font-weight:700; background:#f1f5f9; padding:2px 6px; border-radius:4px; color:#334155;">@${safeUserEsc}</code>
         </td>
         <td>${statusBadge}</td>
         <td style="font-size:0.82rem;">${lastLoginStr}</td>
         <td style="font-size:0.82rem;">${assignedDateStr}</td>
         <td class="text-right">
           <div style="display:inline-flex; gap:6px;">
-            <button type="button" class="btn btn-sm btn-outline" title="Reset Password" onclick="openModalResetLeaderPassword(${l.id}, '${escapeHtml(l.teacher_name)}', '${escapeHtml(l.username)}', '${escapeHtml(l.department_name)}')">
+            <button type="button" class="btn btn-sm btn-outline" title="Reset Password" onclick="openModalResetLeaderPassword(${leaderId}, '${safeTeacherEsc}', '${safeUserEsc}', '${safeDeptEsc}')" ${!leaderId ? 'disabled' : ''}>
               <i class="fa-solid fa-key" style="color:#d97706;"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-outline" title="${isActive ? 'Disable Leader' : 'Enable Leader'}" onclick="toggleLeaderStatus(${l.id}, '${l.status}')">
+            <button type="button" class="btn btn-sm btn-outline" title="${isActive ? 'Disable Leader' : 'Enable Leader'}" onclick="toggleLeaderStatus(${leaderId}, '${l.status}')" ${!leaderId ? 'disabled' : ''}>
               <i class="fa-solid ${isActive ? 'fa-toggle-on text-success' : 'fa-toggle-off text-muted'}"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-outline text-danger" title="Remove Leader Assignment" onclick="deleteLeaderAssignment(${l.id}, '${escapeHtml(l.teacher_name)}', '${escapeHtml(l.department_name)}')">
+            <button type="button" class="btn btn-sm btn-outline text-danger" title="Remove Leader Assignment" onclick="deleteLeaderAssignment(${leaderId}, '${safeTeacherEsc}', '${safeDeptEsc}')" ${!leaderId ? 'disabled' : ''}>
               <i class="fa-solid fa-trash-can"></i>
             </button>
           </div>
@@ -9459,10 +9467,16 @@ async function onAdminLeaderDeptSelected(deptId) {
   const activeNameSpan = document.getElementById('admin-leader-current-active-name');
   if (!teacherSelect) return;
 
+  const parsedDeptId = parseInt(deptId);
+  if (!parsedDeptId || isNaN(parsedDeptId)) {
+    teacherSelect.innerHTML = '<option value="">Select a valid department</option>';
+    return;
+  }
+
   teacherSelect.innerHTML = '<option value="">Loading teachers...</option>';
 
   try {
-    const res = await fetch(apiUrl(`/api/admin/department-leaders/available-teachers?department_id=${deptId}`));
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/available-teachers?department_id=${parsedDeptId}`));
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to load teachers');
 
@@ -9477,7 +9491,7 @@ async function onAdminLeaderDeptSelected(deptId) {
     }
 
     if (data.current_leader && replaceAlert && activeNameSpan) {
-      activeNameSpan.textContent = `${data.current_leader.teacher_name} (@${data.current_leader.username})`;
+      activeNameSpan.textContent = `${data.current_leader.teacher_name || data.current_leader.username} (@${data.current_leader.username})`;
       replaceAlert.classList.remove('hidden');
     } else if (replaceAlert) {
       replaceAlert.classList.add('hidden');
@@ -9510,13 +9524,13 @@ function onAdminLeaderTeacherSelected(teacherId) {
 // 6. Save Department Leader Form
 async function saveDepartmentLeaderForm(e) {
   e.preventDefault();
-  const deptId = document.getElementById('admin-leader-dept-select')?.value;
-  const teacherId = document.getElementById('admin-leader-teacher-select')?.value;
+  const deptId = parseInt(document.getElementById('admin-leader-dept-select')?.value);
+  const teacherId = parseInt(document.getElementById('admin-leader-teacher-select')?.value);
   const username = document.getElementById('admin-leader-username')?.value.trim();
   const password = document.getElementById('admin-leader-password')?.value.trim();
   const fullname = document.getElementById('admin-leader-fullname')?.value.trim();
 
-  if (!deptId || !teacherId || !username || !password) {
+  if (!deptId || isNaN(deptId) || !teacherId || isNaN(teacherId) || !username || !password) {
     return alert('Please fill in all required fields.');
   }
 
@@ -9558,12 +9572,17 @@ async function saveDepartmentLeaderForm(e) {
 
 // 7. Reset Leader Password Modal
 function openModalResetLeaderPassword(id, name, username, deptName) {
+  const parsedId = parseInt(id);
+  if (!parsedId || isNaN(parsedId)) {
+    return alert('Invalid Department Leader ID.');
+  }
+
   const idInput = document.getElementById('reset-leader-id');
   const nameEl = document.getElementById('reset-leader-name');
   const deptEl = document.getElementById('reset-leader-dept');
   const pwdInput = document.getElementById('reset-leader-new-password');
 
-  if (idInput) idInput.value = id;
+  if (idInput) idInput.value = parsedId;
   if (nameEl) nameEl.textContent = `${name} (@${username})`;
   if (deptEl) deptEl.textContent = deptName;
   if (pwdInput) pwdInput.value = '';
@@ -9574,10 +9593,10 @@ function openModalResetLeaderPassword(id, name, username, deptName) {
 // 8. Save Leader Password Reset
 async function saveLeaderPasswordReset(e) {
   e.preventDefault();
-  const id = document.getElementById('reset-leader-id')?.value;
+  const id = parseInt(document.getElementById('reset-leader-id')?.value);
   const newPassword = document.getElementById('reset-leader-new-password')?.value.trim();
 
-  if (!id || !newPassword) return alert('Please enter a new password.');
+  if (!id || isNaN(id) || !newPassword) return alert('Please enter a new password.');
 
   try {
     const res = await fetch(apiUrl(`/api/admin/department-leaders/${id}/reset-password`), {
@@ -9598,13 +9617,18 @@ async function saveLeaderPasswordReset(e) {
 
 // 9. Toggle Leader Enable / Disable Status
 async function toggleLeaderStatus(id, currentStatus) {
+  const parsedId = parseInt(id);
+  if (!parsedId || isNaN(parsedId)) {
+    return alert('Invalid Department Leader ID.');
+  }
+
   const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
   const actionText = newStatus === 'active' ? 'enable' : 'disable';
 
   if (!confirm(`Are you sure you want to ${actionText} this Department Leader?`)) return;
 
   try {
-    const res = await fetch(apiUrl(`/api/admin/department-leaders/${id}/toggle-status`), {
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/${parsedId}/toggle-status`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus })
@@ -9622,10 +9646,15 @@ async function toggleLeaderStatus(id, currentStatus) {
 
 // 10. Delete / Remove Leader Assignment
 async function deleteLeaderAssignment(id, leaderName, deptName) {
+  const parsedId = parseInt(id);
+  if (!parsedId || isNaN(parsedId)) {
+    return alert('Invalid Department Leader ID.');
+  }
+
   if (!confirm(`⚠️ Remove Leader Assignment for ${leaderName} in ${deptName}?\n\nThis will remove Department Leader access for this account. Proceed?`)) return;
 
   try {
-    const res = await fetch(apiUrl(`/api/admin/department-leaders/${id}`), {
+    const res = await fetch(apiUrl(`/api/admin/department-leaders/${parsedId}`), {
       method: 'DELETE'
     });
 

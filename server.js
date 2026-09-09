@@ -7219,29 +7219,80 @@ async function getAuthenticatedLeaderDept(userIdOrUsername) {
 // GET all Department Leaders across departments
 app.get('/api/admin/department-leaders', async (req, res) => {
   try {
+    // 1. Auto-sync any existing department_observer_leaders that don't have department_leaders records yet
+    try {
+      const obsLeaders = await db.all(`
+        SELECT dol.*, u.full_name, u.username, u.email, u.phone
+        FROM department_observer_leaders dol
+        JOIN users u ON dol.teacher_id = u.id
+        WHERE dol.status = 'active'
+      `);
+      for (const ol of (obsLeaders || [])) {
+        const existingDL = await db.get(`SELECT id FROM department_leaders WHERE department_id = $1 AND status = 'active'`, [ol.department_id]);
+        if (!existingDL) {
+          let leaderUser = await db.get(`SELECT id, username, full_name FROM users WHERE role = 'department_leader' AND department_id = $1`, [ol.department_id]);
+          if (!leaderUser) {
+            const rawBase = (ol.username || `lead_dept_${ol.department_id}`).replace(/[^a-zA-Z0-9_]/g, '_');
+            const baseUsername = `${rawBase}_lead`;
+            try {
+              const userInsert = await db.run(`
+                INSERT INTO users (username, password, full_name, email, phone, role, department_id, is_active)
+                VALUES ($1, $2, $3, $4, $5, 'department_leader', $6, true)
+                RETURNING id
+              `, [baseUsername, 'leader123', `${ol.full_name} (Leader)`, ol.email, ol.phone, ol.department_id]);
+              const newUserId = userInsert.lastInsertRowid || userInsert.rows?.[0]?.id;
+              if (newUserId) {
+                await db.run(`
+                  INSERT INTO department_leaders (department_id, user_id, teacher_id, status)
+                  VALUES ($1, $2, $3, 'active')
+                `, [ol.department_id, newUserId, ol.teacher_id]);
+              }
+            } catch (e) {
+              await db.run(`
+                INSERT INTO department_leaders (department_id, user_id, teacher_id, status)
+                VALUES ($1, $2, $3, 'active')
+              `, [ol.department_id, ol.teacher_id, ol.teacher_id]);
+            }
+          } else {
+            await db.run(`
+              INSERT INTO department_leaders (department_id, user_id, teacher_id, status)
+              VALUES ($1, $2, $3, 'active')
+            `, [ol.department_id, leaderUser.id, ol.teacher_id]);
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Leader sync notice:', syncErr.message);
+    }
+
     const depts = await db.all(`SELECT id, name, code, active_days FROM departments ORDER BY name ASC`);
     const leaders = await db.all(`
       SELECT 
+        dl.id as id,
         dl.id as leader_record_id,
         dl.department_id,
         dl.user_id,
         dl.teacher_id,
-        dl.status,
+        COALESCE(dl.status, 'active') as status,
         dl.last_login,
-        dl.created_at,
-        u_lead.username as leader_username,
-        u_lead.full_name as leader_name,
+        COALESCE(dl.created_at, CURRENT_TIMESTAMP) as created_at,
+        COALESCE(u_lead.username, u_teach.username, 'unassigned') as leader_username,
+        COALESCE(u_lead.username, u_teach.username, 'unassigned') as username,
+        COALESCE(u_lead.full_name, u_teach.full_name, 'Department Leader') as leader_name,
+        COALESCE(u_lead.full_name, u_teach.full_name, 'Department Leader') as full_name,
+        COALESCE(u_teach.full_name, u_lead.full_name, 'Department Leader') as teacher_name,
+        COALESCE(u_teach.full_name, u_lead.full_name, 'Department Leader') as underlying_teacher_name,
         u_lead.phone as leader_phone,
         u_lead.email as leader_email,
-        u_lead.is_active as user_active,
-        u_teach.full_name as underlying_teacher_name,
+        COALESCE(u_lead.is_active, true) as user_active,
         u_teach.username as underlying_teacher_username,
         d.name as department_name,
         d.code as department_code
       FROM department_leaders dl
-      JOIN users u_lead ON dl.user_id = u_lead.id
+      LEFT JOIN users u_lead ON dl.user_id = u_lead.id
       LEFT JOIN users u_teach ON dl.teacher_id = u_teach.id
       JOIN departments d ON dl.department_id = d.id
+      WHERE dl.id IS NOT NULL
       ORDER BY dl.status ASC, dl.created_at DESC
     `);
 
@@ -7295,7 +7346,7 @@ app.get('/api/admin/department-leaders', async (req, res) => {
 app.get('/api/admin/department-leaders/available-teachers', async (req, res) => {
   try {
     const deptId = parseInt(req.query.department_id);
-    if (!deptId) return res.status(400).json({ success: false, error: 'department_id is required' });
+    if (!deptId || isNaN(deptId)) return res.status(400).json({ success: false, error: 'Valid department_id is required' });
 
     const [teachers, currentLeader] = await Promise.all([
       db.all(`
@@ -7338,8 +7389,8 @@ app.post('/api/admin/department-leaders', async (req, res) => {
   const cleanUsername = (username || '').toString().trim();
   const cleanPassword = (password || '').toString().trim();
 
-  if (!deptId || !teacherId || !cleanUsername || !cleanPassword) {
-    return res.status(400).json({ error: 'Department, Teacher, Username, and Password are all required.' });
+  if (!deptId || isNaN(deptId) || !teacherId || isNaN(teacherId) || !cleanUsername || !cleanPassword) {
+    return res.status(400).json({ error: 'Valid Department, Teacher, Username, and Password are all required.' });
   }
 
   try {
@@ -7456,6 +7507,10 @@ app.post('/api/admin/department-leaders/:id/reset-password', async (req, res) =>
   const { new_password, admin_id, admin_name } = req.body;
   const cleanPassword = (new_password || '').toString().trim();
 
+  if (!leaderRecordId || isNaN(leaderRecordId)) {
+    return res.status(400).json({ error: 'Valid Department Leader record ID is required.' });
+  }
+
   if (!cleanPassword) {
     return res.status(400).json({ error: 'New password cannot be empty.' });
   }
@@ -7464,8 +7519,8 @@ app.post('/api/admin/department-leaders/:id/reset-password', async (req, res) =>
     const leaderRecord = await db.get(`
       SELECT dl.*, u.username, u.full_name, d.name as department_name
       FROM department_leaders dl
-      JOIN users u ON dl.user_id = u.id
-      JOIN departments d ON dl.department_id = d.id
+      LEFT JOIN users u ON dl.user_id = u.id
+      LEFT JOIN departments d ON dl.department_id = d.id
       WHERE dl.id = $1
     `, [leaderRecordId]);
 
@@ -7478,7 +7533,7 @@ app.post('/api/admin/department-leaders/:id/reset-password', async (req, res) =>
     await logObserverAction(
       admin_id,
       admin_name || 'Admin',
-      `Reset Password for Department Leader ${leaderRecord.full_name} (${leaderRecord.department_name})`,
+      `Reset Password for Department Leader ${leaderRecord.full_name || leaderRecord.username} (${leaderRecord.department_name})`,
       { leader_username: leaderRecord.username, department: leaderRecord.department_name },
       leaderRecord.department_id
     );
@@ -7494,12 +7549,16 @@ app.post('/api/admin/department-leaders/:id/toggle-status', async (req, res) => 
   const leaderRecordId = parseInt(req.params.id);
   const { admin_id, admin_name } = req.body;
 
+  if (!leaderRecordId || isNaN(leaderRecordId)) {
+    return res.status(400).json({ error: 'Valid Department Leader record ID is required.' });
+  }
+
   try {
     const leaderRecord = await db.get(`
       SELECT dl.*, u.username, u.full_name, d.name as department_name
       FROM department_leaders dl
-      JOIN users u ON dl.user_id = u.id
-      JOIN departments d ON dl.department_id = d.id
+      LEFT JOIN users u ON dl.user_id = u.id
+      LEFT JOIN departments d ON dl.department_id = d.id
       WHERE dl.id = $1
     `, [leaderRecordId]);
 
@@ -7517,7 +7576,9 @@ app.post('/api/admin/department-leaders/:id/toggle-status', async (req, res) => 
     }
 
     await db.run(`UPDATE department_leaders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [newStatus, leaderRecordId]);
-    await db.run(`UPDATE users SET is_active = $1 WHERE id = $2`, [userActive, leaderRecord.user_id]);
+    if (leaderRecord.user_id) {
+      await db.run(`UPDATE users SET is_active = $1 WHERE id = $2`, [userActive, leaderRecord.user_id]);
+    }
 
     if (leaderRecord.teacher_id) {
       await db.run(`UPDATE department_observer_leaders SET status = $1 WHERE department_id = $2`, [newStatus, leaderRecord.department_id]);
@@ -7528,7 +7589,7 @@ app.post('/api/admin/department-leaders/:id/toggle-status', async (req, res) => 
     await logObserverAction(
       admin_id,
       admin_name || 'Admin',
-      `${newStatus === 'active' ? 'Enabled' : 'Disabled'} Department Leader ${leaderRecord.full_name} (${leaderRecord.department_name})`,
+      `${newStatus === 'active' ? 'Enabled' : 'Disabled'} Department Leader ${leaderRecord.full_name || leaderRecord.username} (${leaderRecord.department_name})`,
       { status: newStatus },
       leaderRecord.department_id
     );
@@ -7545,12 +7606,16 @@ app.delete('/api/admin/department-leaders/:id', async (req, res) => {
   const adminId = req.query.admin_id ? parseInt(req.query.admin_id) : null;
   const adminName = req.query.admin_name || 'Admin';
 
+  if (!leaderRecordId || isNaN(leaderRecordId)) {
+    return res.status(400).json({ error: 'Valid Department Leader record ID is required.' });
+  }
+
   try {
     const leaderRecord = await db.get(`
       SELECT dl.*, u.username, u.full_name, d.name as department_name
       FROM department_leaders dl
-      JOIN users u ON dl.user_id = u.id
-      JOIN departments d ON dl.department_id = d.id
+      LEFT JOIN users u ON dl.user_id = u.id
+      LEFT JOIN departments d ON dl.department_id = d.id
       WHERE dl.id = $1
     `, [leaderRecordId]);
 
@@ -7558,7 +7623,9 @@ app.delete('/api/admin/department-leaders/:id', async (req, res) => {
 
     // Mark as removed and deactivate user
     await db.run(`UPDATE department_leaders SET status = 'removed', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [leaderRecordId]);
-    await db.run(`UPDATE users SET is_active = false WHERE id = $1`, [leaderRecord.user_id]);
+    if (leaderRecord.user_id) {
+      await db.run(`UPDATE users SET is_active = false WHERE id = $1`, [leaderRecord.user_id]);
+    }
     await db.run(`UPDATE department_observer_leaders SET status = 'inactive' WHERE department_id = $1`, [leaderRecord.department_id]);
 
     invalidateCache(`dept_obs_settings_${leaderRecord.department_id}`);
@@ -7566,7 +7633,7 @@ app.delete('/api/admin/department-leaders/:id', async (req, res) => {
     await logObserverAction(
       adminId,
       adminName,
-      `Removed Department Leader assignment for ${leaderRecord.full_name} (${leaderRecord.department_name})`,
+      `Removed Department Leader assignment for ${leaderRecord.full_name || leaderRecord.username} (${leaderRecord.department_name})`,
       { department: leaderRecord.department_name },
       leaderRecord.department_id
     );

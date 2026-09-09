@@ -10081,6 +10081,7 @@ async function handleLeaderObserverManualEditSubmit(e) {
     clearClientCache('/api/leader');
     clearClientCache('/api/observer');
     clearClientCache('/api/teaching');
+    clearClientCache('/api/teacher');
 
     // Refresh all views immediately
     loadLeaderObserverSchedule(true);

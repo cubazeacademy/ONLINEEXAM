@@ -5789,3 +5789,28 @@ canvas {
 .rule5-unlocked-transition {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ==========================================================================
+   ADMIN MANUAL OBSERVER EDIT (AFTER SCHEDULE LOCK) STYLES
+   ========================================================================== */
+.obs-warning-banner {
+  animation: fadeIn 0.2s ease-in-out;
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.obs-select-option-blocked {
+  color: #94a3b8 !important;
+  background: #f8fafc !important;
+}
+
+.obs-badge-diff-old {
+  text-decoration: line-through;
+  color: #94a3b8;
+  margin-right: 4px;
+}
+
+.obs-badge-diff-new {
+  font-weight: 800;
+  color: #4f46e5;
+}

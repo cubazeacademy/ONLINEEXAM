@@ -2226,6 +2226,9 @@
                     <!-- Dynamically populated day tabs (Sunday..Saturday) -->
                   </div>
                   <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="openManualEditObserverModalFromPicker()" style="font-weight:700; box-shadow:0 2px 8px rgba(79, 70, 229, 0.35);">
+                      <i class="fa-solid fa-user-pen"></i> Edit Observer Assignment
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline" onclick="exportObserverCSV('schedule')">
                       <i class="fa-solid fa-file-csv"></i> Export Day CSV
                     </button>
@@ -4630,20 +4633,199 @@
     </div>
   </div>
 
-  <!-- MODAL: TEACHER SCHEDULE & WORKLOAD BREAKDOWN -->
-  <div id="modal-observer-teacher-schedule" class="modal-overlay hidden">
-    <div class="modal-content max-w-md" style="max-width: 580px;">
-      <div class="modal-header">
-        <h3 id="modal-obs-teacher-title" style="margin:0;"><i class="fa-solid fa-user-shield" style="color:var(--primary);"></i> Teacher Workload & Schedule</h3>
-        <button class="btn-close" onclick="closeModal('modal-observer-teacher-schedule')">&times;</button>
+  <!-- MODAL: ADMIN MANUAL OBSERVER EDIT (AFTER SCHEDULE LOCK) -->
+  <div id="modal-observer-manual-edit" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg" style="max-width: 620px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #fff;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span class="badge" id="modal-obs-edit-lock-pill" style="background:#059669; color:#fff; font-size:0.72rem; padding:3px 8px; border-radius:12px; font-weight:700;">
+              <i class="fa-solid fa-lock"></i> SCHEDULE LOCKED
+            </span>
+            <span class="badge" id="modal-obs-edit-dept-pill" style="background:rgba(255,255,255,0.18); color:#e0e7ff; font-size:0.72rem; padding:3px 8px; border-radius:12px;">
+              Dept: MEDIA
+            </span>
+          </div>
+          <h3 style="color:#fff; margin:0; font-size:1.15rem;"><i class="fa-solid fa-user-pen" style="color:#38bdf8;"></i> Edit Observer Assignment</h3>
+        </div>
+        <button class="btn-close" style="color:#fff;" onclick="closeModal('modal-observer-manual-edit')">&times;</button>
       </div>
-      <div class="modal-body" style="padding: 20px;">
-        <div id="container-obs-teacher-workload-content">
-          <!-- Dynamically rendered table of teaching + observer duties -->
+
+      <form id="form-observer-manual-edit" onsubmit="handleObserverManualEditSubmit(event)">
+        <input type="hidden" id="obs-edit-dept-id">
+        <div class="modal-body" style="padding: 20px 24px; max-height: calc(85vh - 140px); overflow-y: auto;">
+          <!-- SLOT SELECTION SUMMARY BAR (OR PICKER IF OPENED FROM HEADER) -->
+          <div id="obs-edit-slot-summary-card" style="background:linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border:1.5px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Target Class & Period</div>
+                <div style="font-size:1.1rem; font-weight:800; color:#0f172a; margin-top:2px;" id="obs-edit-target-title">
+                  Std 5 — Period 3 <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(09:00–09:45)</span>
+                </div>
+                <div style="font-size:0.82rem; color:#475569; margin-top:3px;">
+                  <span><strong>Day:</strong> <span id="obs-edit-target-day">Monday</span></span> &bull; 
+                  <span><strong>Subject:</strong> <span id="obs-edit-target-subject">MTS</span></span>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Class Teacher</div>
+                <span class="obs-badge-teaching" style="margin-top:4px; display:inline-block;" id="obs-edit-target-teacher">
+                  <i class="fa-solid fa-chalkboard-user"></i> Teacher Name
+                </span>
+              </div>
+            </div>
+
+            <!-- DYNAMIC PICKER IF OPENED FROM TOOLBAR -->
+            <div id="obs-edit-picker-container" class="hidden" style="margin-top:12px; padding-top:12px; border-top:1px dashed #cbd5e1;">
+              <div class="form-row">
+                <div class="form-group col-4 mb-0">
+                  <label style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:3px;">Day</label>
+                  <select id="obs-picker-day" class="form-control" style="font-size:0.82rem; padding:4px 8px;" onchange="onManualEditPickerChanged()">
+                    <!-- Days -->
+                  </select>
+                </div>
+                <div class="form-group col-4 mb-0">
+                  <label style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:3px;">Period</label>
+                  <select id="obs-picker-period" class="form-control" style="font-size:0.82rem; padding:4px 8px;" onchange="onManualEditPickerChanged()">
+                    <option value="1">P1 (07:30–08:15)</option>
+                    <option value="2">P2 (08:15–09:00)</option>
+                    <option value="3">P3 (09:00–09:45)</option>
+                    <option value="4">P4 (10:30–11:15)</option>
+                    <option value="5">P5 (11:25–12:10)</option>
+                    <option value="6">P6 (12:10–12:55)</option>
+                    <option value="7">P7 (14:00–14:40)</option>
+                    <option value="8">P8 (14:40–15:20)</option>
+                    <option value="9">P9 (15:30–16:10)</option>
+                  </select>
+                </div>
+                <div class="form-group col-4 mb-0">
+                  <label style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:3px;">Class</label>
+                  <select id="obs-picker-class" class="form-control" style="font-size:0.82rem; padding:4px 8px;" onchange="onManualEditPickerChanged()">
+                    <!-- Classes -->
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- OBSERVER 1 SELECTION -->
+          <div class="form-group" style="background:#f8fafc; padding:14px 16px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="font-weight:800; font-size:0.88rem; color:#1e293b; margin:0;">
+                <span class="badge badge-primary" style="font-size:0.72rem; padding:2px 8px; margin-right:4px;">Position 1</span> Observer 1 <span class="text-danger">*</span>
+              </label>
+              <div id="obs-edit-curr1-label" style="font-size:0.78rem; color:#64748b;">Current: <strong id="obs-edit-curr1-name">—</strong></div>
+            </div>
+            <select id="select-obs-edit-teacher-1" class="form-control" style="font-size:0.88rem; font-weight:600; padding:8px 12px;" onchange="onObserverSelectChanged(1)" required>
+              <option value="">Loading eligible teachers...</option>
+            </select>
+            <div id="obs-edit-warning-1" class="hidden" style="margin-top:8px; font-size:0.8rem; padding:8px 12px; border-radius:6px;">
+              <!-- Dynamic warning alert -->
+            </div>
+          </div>
+
+          <!-- OBSERVER 2 SELECTION -->
+          <div class="form-group" style="background:#f8fafc; padding:14px 16px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="font-weight:800; font-size:0.88rem; color:#1e293b; margin:0;">
+                <span class="badge badge-primary" style="font-size:0.72rem; padding:2px 8px; margin-right:4px;">Position 2</span> Observer 2 <span class="text-danger">*</span>
+              </label>
+              <div id="obs-edit-curr2-label" style="font-size:0.78rem; color:#64748b;">Current: <strong id="obs-edit-curr2-name">—</strong></div>
+            </div>
+            <select id="select-obs-edit-teacher-2" class="form-control" style="font-size:0.88rem; font-weight:600; padding:8px 12px;" onchange="onObserverSelectChanged(2)" required>
+              <option value="">Loading eligible teachers...</option>
+            </select>
+            <div id="obs-edit-warning-2" class="hidden" style="margin-top:8px; font-size:0.8rem; padding:8px 12px; border-radius:6px;">
+              <!-- Dynamic warning alert -->
+            </div>
+          </div>
+
+          <!-- REASON / NOTE FIELD -->
+          <div class="form-group mb-2">
+            <label style="font-weight:700; font-size:0.85rem; color:#334155;">
+              Reason / Administrative Note <small class="text-muted">(Recorded in audit log)</small>
+            </label>
+            <input type="text" id="obs-edit-reason" class="form-control" placeholder="e.g. Teacher A unavailable due to leave / Emergency reassignment" style="font-size:0.85rem;">
+          </div>
+
+          <!-- GENERAL POLICY INFORMATION NOTE -->
+          <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:0.78rem; color:#1e40af; margin-top:14px; display:flex; gap:8px; align-items:flex-start;">
+            <i class="fa-solid fa-circle-info" style="margin-top:2px; font-size:0.9rem;"></i>
+            <div>
+              <strong>Schedule Lock Note:</strong> The Observer Schedule will remain <strong>LOCKED</strong> after saving this manual edit. Only this specific class and period assignment will be updated. An audit log will be created automatically.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 24px; display:flex; justify-content:space-between; align-items:center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-manual-edit')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-obs-edit-submit" style="font-weight:700; box-shadow:0 4px 12px rgba(79, 70, 229, 0.3);">
+            <i class="fa-solid fa-check"></i> Review & Save Assignment
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: MANUAL EDIT CONFIRMATION -->
+  <div id="modal-observer-confirm-edit" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 480px;">
+      <div class="modal-header" style="background:#fffbeb; color:#92400e; border-bottom:1.5px solid #fde68a;">
+        <h3 style="color:#92400e; margin:0; font-size:1.1rem;"><i class="fa-solid fa-triangle-exclamation" style="color:#d97706;"></i> Confirm Observer Change?</h3>
+        <button class="btn-close" onclick="closeModal('modal-observer-confirm-edit')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 22px;">
+        <p style="font-size:0.86rem; color:#475569; margin-top:0;">
+          Please review the observer assignment modifications below before confirming:
+        </p>
+
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:14px;">
+          <div style="font-size:0.82rem; color:#64748b; margin-bottom:4px;">
+            <strong>Class:</strong> <span id="confirm-obs-class" style="color:#0f172a; font-weight:700;">Std 5</span> &bull; 
+            <strong>Period:</strong> <span id="confirm-obs-period" style="color:#0f172a; font-weight:700;">P3</span> &bull; 
+            <strong>Day:</strong> <span id="confirm-obs-day" style="color:#0f172a; font-weight:700;">Monday</span>
+          </div>
+          <hr style="margin:8px 0; border:0; border-top:1px solid #e2e8f0;">
+
+          <!-- Observer 1 Diff -->
+          <div style="margin-bottom:10px;">
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Observer 1:</div>
+            <div id="confirm-obs1-diff" style="font-size:0.88rem; font-weight:700; color:#0f172a; margin-top:2px;">
+              Teacher A &rarr; <span style="color:#4f46e5;">Teacher C</span>
+            </div>
+          </div>
+
+          <!-- Observer 2 Diff -->
+          <div style="margin-bottom:10px;">
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Observer 2:</div>
+            <div id="confirm-obs2-diff" style="font-size:0.88rem; font-weight:700; color:#0f172a; margin-top:2px;">
+              Teacher B <span class="text-muted" style="font-size:0.8rem; font-weight:normal;">(Unchanged)</span>
+            </div>
+          </div>
+
+          <!-- Reason -->
+          <div style="margin-top:6px;">
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Reason:</div>
+            <div id="confirm-obs-reason" style="font-size:0.82rem; color:#334155; font-style:italic; margin-top:2px;">
+              Manual Admin Reassignment
+            </div>
+          </div>
+        </div>
+
+        <!-- Soft warnings display in confirm modal -->
+        <div id="confirm-obs-warnings-box" class="hidden" style="margin-bottom:10px;">
+          <!-- Rendered warnings -->
+        </div>
+
+        <div style="font-size:0.78rem; color:#64748b;">
+          <i class="fa-solid fa-lock"></i> <strong>Note:</strong> The schedule will remain LOCKED. No automatic regeneration will occur.
         </div>
       </div>
-      <div class="modal-footer" style="padding: 12px 20px;">
-        <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-teacher-schedule')">Close</button>
+      <div class="modal-footer" style="padding: 12px 20px; display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-observer-confirm-edit')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-confirm-save-obs-edit" onclick="executeObserverManualEdit()" style="background:#d97706; border-color:#b45309;">
+          <i class="fa-solid fa-check"></i> Confirm Change
+        </button>
       </div>
     </div>
   </div>

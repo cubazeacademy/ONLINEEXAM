@@ -8328,7 +8328,10 @@ function renderObserverScheduleView(data) {
       <td>
         ${r.leader_name ? `<span class="obs-badge-leader"><i class="fa-solid fa-user-tie"></i> ${escapeHtml(r.leader_name)}</span>` : '<span class="text-muted">Standby</span>'}
       </td>
-      <td class="text-right">
+      <td class="text-right" style="white-space:nowrap;">
+        <button type="button" class="btn btn-sm btn-primary" style="padding:3px 8px; font-size:0.75rem; font-weight:700; margin-right:4px; box-shadow:0 2px 6px rgba(79, 70, 229, 0.25);" onclick="openManualEditObserverModal('${escapeHtml(r.day)}', ${r.period}, '${escapeHtml(r.class_name)}', '${escapeHtml(r.subject)}', '${escapeHtml(r.class_teacher_name)}', ${r.observer_1_id || 'null'}, '${escapeHtml(r.observer_1_name || '')}', ${r.observer_2_id || 'null'}, '${escapeHtml(r.observer_2_name || '')}')" title="Edit Observer Assignment">
+          <i class="fa-solid fa-user-pen"></i> Edit
+        </button>
         <button type="button" class="btn btn-sm btn-outline" style="padding:3px 8px; font-size:0.75rem;" onclick="trackSingleClassMovement('${escapeHtml(r.class_name)}'); switchObserverSubTab('movement');" title="View class observer movement">
           <i class="fa-solid fa-person-walking"></i> Track
         </button>
@@ -8750,7 +8753,7 @@ function filterObserverView() {
   } else if (observerState.currentSubTab === 'balance' && observerState.balanceData) {
     const filtered = {
       ...observerState.balanceData,
-      balance: observerState.balanceData.balance.filter(b => {
+      balance: (observerState.balanceData.balance || []).filter(b => {
         return (
           b.teacher_name.toLowerCase().includes(query) ||
           b.username.toLowerCase().includes(query) ||
@@ -8761,4 +8764,435 @@ function filterObserverView() {
     renderObserverDutyBalance(filtered);
   }
 }
+
+// =========================================================================
+// 9.14 ADMIN MANUAL OBSERVER EDIT (AFTER SCHEDULE LOCK) CLIENT ENGINE
+// =========================================================================
+
+let observerManualEditData = {
+  teachers: [],
+  slotContext: null,
+  pendingSubmission: null
+};
+
+// Open Manual Edit Modal directly from a row in the Observer Schedule Table
+async function openManualEditObserverModal(day, period, className, subject, classTeacher, obs1Id, obs1Name, obs2Id, obs2Name) {
+  const deptId = observerState.departmentId || 1;
+  const periodNum = parseInt(period);
+
+  observerManualEditData.slotContext = {
+    deptId,
+    day,
+    period: periodNum,
+    className,
+    subject: subject || 'General',
+    classTeacher: classTeacher || 'Unassigned',
+    obs1Id: obs1Id && obs1Id !== 'null' ? parseInt(obs1Id) : null,
+    obs1Name: obs1Name && obs1Name !== 'null' && obs1Name !== '—' ? obs1Name : null,
+    obs2Id: obs2Id && obs2Id !== 'null' ? parseInt(obs2Id) : null,
+    obs2Name: obs2Name && obs2Name !== 'null' && obs2Name !== '—' ? obs2Name : null
+  };
+
+  // Set Modal Header Badges & Details
+  const lockPill = document.getElementById('modal-obs-edit-lock-pill');
+  if (lockPill) {
+    if (observerState.isLocked) {
+      lockPill.style.background = '#059669';
+      lockPill.innerHTML = `<i class="fa-solid fa-lock"></i> SCHEDULE LOCKED`;
+    } else {
+      lockPill.style.background = '#f59e0b';
+      lockPill.innerHTML = `<i class="fa-solid fa-file-pen"></i> DRAFT SCHEDULE`;
+    }
+  }
+
+  const deptPill = document.getElementById('modal-obs-edit-dept-pill');
+  const deptSelect = document.getElementById('observer-dept-select');
+  const deptName = deptSelect && deptSelect.options[deptSelect.selectedIndex] ? deptSelect.options[deptSelect.selectedIndex].text : 'MEDIA';
+  if (deptPill) deptPill.textContent = `Dept: ${deptName}`;
+
+  document.getElementById('obs-edit-dept-id').value = deptId;
+  document.getElementById('obs-edit-target-title').innerHTML = `${escapeHtml(className)} — Period ${periodNum} <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(P${periodNum})</span>`;
+  document.getElementById('obs-edit-target-day').textContent = day;
+  document.getElementById('obs-edit-target-subject').textContent = subject || 'General';
+  document.getElementById('obs-edit-target-teacher').innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(classTeacher || 'Unassigned')}`;
+
+  // Current Observer labels
+  const curr1Name = observerManualEditData.slotContext.obs1Name || 'Unassigned';
+  const curr2Name = observerManualEditData.slotContext.obs2Name || 'Unassigned';
+  document.getElementById('obs-edit-curr1-name').textContent = curr1Name;
+  document.getElementById('obs-edit-curr2-name').textContent = curr2Name;
+
+  // Clear reason input & warnings
+  document.getElementById('obs-edit-reason').value = '';
+  hideElement('obs-edit-warning-1');
+  hideElement('obs-edit-warning-2');
+  hideElement('obs-edit-picker-container');
+
+  openModal('modal-observer-manual-edit');
+
+  // Load slot eligibility
+  await loadSlotEligibilityForEdit(deptId, day, periodNum, className, observerManualEditData.slotContext.obs1Id, observerManualEditData.slotContext.obs2Id);
+}
+
+// Open Manual Edit Modal from toolbar button (shows dynamic Day/Period/Class picker)
+async function openManualEditObserverModalFromPicker() {
+  const deptId = observerState.departmentId || 1;
+  const pickerContainer = document.getElementById('obs-edit-picker-container');
+  if (pickerContainer) pickerContainer.classList.remove('hidden');
+
+  const daySelect = document.getElementById('obs-picker-day');
+  const periodSelect = document.getElementById('obs-picker-period');
+  const classSelect = document.getElementById('obs-picker-class');
+
+  // Populate Day picker
+  const activeDays = (observerState.scheduleData && observerState.scheduleData.active_days) ? observerState.scheduleData.active_days.split(',').map(d => d.trim()) : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  if (daySelect) {
+    daySelect.innerHTML = activeDays.map(d => `<option value="${d}" ${d === observerState.selectedDay && d !== 'all' ? 'selected' : ''}>${d}</option>`).join('');
+  }
+
+  // Populate Class picker
+  const classes = observerState.assignedClasses || [];
+  if (classSelect) {
+    if (classes.length > 0) {
+      classSelect.innerHTML = classes.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    } else {
+      classSelect.innerHTML = `<option value="Std 1">Std 1</option>`;
+    }
+  }
+
+  const currentDay = daySelect ? daySelect.value : 'Sunday';
+  const currentPeriod = periodSelect ? parseInt(periodSelect.value) : 1;
+  const currentClass = classSelect ? classSelect.value : (classes[0] ? classes[0].name : 'Std 1');
+
+  // Find existing slot from scheduleData if available
+  let existingObs1Id = null, existingObs1Name = null, existingObs2Id = null, existingObs2Name = null, subject = 'General', classTeacher = 'Unassigned';
+  if (observerState.scheduleData && observerState.scheduleData.schedule) {
+    const found = observerState.scheduleData.schedule.find(s => s.day === currentDay && s.period === currentPeriod && s.class_name.trim().toLowerCase() === currentClass.trim().toLowerCase());
+    if (found) {
+      existingObs1Id = found.observer_1_id;
+      existingObs1Name = found.observer_1_name;
+      existingObs2Id = found.observer_2_id;
+      existingObs2Name = found.observer_2_name;
+      subject = found.subject;
+      classTeacher = found.class_teacher_name;
+    }
+  }
+
+  openManualEditObserverModal(currentDay, currentPeriod, currentClass, subject, classTeacher, existingObs1Id, existingObs1Name, existingObs2Id, existingObs2Name);
+  if (pickerContainer) pickerContainer.classList.remove('hidden');
+}
+
+// When picker dropdown is changed in the modal
+async function onManualEditPickerChanged() {
+  const day = document.getElementById('obs-picker-day').value;
+  const period = parseInt(document.getElementById('obs-picker-period').value);
+  const className = document.getElementById('obs-picker-class').value;
+  const deptId = observerState.departmentId || 1;
+
+  let existingObs1Id = null, existingObs1Name = null, existingObs2Id = null, existingObs2Name = null, subject = 'General', classTeacher = 'Unassigned';
+  if (observerState.scheduleData && observerState.scheduleData.schedule) {
+    const found = observerState.scheduleData.schedule.find(s => s.day === day && s.period === period && s.class_name.trim().toLowerCase() === className.trim().toLowerCase());
+    if (found) {
+      existingObs1Id = found.observer_1_id;
+      existingObs1Name = found.observer_1_name;
+      existingObs2Id = found.observer_2_id;
+      existingObs2Name = found.observer_2_name;
+      subject = found.subject;
+      classTeacher = found.class_teacher_name;
+    }
+  }
+
+  observerManualEditData.slotContext = {
+    deptId,
+    day,
+    period,
+    className,
+    subject,
+    classTeacher,
+    obs1Id: existingObs1Id,
+    obs1Name: existingObs1Name,
+    obs2Id: existingObs2Id,
+    obs2Name: existingObs2Name
+  };
+
+  document.getElementById('obs-edit-target-title').innerHTML = `${escapeHtml(className)} — Period ${period} <span style="font-size:0.85rem; font-weight:600; color:#6366f1;">(P${period})</span>`;
+  document.getElementById('obs-edit-target-day').textContent = day;
+  document.getElementById('obs-edit-target-subject').textContent = subject;
+  document.getElementById('obs-edit-target-teacher').innerHTML = `<i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(classTeacher || 'Unassigned')}`;
+
+  document.getElementById('obs-edit-curr1-name').textContent = existingObs1Name || 'Unassigned';
+  document.getElementById('obs-edit-curr2-name').textContent = existingObs2Name || 'Unassigned';
+
+  await loadSlotEligibilityForEdit(deptId, day, period, className, existingObs1Id, existingObs2Id);
+}
+
+// Fetch slot eligibility & populate dropdowns with formatted badges
+async function loadSlotEligibilityForEdit(deptId, day, period, className, obs1Id, obs2Id) {
+  const select1 = document.getElementById('select-obs-edit-teacher-1');
+  const select2 = document.getElementById('select-obs-edit-teacher-2');
+
+  if (select1) select1.innerHTML = `<option value="">Loading eligible teachers...</option>`;
+  if (select2) select2.innerHTML = `<option value="">Loading eligible teachers...</option>`;
+
+  try {
+    const res = await fetch(apiUrl(`/api/observer/slot-eligibility?department_id=${deptId}&day=${encodeURIComponent(day)}&period=${period}&class_name=${encodeURIComponent(className)}&current_obs1_id=${obs1Id || ''}&current_obs2_id=${obs2Id || ''}`));
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch eligibility list');
+
+    const teachers = data.teachers || [];
+    observerManualEditData.teachers = teachers;
+
+    populateObserverDropdown(select1, 1, teachers, obs1Id, obs2Id);
+    populateObserverDropdown(select2, 2, teachers, obs2Id, obs1Id);
+
+    onObserverSelectChanged(1);
+    onObserverSelectChanged(2);
+  } catch (err) {
+    console.error('Error loading slot eligibility:', err);
+    if (select1) select1.innerHTML = `<option value="">Error loading teachers</option>`;
+    if (select2) select2.innerHTML = `<option value="">Error loading teachers</option>`;
+  }
+}
+
+// Format each dropdown option with clear visual eligibility indicators
+function populateObserverDropdown(selectEl, slotNum, teachers, selectedTeacherId, otherSlotTeacherId) {
+  if (!selectEl) return;
+
+  const otherId = otherSlotTeacherId ? parseInt(otherSlotTeacherId) : null;
+  const currentSelectedId = selectedTeacherId ? parseInt(selectedTeacherId) : null;
+
+  let optionsHtml = `<option value="">-- Choose Observer ${slotNum} --</option>`;
+
+  teachers.forEach(t => {
+    let isDisabled = false;
+    let labelPrefix = '✅ ';
+    let reasonText = '';
+
+    // Hard block check
+    if (!t.is_eligible) {
+      isDisabled = true;
+      labelPrefix = '❌ ';
+      reasonText = ` [${t.hard_block_reason}]`;
+    } else if (otherId && t.teacher_id === otherId) {
+      // Mutual duplicate observer check
+      isDisabled = true;
+      labelPrefix = '❌ ';
+      reasonText = ` [Duplicate: Selected as Observer ${slotNum === 1 ? 2 : 1}]`;
+    } else if (t.is_leader) {
+      labelPrefix = 'ℹ️ ';
+      reasonText = ` [Dept Leader — Standby Override Allowed]`;
+    } else if (t.has_warnings) {
+      labelPrefix = '⚠️ ';
+      const dutyWarn = t.warnings.find(w => w.type === 'DUTY_BALANCE');
+      reasonText = dutyWarn ? ` [${dutyWarn.message}]` : ` [Balance Warning]`;
+    } else {
+      labelPrefix = '✅ ';
+      reasonText = ` [Eligible • ${t.duty_count} duties]`;
+    }
+
+    const isSelected = Boolean(currentSelectedId && t.teacher_id === currentSelectedId);
+    const optClass = isDisabled ? 'style="color:#94a3b8; background:#f8fafc;"' : (t.is_leader ? 'style="color:#92400e; font-weight:700;"' : (t.has_warnings ? 'style="color:#b45309;"' : 'style="color:#0f172a;"'));
+
+    optionsHtml += `
+      <option value="${t.teacher_id}" ${isDisabled ? 'disabled' : ''} ${isSelected ? 'selected' : ''} ${optClass}>
+        ${labelPrefix}${escapeHtml(t.teacher_name)}${reasonText}
+      </option>
+    `;
+  });
+
+  selectEl.innerHTML = optionsHtml;
+}
+
+// React to dropdown selection change: show dynamic warning banners & enforce mutual exclusivity
+function onObserverSelectChanged(slotNum) {
+  const select1 = document.getElementById('select-obs-edit-teacher-1');
+  const select2 = document.getElementById('select-obs-edit-teacher-2');
+  const val1 = select1 ? parseInt(select1.value) : null;
+  const val2 = select2 ? parseInt(select2.value) : null;
+
+  const teachers = observerManualEditData.teachers || [];
+  const selectedTeacher = slotNum === 1 ? teachers.find(t => t.teacher_id === val1) : teachers.find(t => t.teacher_id === val2);
+  const warningContainer = document.getElementById(`obs-edit-warning-${slotNum}`);
+
+  if (warningContainer) {
+    if (!selectedTeacher) {
+      warningContainer.classList.add('hidden');
+    } else if (selectedTeacher.is_leader) {
+      warningContainer.className = 'obs-warning-banner';
+      warningContainer.style.background = '#eff6ff';
+      warningContainer.style.border = '1px solid #bfdbfe';
+      warningContainer.style.color = '#1e40af';
+      warningContainer.innerHTML = `
+        <div style="display:flex; gap:8px; align-items:flex-start;">
+          <i class="fa-solid fa-circle-info" style="font-size:1rem; margin-top:1px;"></i>
+          <div>
+            <strong>ℹ️ Department Leader (Standby Control Person)</strong><br>
+            <span>${escapeHtml(selectedTeacher.teacher_name)} is the Department Leader and is normally kept on standby during automatic allocation. Since this is an Admin manual edit, you can proceed with this assignment.</span>
+          </div>
+        </div>
+      `;
+      warningContainer.classList.remove('hidden');
+    } else if (selectedTeacher.has_warnings) {
+      const dutyWarn = selectedTeacher.warnings.find(w => w.type === 'DUTY_BALANCE');
+      const dutiesCount = dutyWarn ? dutyWarn.duty_count : selectedTeacher.duty_count;
+      warningContainer.className = 'obs-warning-banner';
+      warningContainer.style.background = '#fffbeb';
+      warningContainer.style.border = '1px solid #fde68a';
+      warningContainer.style.color = '#92400e';
+      warningContainer.innerHTML = `
+        <div style="display:flex; gap:8px; align-items:flex-start;">
+          <i class="fa-solid fa-triangle-exclamation" style="font-size:1rem; margin-top:1px;"></i>
+          <div>
+            <strong>⚠️ Duty Balance Warning</strong><br>
+            <span>${escapeHtml(selectedTeacher.teacher_name)} currently has <strong>${dutiesCount} Observer Duties</strong>. Other eligible teachers may have fewer duties. You can still assign this teacher if required.</span>
+          </div>
+        </div>
+      `;
+      warningContainer.classList.remove('hidden');
+    } else {
+      warningContainer.classList.add('hidden');
+    }
+  }
+}
+
+// Handle Form Submission: Client-side validation & trigger confirmation modal
+function handleObserverManualEditSubmit(e) {
+  e.preventDefault();
+
+  const ctx = observerManualEditData.slotContext;
+  if (!ctx) return alert('Session context lost. Please reopen the edit window.');
+
+  const select1 = document.getElementById('select-obs-edit-teacher-1');
+  const select2 = document.getElementById('select-obs-edit-teacher-2');
+  const obs1Id = select1 && select1.value ? parseInt(select1.value) : null;
+  const obs2Id = select2 && select2.value ? parseInt(select2.value) : null;
+  const reason = document.getElementById('obs-edit-reason').value.trim();
+
+  if (!obs1Id || !obs2Id) {
+    return alert('Please select both Observer 1 and Observer 2.');
+  }
+
+  // HARD RESTRICTION: Duplicate Observer Check
+  if (obs1Id === obs2Id) {
+    const teachers = observerManualEditData.teachers || [];
+    const t = teachers.find(item => item.teacher_id === obs1Id);
+    const tName = t ? t.teacher_name : 'This teacher';
+    return alert(`⚠️ Duplicate Observer\n\n${tName} is selected as both Observer 1 and Observer 2.\nPlease select different teachers for each observer slot.`);
+  }
+
+  const teachers = observerManualEditData.teachers || [];
+  const t1 = teachers.find(t => t.teacher_id === obs1Id);
+  const t2 = teachers.find(t => t.teacher_id === obs2Id);
+
+  const t1Name = t1 ? t1.teacher_name : `Teacher #${obs1Id}`;
+  const t2Name = t2 ? t2.teacher_name : `Teacher #${obs2Id}`;
+
+  const prev1Name = ctx.obs1Name || 'Unassigned';
+  const prev2Name = ctx.obs2Name || 'Unassigned';
+
+  const isObs1Changed = ctx.obs1Id !== obs1Id;
+  const isObs2Changed = ctx.obs2Id !== obs2Id;
+
+  if (!isObs1Changed && !isObs2Changed) {
+    return alert('No changes were made to Observer 1 or Observer 2.');
+  }
+
+  // Populate Confirmation Modal
+  document.getElementById('confirm-obs-class').textContent = ctx.className;
+  document.getElementById('confirm-obs-period').textContent = `P${ctx.period}`;
+  document.getElementById('confirm-obs-day').textContent = ctx.day;
+  document.getElementById('confirm-obs-reason').textContent = reason || 'Admin Manual Reassignment';
+
+  const diff1El = document.getElementById('confirm-obs1-diff');
+  if (diff1El) {
+    diff1El.innerHTML = isObs1Changed ?
+      `${escapeHtml(prev1Name)} &rarr; <span style="color:#4f46e5; font-weight:800;">${escapeHtml(t1Name)}</span>` :
+      `${escapeHtml(t1Name)} <span class="text-muted" style="font-size:0.8rem; font-weight:normal;">(Unchanged)</span>`;
+  }
+
+  const diff2El = document.getElementById('confirm-obs2-diff');
+  if (diff2El) {
+    diff2El.innerHTML = isObs2Changed ?
+      `${escapeHtml(prev2Name)} &rarr; <span style="color:#4f46e5; font-weight:800;">${escapeHtml(t2Name)}</span>` :
+      `${escapeHtml(t2Name)} <span class="text-muted" style="font-size:0.8rem; font-weight:normal;">(Unchanged)</span>`;
+  }
+
+  // Warnings in confirmation modal
+  const confirmWarnBox = document.getElementById('confirm-obs-warnings-box');
+  const allWarnings = [];
+  if (t1 && t1.is_leader && isObs1Changed) allWarnings.push(`<strong>${t1.teacher_name} (Observer 1):</strong> Department Leader assigned manually.`);
+  if (t1 && t1.has_warnings && !t1.is_leader && isObs1Changed) allWarnings.push(`<strong>${t1.teacher_name} (Observer 1):</strong> Has ${t1.duty_count} Observer Duties (Balance Warning).`);
+  if (t2 && t2.is_leader && isObs2Changed) allWarnings.push(`<strong>${t2.teacher_name} (Observer 2):</strong> Department Leader assigned manually.`);
+  if (t2 && t2.has_warnings && !t2.is_leader && isObs2Changed) allWarnings.push(`<strong>${t2.teacher_name} (Observer 2):</strong> Has ${t2.duty_count} Observer Duties (Balance Warning).`);
+
+  if (confirmWarnBox) {
+    if (allWarnings.length > 0) {
+      confirmWarnBox.innerHTML = `
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 12px; font-size:0.78rem; color:#92400e;">
+          <i class="fa-solid fa-triangle-exclamation"></i> <strong>Warnings Noted:</strong>
+          <ul style="margin:4px 0 0 16px; padding:0;">
+            ${allWarnings.map(w => `<li>${w}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      confirmWarnBox.classList.remove('hidden');
+    } else {
+      confirmWarnBox.classList.add('hidden');
+    }
+  }
+
+  observerManualEditData.pendingSubmission = {
+    department_id: ctx.deptId,
+    day: ctx.day,
+    period: ctx.period,
+    class_name: ctx.className,
+    observer_1_id: obs1Id,
+    observer_2_id: obs2Id,
+    reason: reason || 'Admin Manual Reassignment',
+    admin_id: currentUser ? currentUser.id : null,
+    admin_name: currentUser ? currentUser.full_name : 'Admin'
+  };
+
+  openModal('modal-observer-confirm-edit');
+}
+
+// Execute Final Observer Manual Edit via Backend API
+async function executeObserverManualEdit() {
+  const payload = observerManualEditData.pendingSubmission;
+  if (!payload) return alert('No pending change found.');
+
+  const btn = document.getElementById('btn-confirm-save-obs-edit');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+  }
+
+  try {
+    const res = await fetch(apiUrl('/api/observer/manual-edit'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update observer assignment');
+
+    closeModal('modal-observer-confirm-edit');
+    closeModal('modal-observer-manual-edit');
+
+    alert(`✅ Observer Assignment Updated Successfully\n\nClass: ${payload.class_name} (Period ${payload.period})\nSchedule remains LOCKED.`);
+
+    // Refresh Observer Schedule and Duty Balance views seamlessly
+    loadObserverDutyDashboard(true);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-check"></i> Confirm Change`;
+    }
+  }
+}
+
 

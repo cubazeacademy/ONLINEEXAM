@@ -6201,7 +6201,425 @@ app.get('/api/observer/class-movement', async (req, res) => {
   }
 });
 
-// 8.13 OBSERVER AUDIT LOGS
+// 8.13 OBSERVER MANUAL EDIT & SLOT ELIGIBILITY (POST-LOCK EDITING ENGINE)
+// -------------------------------------------------------------------------
+
+// Helper: Calculate Teacher Eligibility for a Specific Observer Slot
+async function calculateSlotEligibility(deptId, day, period, className, slotNum, currentObs1Id, currentObs2Id) {
+  const periodNum = parseInt(period);
+  const slotNumber = parseInt(slotNum) || 1;
+
+  const [latestGen, leader, allTeachers, currentTeaching, nextTeaching, currentPeriodObservers, dutyCounts] = await Promise.all([
+    db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+    getDepartmentObserverLeader(deptId),
+    db.all(`SELECT id, full_name, username, phone, is_active, department_id FROM users WHERE role = 'teacher' AND department_id = $1 AND COALESCE(is_active, true) = true ORDER BY full_name ASC`, [deptId]),
+    db.all(`SELECT * FROM teacher_selections WHERE department_id = $1 AND day = $2 AND period = $3`, [deptId, day, periodNum]),
+    db.all(`SELECT * FROM teacher_selections WHERE department_id = $1 AND day = $2 AND period = $3`, [deptId, day, periodNum + 1]),
+    db.all(`SELECT * FROM observer_duty_allocations WHERE department_id = $1 AND day = $2 AND period = $3`, [deptId, day, periodNum]),
+    db.all(`SELECT observer_teacher_id, count(*)::int as count FROM observer_duty_allocations WHERE department_id = $1 GROUP BY observer_teacher_id`, [deptId])
+  ]);
+
+  const version = latestGen ? latestGen.generation_version : 1;
+  const leaderTeacherId = leader ? leader.teacher_id : null;
+
+  // Map duty counts
+  const dutyMap = new Map();
+  dutyCounts.forEach(d => dutyMap.set(d.observer_teacher_id, d.count));
+
+  // Compute average duty
+  const totalDuties = dutyCounts.reduce((sum, d) => sum + d.count, 0);
+  const avgDuty = allTeachers.length > 0 ? (totalDuties / allTeachers.length) : 0;
+
+  // Current period teaching map
+  const currentTeachingMap = new Map(); // teacher_id -> selection
+  let currentClassTeacherId = null;
+  currentTeaching.forEach(ts => {
+    currentTeachingMap.set(ts.teacher_id, ts);
+    if (ts.class_name && ts.class_name.trim().toLowerCase() === className.trim().toLowerCase()) {
+      currentClassTeacherId = ts.teacher_id;
+    }
+  });
+
+  // Next period teaching map on SAME CLASS (Rule 2)
+  const nextSameClassTeachingTeacherIds = new Set();
+  nextTeaching.forEach(ts => {
+    if (ts.class_name && ts.class_name.trim().toLowerCase() === className.trim().toLowerCase()) {
+      nextSameClassTeachingTeacherIds.add(ts.teacher_id);
+    }
+  });
+
+  // Observer assignments in this period (Rule 4: other class observer clash)
+  const otherClassObserverTeacherIds = new Set();
+  (currentPeriodObservers || []).forEach(oa => {
+    if (oa.generation_version === version) {
+      const isSameClassAndSlot = oa.class_name.trim().toLowerCase() === className.trim().toLowerCase() && oa.observer_slot_number === slotNumber;
+      if (!isSameClassAndSlot) {
+        // If it's a different class in the same period, they cannot observe both
+        if (oa.class_name.trim().toLowerCase() !== className.trim().toLowerCase()) {
+          otherClassObserverTeacherIds.add(oa.observer_teacher_id);
+        }
+      }
+    }
+  });
+
+  const parsedObs1Id = currentObs1Id ? parseInt(currentObs1Id) : null;
+  const parsedObs2Id = currentObs2Id ? parseInt(currentObs2Id) : null;
+
+  return allTeachers.map(teacher => {
+    const tId = teacher.id;
+    const dutyCount = dutyMap.get(tId) || 0;
+    const isLeader = Boolean(leaderTeacherId && tId === leaderTeacherId);
+
+    let isEligible = true;
+    let hardBlockReason = null;
+    let hardBlockCode = null;
+    const warnings = [];
+
+    // HARD RESTRICTION 1: Inactive or Department Mismatch
+    if (teacher.is_active === false) {
+      isEligible = false;
+      hardBlockReason = 'Teacher is inactive';
+      hardBlockCode = 'INACTIVE';
+    } else if (teacher.department_id !== deptId) {
+      isEligible = false;
+      hardBlockReason = 'Teacher belongs to another department';
+      hardBlockCode = 'DEPT_MISMATCH';
+    }
+
+    // HARD RESTRICTION 2: Rule 1 — Current Period Teacher (Same Class or busy teaching)
+    else if (currentTeachingMap.has(tId)) {
+      const ts = currentTeachingMap.get(tId);
+      isEligible = false;
+      hardBlockCode = 'RULE_1_CURRENT_PERIOD';
+      if (ts.class_name && ts.class_name.trim().toLowerCase() === className.trim().toLowerCase()) {
+        hardBlockReason = `Teaching ${className} in current period (Rule 1)`;
+      } else {
+        hardBlockReason = `Teaching ${ts.class_name} in current period (Rule 1)`;
+      }
+    }
+
+    // HARD RESTRICTION 3: Rule 2 — Next Period Teacher for SAME CLASS
+    else if (nextSameClassTeachingTeacherIds.has(tId)) {
+      isEligible = false;
+      hardBlockCode = 'RULE_2_NEXT_PERIOD_SAME_CLASS';
+      hardBlockReason = `Teaching ${className} in next period (Rule 2)`;
+    }
+
+    // HARD RESTRICTION 4: Duplicate Observer (Slot 1 == Slot 2)
+    else if (slotNumber === 1 && parsedObs2Id && tId === parsedObs2Id) {
+      isEligible = false;
+      hardBlockCode = 'DUPLICATE_OBSERVER';
+      hardBlockReason = 'Already assigned as Observer 2 for this class';
+    } else if (slotNumber === 2 && parsedObs1Id && tId === parsedObs1Id) {
+      isEligible = false;
+      hardBlockCode = 'DUPLICATE_OBSERVER';
+      hardBlockReason = 'Already assigned as Observer 1 for this class';
+    }
+
+    // HARD RESTRICTION 5: Rule 4 — Already Observer in another class for this same period
+    else if (otherClassObserverTeacherIds.has(tId)) {
+      isEligible = false;
+      hardBlockCode = 'RULE_4_PERIOD_DUTY_CLASH';
+      hardBlockReason = `Already assigned as observer for another class in this period`;
+    }
+
+    // SOFT WARNING 1: Rule 6 — Duty Balance Warning (Allow selection, show warning)
+    if (dutyCount > avgDuty + 1 || dutyCount >= 5) {
+      warnings.push({
+        type: 'DUTY_BALANCE',
+        title: 'Duty Balance Warning',
+        duty_count: dutyCount,
+        message: `${dutyCount} Observer Duties (Balance Warning)`
+      });
+    }
+
+    // SOFT WARNING 2: Rule 5 — Department Leader (Standby leader, manual assignment allowed)
+    if (isLeader) {
+      warnings.push({
+        type: 'LEADER_STANDBY',
+        title: 'Department Leader',
+        message: 'Department Leader — Manual Assignment Allowed'
+      });
+    }
+
+    return {
+      teacher_id: tId,
+      teacher_name: teacher.full_name,
+      username: teacher.username,
+      phone: teacher.phone,
+      is_eligible: isEligible,
+      hard_block_code: hardBlockCode,
+      hard_block_reason: hardBlockReason,
+      is_leader: isLeader,
+      duty_count: dutyCount,
+      has_warnings: warnings.length > 0,
+      warnings,
+      badge_status: !isEligible ? 'BLOCKED' : (warnings.length > 0 ? (isLeader ? 'LEADER' : 'WARNING') : 'ELIGIBLE')
+    };
+  });
+}
+
+// 8.13 GET Observer Slot Teacher Eligibility List
+app.get('/api/observer/slot-eligibility', async (req, res) => {
+  try {
+    const deptId = req.query.department_id ? parseInt(req.query.department_id) : 1;
+    const { day, period, class_name, slot_number, current_obs1_id, current_obs2_id } = req.query;
+
+    if (!day || !period || !class_name) {
+      return res.status(400).json({ error: 'day, period, and class_name are required.' });
+    }
+
+    const eligibilityList = await calculateSlotEligibility(
+      deptId,
+      day.trim(),
+      parseInt(period),
+      class_name.trim(),
+      parseInt(slot_number) || 1,
+      current_obs1_id,
+      current_obs2_id
+    );
+
+    res.json({
+      department_id: deptId,
+      day: day.trim(),
+      period: parseInt(period),
+      class_name: class_name.trim(),
+      slot_number: parseInt(slot_number) || 1,
+      teachers: eligibilityList
+    });
+  } catch (err) {
+    console.error('Error fetching slot eligibility:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.14 POST Admin Manual Edit Observer Assignment (After Schedule Lock)
+app.post('/api/observer/manual-edit', async (req, res) => {
+  const {
+    department_id,
+    day,
+    period,
+    class_name,
+    observer_slot_number,
+    new_observer_id,
+    observer_1_id,
+    observer_2_id,
+    reason,
+    admin_id,
+    admin_name
+  } = req.body;
+
+  const deptId = department_id ? parseInt(department_id) : 1;
+  const periodNum = parseInt(period);
+  const className = class_name ? class_name.trim() : null;
+
+  if (!day || !periodNum || !className) {
+    return res.status(400).json({ error: 'Department, Day, Period, and Class are required.' });
+  }
+
+  try {
+    // 1. Department isolation verification
+    const dept = await db.get(`SELECT id, name FROM departments WHERE id = $1`, [deptId]);
+    if (!dept) {
+      return res.status(400).json({ error: 'Department not found.' });
+    }
+
+    // 2. Fetch latest observer generation
+    const latestGen = await db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]);
+    if (!latestGen) {
+      return res.status(400).json({ error: 'No observer schedule found for this department.' });
+    }
+    const version = latestGen.generation_version;
+
+    // Fetch existing allocations for this specific class slot
+    const existingAllocations = await db.all(`
+      SELECT a.*, u.full_name as current_observer_name
+      FROM observer_duty_allocations a
+      JOIN users u ON a.observer_teacher_id = u.id
+      WHERE a.department_id = $1 AND a.generation_version = $2 AND a.day = $3 AND a.period = $4 AND LOWER(a.class_name) = LOWER($5)
+      ORDER BY a.observer_slot_number ASC
+    `, [deptId, version, day.trim(), periodNum, className]);
+
+    const existingSlot1 = existingAllocations.find(a => a.observer_slot_number === 1);
+    const existingSlot2 = existingAllocations.find(a => a.observer_slot_number === 2);
+
+    // Determine target updates: support both single slot update or dual slot update
+    let targetObs1Id = observer_1_id !== undefined ? (observer_1_id ? parseInt(observer_1_id) : null) : (existingSlot1 ? existingSlot1.observer_teacher_id : null);
+    let targetObs2Id = observer_2_id !== undefined ? (observer_2_id ? parseInt(observer_2_id) : null) : (existingSlot2 ? existingSlot2.observer_teacher_id : null);
+
+    if (observer_slot_number && new_observer_id) {
+      if (parseInt(observer_slot_number) === 1) {
+        targetObs1Id = parseInt(new_observer_id);
+      } else if (parseInt(observer_slot_number) === 2) {
+        targetObs2Id = parseInt(new_observer_id);
+      }
+    }
+
+    if (!targetObs1Id && !targetObs2Id) {
+      return res.status(400).json({ error: 'At least one observer must be selected.' });
+    }
+
+    // HARD RESTRICTION: DUPLICATE OBSERVER (Rule 7)
+    if (targetObs1Id && targetObs2Id && targetObs1Id === targetObs2Id) {
+      const dupTeacher = await db.get(`SELECT full_name FROM users WHERE id = $1`, [targetObs1Id]);
+      const tName = dupTeacher ? dupTeacher.full_name : 'This teacher';
+      return res.status(400).json({
+        error: `⚠️ Duplicate Observer: ${tName} cannot be assigned as both Observer 1 and Observer 2 for ${className} during ${day} Period ${periodNum}.`,
+        code: 'DUPLICATE_OBSERVER'
+      });
+    }
+
+    // Validate Observer 1 if provided/changed
+    const updates = [];
+    if (targetObs1Id) {
+      const eligibility1 = await calculateSlotEligibility(deptId, day.trim(), periodNum, className, 1, targetObs1Id, targetObs2Id);
+      const teacher1Eligibility = eligibility1.find(t => t.teacher_id === targetObs1Id);
+
+      if (!teacher1Eligibility) {
+        return res.status(400).json({ error: 'Selected Observer 1 teacher not found in this department.' });
+      }
+
+      if (!teacher1Eligibility.is_eligible) {
+        return res.status(400).json({
+          error: `⚠️ Observer Assignment Not Allowed\n\n${teacher1Eligibility.teacher_name} cannot be assigned as Observer 1:\n${teacher1Eligibility.hard_block_reason}.\n\nPlease select another eligible teacher.`,
+          code: teacher1Eligibility.hard_block_code,
+          reason: teacher1Eligibility.hard_block_reason
+        });
+      }
+
+      updates.push({
+        slot_number: 1,
+        new_teacher_id: targetObs1Id,
+        new_teacher_name: teacher1Eligibility.teacher_name,
+        prev_teacher_id: existingSlot1 ? existingSlot1.observer_teacher_id : null,
+        prev_teacher_name: existingSlot1 ? existingSlot1.current_observer_name : 'Unassigned',
+        is_changed: !existingSlot1 || existingSlot1.observer_teacher_id !== targetObs1Id
+      });
+    }
+
+    // Validate Observer 2 if provided/changed
+    if (targetObs2Id) {
+      const eligibility2 = await calculateSlotEligibility(deptId, day.trim(), periodNum, className, 2, targetObs1Id, targetObs2Id);
+      const teacher2Eligibility = eligibility2.find(t => t.teacher_id === targetObs2Id);
+
+      if (!teacher2Eligibility) {
+        return res.status(400).json({ error: 'Selected Observer 2 teacher not found in this department.' });
+      }
+
+      if (!teacher2Eligibility.is_eligible) {
+        return res.status(400).json({
+          error: `⚠️ Observer Assignment Not Allowed\n\n${teacher2Eligibility.teacher_name} cannot be assigned as Observer 2:\n${teacher2Eligibility.hard_block_reason}.\n\nPlease select another eligible teacher.`,
+          code: teacher2Eligibility.hard_block_code,
+          reason: teacher2Eligibility.hard_block_reason
+        });
+      }
+
+      updates.push({
+        slot_number: 2,
+        new_teacher_id: targetObs2Id,
+        new_teacher_name: teacher2Eligibility.teacher_name,
+        prev_teacher_id: existingSlot2 ? existingSlot2.observer_teacher_id : null,
+        prev_teacher_name: existingSlot2 ? existingSlot2.current_observer_name : 'Unassigned',
+        is_changed: !existingSlot2 || existingSlot2.observer_teacher_id !== targetObs2Id
+      });
+    }
+
+    // Fetch timetable slot & class teacher for reference
+    const timetableSlot = await db.get(`
+      SELECT * FROM teacher_selection_timetable
+      WHERE department_id = $1 AND day = $2 AND period = $3 AND LOWER(class_name) = LOWER($4)
+    `, [deptId, day.trim(), periodNum, className]);
+
+    const teachingSelection = await db.get(`
+      SELECT * FROM teacher_selections
+      WHERE department_id = $1 AND day = $2 AND period = $3 AND LOWER(class_name) = LOWER($4)
+    `, [deptId, day.trim(), periodNum, className]);
+
+    const subjectName = teachingSelection ? teachingSelection.subject : (timetableSlot ? timetableSlot.subject : 'General');
+    const classTeacherId = teachingSelection ? teachingSelection.teacher_id : null;
+    const timetableId = timetableSlot ? timetableSlot.id : null;
+    const currentScheduleStatus = latestGen.status || 'locked';
+
+    // Apply updates strictly for the modified slots
+    for (const update of updates) {
+      if (!update.is_changed) continue;
+
+      const existingSlotRecord = update.slot_number === 1 ? existingSlot1 : existingSlot2;
+
+      if (existingSlotRecord) {
+        // Update existing record in observer_duty_allocations
+        await db.run(`
+          UPDATE observer_duty_allocations
+          SET observer_teacher_id = $1, allocation_type = 'manual', updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+        `, [update.new_teacher_id, existingSlotRecord.id]);
+      } else {
+        // Insert new record in observer_duty_allocations if slot was empty
+        await db.run(`
+          INSERT INTO observer_duty_allocations (
+            department_id, day, period, timetable_id, class_name, subject,
+            class_teacher_id, observer_teacher_id, observer_slot_number, allocation_type, status, generation_version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual', $10, $11)
+        `, [
+          deptId, day.trim(), periodNum, timetableId, className, subjectName,
+          classTeacherId, update.new_teacher_id, update.slot_number, currentScheduleStatus, version
+        ]);
+      }
+
+      // Record in observer_manual_assignments
+      await db.run(`
+        INSERT INTO observer_manual_assignments (department_id, day, period, class_name, teacher_id, is_leader, reason, assigned_by)
+        VALUES ($1, $2, $3, $4, $5, false, $6, $7)
+      `, [deptId, day.trim(), periodNum, className, update.new_teacher_id, reason || 'Admin Manual Observer Reassignment', admin_id || null]);
+
+      // Record in observer_audit_logs with full details
+      const auditDetails = {
+        department: dept.name,
+        department_id: deptId,
+        day: day.trim(),
+        period: `P${periodNum}`,
+        class_name: className,
+        subject: subjectName,
+        observer_position: `Observer ${update.slot_number}`,
+        previous_observer: update.prev_teacher_name,
+        previous_observer_id: update.prev_teacher_id,
+        new_observer: update.new_teacher_name,
+        new_observer_id: update.new_teacher_id,
+        reason: reason || 'Admin Manual Reassignment',
+        schedule_status: currentScheduleStatus,
+        generation_version: version,
+        changed_by: admin_name || 'Admin',
+        server_timestamp: new Date().toISOString()
+      };
+
+      await logObserverAction(
+        admin_id,
+        admin_name || 'Admin',
+        `Observer Assignment Updated (Manual Admin Edit: ${className} P${periodNum} Observer ${update.slot_number})`,
+        auditDetails,
+        deptId
+      );
+    }
+
+    invalidateCache(`dept_obs_`);
+
+    res.json({
+      success: true,
+      message: 'Observer Assignment Updated Successfully',
+      department_id: deptId,
+      day: day.trim(),
+      period: periodNum,
+      class_name: className,
+      schedule_status: currentScheduleStatus,
+      updates
+    });
+  } catch (err) {
+    console.error('Observer Manual Edit Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.15 OBSERVER AUDIT LOGS
 app.get('/api/observer/audit-logs', async (req, res) => {
   try {
     const deptId = req.query.department_id ? parseInt(req.query.department_id) : null;

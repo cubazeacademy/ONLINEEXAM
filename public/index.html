@@ -206,6 +206,9 @@
         <a href="#teacher-observer-duties" class="nav-item" onclick="switchTab('teacher-observer-duties')">
           <i class="fa-solid fa-user-shield"></i> <span>My Observer Duties</span>
         </a>
+        <a href="#teacher-class-observers" class="nav-item" onclick="switchTab('teacher-class-observers')">
+          <i class="fa-solid fa-eye"></i> <span>My Class Observers</span>
+        </a>
         <a href="#teacher-movement" class="nav-item" onclick="switchTab('teacher-movement')">
           <i class="fa-solid fa-route"></i> <span>My Movement</span>
         </a>
@@ -3495,6 +3498,111 @@
           </div>
         </section>
 
+        <!-- TEACHER: MY CLASS OBSERVERS VIEW -->
+        <section id="view-teacher-class-observers" class="tab-view hidden">
+          <div class="panel-card mb-6">
+            <div class="panel-header" style="background: #ffffff; border-bottom: 1.5px solid #e2e8f0; color: #0f172a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h3 style="color: #0f172a; margin: 0;"><i class="fa-solid fa-eye text-primary"></i> My Class Observers</h3>
+                <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.85rem;">View the observers assigned to your teaching periods.</p>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span class="badge badge-info" id="badge-class-obs-dept-name"><i class="fa-solid fa-building"></i> Dept: MEDIA</span>
+                <button type="button" class="btn btn-sm btn-outline" onclick="window.print()">
+                  <i class="fa-solid fa-print"></i> Print
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="loadTeacherClassObservers(true)">
+                  <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+
+            <div class="panel-body" style="padding: 24px;">
+              <!-- SCHEDULE NOT READY NOTICE -->
+              <div id="banner-class-obs-not-ready" class="alert-box alert-warning mb-6" style="display: none;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                  <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.4rem; color: #d97706; margin-top: 2px;"></i>
+                  <div>
+                    <h4 style="margin: 0 0 4px 0; color: #92400e; font-weight: 700;">OBSERVER ASSIGNMENTS NOT AVAILABLE YET</h4>
+                    <p style="margin: 0; color: #b45309; font-size: 0.88rem;">Observer assignments for your department have not been generated yet. Your teaching periods are listed below, and assigned observers will appear here automatically once generated.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CONTROLS & FILTER BAR -->
+              <div class="class-obs-controls-bar mb-6" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 14px 18px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="font-size: 0.82rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px;">
+                    <i class="fa-solid fa-filter"></i> Filter Day:
+                  </span>
+                  <div id="container-class-obs-day-tabs" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-sm btn-primary day-filter-btn" data-day="ALL" onclick="filterClassObserversDay('ALL')">All Days</button>
+                    <button type="button" class="btn btn-sm btn-outline day-filter-btn" data-day="Sunday" onclick="filterClassObserversDay('Sunday')">Sunday</button>
+                    <button type="button" class="btn btn-sm btn-outline day-filter-btn" data-day="Monday" onclick="filterClassObserversDay('Monday')">Monday</button>
+                  </div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <label for="select-class-obs-period" style="font-size: 0.82rem; font-weight: 700; color: #475569; margin: 0;">Period:</label>
+                    <select id="select-class-obs-period" class="form-control form-control-sm" style="width: auto; min-width: 120px;" onchange="filterClassObserversPeriod(this.value)">
+                      <option value="ALL">All Periods</option>
+                      <option value="1">Period 1</option>
+                      <option value="2">Period 2</option>
+                      <option value="3">Period 3</option>
+                      <option value="4">Period 4</option>
+                      <option value="5">Period 5</option>
+                      <option value="6">Period 6</option>
+                      <option value="7">Period 7</option>
+                      <option value="8">Period 8</option>
+                    </select>
+                  </div>
+                  <div class="search-box" style="position: relative; max-width: 220px;">
+                    <input type="text" id="input-class-obs-search" class="form-control form-control-sm" placeholder="Search class / subject..." oninput="filterClassObserversSearch(this.value)" style="padding-left: 30px;">
+                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 0.8rem;"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SUMMARY STATS CHIPS -->
+              <div class="class-obs-stats-grid mb-6" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);">
+                  <div style="width: 38px; height: 38px; border-radius: 10px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;"><i class="fa-solid fa-chalkboard-user"></i></div>
+                  <div>
+                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Teaching Periods</div>
+                    <div id="stat-class-obs-teaching-count" style="font-size: 1.2rem; font-weight: 800; color: #0f172a;">0</div>
+                  </div>
+                </div>
+
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);">
+                  <div style="width: 38px; height: 38px; border-radius: 10px; background: #f0fdf4; color: #16a34a; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;"><i class="fa-solid fa-user-shield"></i></div>
+                  <div>
+                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Fully Assigned (2 Observers)</div>
+                    <div id="stat-class-obs-assigned-count" style="font-size: 1.2rem; font-weight: 800; color: #16a34a;">0</div>
+                  </div>
+                </div>
+
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);">
+                  <div style="width: 38px; height: 38px; border-radius: 10px; background: #fffbeb; color: #d97706; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;"><i class="fa-solid fa-clock"></i></div>
+                  <div>
+                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Today's Classes</div>
+                    <div id="stat-class-obs-today-count" style="font-size: 1.2rem; font-weight: 800; color: #0f172a;">0</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SCHEDULE CONTENT (GROUPED BY DAY WITH DESKTOP TABLE & MOBILE CARDS) -->
+              <div id="container-teacher-class-observers-content">
+                <div class="text-center text-muted" style="padding: 40px;">
+                  <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.8rem; color: #3b82f6;"></i>
+                  <p style="margin-top: 10px; font-weight: 600;">Loading your teaching observer schedule...</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
         <!-- TEACHER: MY MOVEMENT VIEW -->
         <section id="view-teacher-movement" class="tab-view hidden">
           <div class="panel-card mb-6">
@@ -6238,7 +6346,7 @@
   </div>
 
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=4.9"></script>
+  <script src="js/app.js?v=5.0"></script>
 </body>
 
 </html>

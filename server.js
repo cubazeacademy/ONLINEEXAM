@@ -7559,6 +7559,193 @@ app.get('/api/observer/export/:type', async (req, res) => {
 // 10. TEACHER PORTAL: TODAY'S SCHEDULE, ONGOING/NEXT PERIOD & OBSERVER VIEW
 // =========================================================================
 
+// 10.1 TEACHER: MY CLASS OBSERVERS (WHO IS OBSERVING MY TEACHING PERIODS)
+app.get('/api/teaching/teacher/class-observers', async (req, res) => {
+  try {
+    const teacherId = req.query.teacher_id ? parseInt(req.query.teacher_id) : null;
+    if (!teacherId) {
+      return res.status(400).json({ success: false, error: 'Teacher ID is required.' });
+    }
+
+    // 1. Authenticate Teacher & Enforce Department Membership
+    const teacher = await db.get(`
+      SELECT id, full_name, username, phone, email, department_id, is_active 
+      FROM users 
+      WHERE id = $1 AND role = 'teacher' AND COALESCE(is_active, true) = true
+    `, [teacherId]);
+
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher not found or inactive.' });
+    }
+
+    const deptId = teacher.department_id || 1;
+
+    // 2. Fetch Department Info & Settings & Latest Observer Generation
+    const [dept, latestObserverGen, periodSettings] = await Promise.all([
+      db.get(`SELECT id, name, code, active_days FROM departments WHERE id = $1`, [deptId]),
+      db.get(`SELECT * FROM observer_generation WHERE department_id = $1 ORDER BY generation_version DESC, id DESC LIMIT 1`, [deptId]),
+      db.all(`SELECT day, period, time_slot, is_enabled FROM teacher_selection_period_settings WHERE department_id = $1`, [deptId])
+    ]);
+
+    const isObserverLocked = Boolean(latestObserverGen && latestObserverGen.status === 'locked');
+    const observerVersion = latestObserverGen ? latestObserverGen.generation_version : 1;
+
+    // 3. Fetch this Teacher's Teaching Periods (Canonical selections)
+    const teachingSelections = await db.all(`
+      SELECT ts.id, ts.day, ts.period, ts.class_name, ts.subject, t.time_slot, ts.selected_at
+      FROM teacher_selections ts
+      LEFT JOIN teacher_selection_timetable t ON ts.timetable_id = t.id
+      WHERE ts.teacher_id = $1 AND ts.department_id = $2
+      ORDER BY 
+        CASE ts.day 
+          WHEN 'Sunday' THEN 1 WHEN 'Monday' THEN 2 WHEN 'Tuesday' THEN 3 
+          WHEN 'Wednesday' THEN 4 WHEN 'Thursday' THEN 5 WHEN 'Friday' THEN 6 
+          WHEN 'Saturday' THEN 7 ELSE 8 
+        END, ts.period ASC, ts.class_name ASC
+    `, [teacherId, deptId]);
+
+    // 4. Fetch Canonical Department Observer Duty Allocations for this generation version
+    const deptAllocations = latestObserverGen ? await db.all(`
+      SELECT a.day, a.period, a.class_name, a.observer_slot_number, a.observer_teacher_id, 
+             u_obs.full_name as observer_teacher_name, u_obs.phone as observer_phone, u_obs.email as observer_email
+      FROM observer_duty_allocations a
+      JOIN users u_obs ON a.observer_teacher_id = u_obs.id
+      WHERE a.department_id = $1 AND a.generation_version = $2
+      ORDER BY a.observer_slot_number ASC
+    `, [deptId, observerVersion]) : [];
+
+    // Map observer allocations by key: `${day}_${period}_${class_name.toLowerCase()}`
+    const observerMap = new Map();
+    deptAllocations.forEach(oa => {
+      const k = `${oa.day}_${oa.period}_${(oa.class_name || '').trim().toLowerCase()}`;
+      if (!observerMap.has(k)) observerMap.set(k, { obs1: null, obs2: null });
+      const entry = observerMap.get(k);
+      if (oa.observer_slot_number === 1) {
+        entry.obs1 = {
+          id: oa.observer_teacher_id,
+          name: oa.observer_teacher_name,
+          phone: oa.observer_phone || '',
+          email: oa.observer_email || ''
+        };
+      } else if (oa.observer_slot_number === 2) {
+        entry.obs2 = {
+          id: oa.observer_teacher_id,
+          name: oa.observer_teacher_name,
+          phone: oa.observer_phone || '',
+          email: oa.observer_email || ''
+        };
+      }
+    });
+
+    // 5. Current Server Time & Day in IST (+05:30)
+    const nowUtc = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const nowIst = new Date(nowUtc.getTime() + istOffset);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDay = dayNames[nowIst.getUTCDay()];
+    const currentHour = nowIst.getUTCHours();
+    const currentMin = nowIst.getUTCMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMin;
+
+    // Helper: Compute period times and status
+    function getPeriodInfo(periodNum, day) {
+      const ps = (periodSettings || []).find(p => p.day === day && p.period === periodNum);
+      const defaultTime = STANDARD_PERIOD_TIMES[periodNum];
+      const timeSlot = ps && ps.time_slot ? ps.time_slot : (defaultTime?.label || `Period ${periodNum}`);
+      let startTime = defaultTime?.start || '';
+      let endTime = defaultTime?.end || '';
+
+      if (ps && ps.time_slot && ps.time_slot.includes('–')) {
+        const parts = ps.time_slot.split('–');
+        if (parts.length === 2) {
+          startTime = parts[0].trim();
+          endTime = parts[1].trim();
+        }
+      } else if (ps && ps.time_slot && ps.time_slot.includes('-')) {
+        const parts = ps.time_slot.split('-');
+        if (parts.length === 2) {
+          startTime = parts[0].trim();
+          endTime = parts[1].trim();
+        }
+      }
+
+      let startMin = 0, endMin = 0;
+      if (defaultTime) {
+        const [sh, sm] = defaultTime.start.split(':').map(Number);
+        const [eh, em] = defaultTime.end.split(':').map(Number);
+        startMin = sh * 60 + sm;
+        endMin = eh * 60 + em;
+      }
+
+      let status = 'UPCOMING';
+      const isToday = (day === currentDay);
+      if (isToday) {
+        if (currentTimeInMinutes >= startMin && currentTimeInMinutes < endMin) {
+          status = 'LIVE_NOW';
+        } else if (currentTimeInMinutes >= endMin) {
+          status = 'COMPLETED';
+        } else {
+          status = 'UPCOMING';
+        }
+      } else {
+        status = 'SCHEDULED';
+      }
+
+      return { timeSlot, startTime, endTime, status, isToday };
+    }
+
+    // 6. Build the Complete Class Observers Schedule List
+    const schedule = teachingSelections.map(ts => {
+      const pInfo = getPeriodInfo(ts.period, ts.day);
+      const k = `${ts.day}_${ts.period}_${(ts.class_name || '').trim().toLowerCase()}`;
+      const observers = observerMap.get(k) || { obs1: null, obs2: null };
+
+      return {
+        id: ts.id,
+        day: ts.day,
+        period: ts.period,
+        class_name: ts.class_name,
+        subject: ts.subject || 'General',
+        time_slot: ts.time_slot || pInfo.timeSlot,
+        start_time: pInfo.startTime,
+        end_time: pInfo.endTime,
+        is_today: pInfo.isToday,
+        status: pInfo.status,
+        observer_1: observers.obs1,
+        observer_2: observers.obs2,
+        has_observer_1: Boolean(observers.obs1),
+        has_observer_2: Boolean(observers.obs2),
+        is_fully_assigned: Boolean(observers.obs1 && observers.obs2)
+      };
+    });
+
+    const activeDaysList = (dept && dept.active_days) ? dept.active_days.split(',').map(s => s.trim()) : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    res.json({
+      success: true,
+      teacher: {
+        id: teacher.id,
+        name: teacher.full_name,
+        username: teacher.username,
+        phone: teacher.phone,
+        department_id: deptId,
+        department_name: dept ? dept.name : 'MEDIA',
+        department_code: dept ? dept.code : 'MED'
+      },
+      department_id: deptId,
+      department_name: dept ? dept.name : 'MEDIA',
+      is_observer_locked: isObserverLocked,
+      has_observer_generation: Boolean(latestObserverGen),
+      current_day: currentDay,
+      active_days: activeDaysList,
+      schedule
+    });
+  } catch (err) {
+    console.error('Teacher Class Observers Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get(['/api/teaching/teacher/today-schedule', '/api/teaching/teacher/duty-overview'], async (req, res) => {
   try {
     const teacherId = req.query.teacher_id ? parseInt(req.query.teacher_id) : null;

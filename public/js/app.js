@@ -488,6 +488,7 @@ function switchTab(tabId) {
     'leader-profile': 'Leader Profile & Security',
     'teacher-dashboard': 'Today\'s Schedule & Duty Overview',
     'teacher-observer-duties': 'My Observer Duties & Monitoring',
+    'teacher-class-observers': 'My Class Observers',
     'teacher-movement': 'My Daily Movement Roster',
     'teacher-subject-selection': 'Period Selection Wizard',
     'teacher-my-selections': 'My Teaching Period Allocations',
@@ -544,6 +545,7 @@ function switchTab(tabId) {
   // Teacher Portal Views
   if (tabId === 'teacher-dashboard') loadTeacherDashboard();
   if (tabId === 'teacher-observer-duties') loadTeacherObserverDutiesView();
+  if (tabId === 'teacher-class-observers') loadTeacherClassObservers();
   if (tabId === 'teacher-movement') loadTeacherMovementView();
   if (tabId === 'teacher-subject-selection') initTeacherSelectionWizard();
   if (tabId === 'teacher-my-selections') loadTeacherMySelectionsSlip();
@@ -3630,9 +3632,404 @@ async function loadTeacherObserverDutiesView(isSilent = false) {
         `).join('');
       }
     }
+// =========================================================================
+// 1.25 TEACHER: MY CLASS OBSERVERS (WHO IS OBSERVING MY TEACHING PERIODS)
+// =========================================================================
+let teacherClassObserversData = null;
+let teacherClassObserversFilter = {
+  day: 'ALL',
+  period: 'ALL',
+  search: ''
+};
+
+async function loadTeacherClassObservers(forceFresh = false) {
+  if (!currentUser || currentUser.role !== 'teacher') return;
+
+  const container = document.getElementById('container-teacher-class-observers-content');
+  if (!container) return;
+
+  try {
+    if (forceFresh) {
+      clearClientCache(`/api/teaching/teacher/class-observers?teacher_id=${currentUser.id}`);
+    }
+
+    const data = await fetchJsonWithCache(`/api/teaching/teacher/class-observers?teacher_id=${currentUser.id}`, 2000, forceFresh);
+    teacherClassObserversData = data;
+
+    // 1. Update Department Badge
+    const deptBadge = document.getElementById('badge-class-obs-dept-name');
+    if (deptBadge) {
+      deptBadge.innerHTML = `<i class="fa-solid fa-building"></i> Dept: ${escapeHtml(data.department_name || 'MEDIA')}`;
+    }
+
+    // 2. Schedule Readiness Notice
+    const notReadyBanner = document.getElementById('banner-class-obs-not-ready');
+    if (notReadyBanner) {
+      notReadyBanner.style.display = data.has_observer_generation ? 'none' : 'block';
+    }
+
+    // 3. Stats calculation
+    const schedule = data.schedule || [];
+    const teachingCount = schedule.length;
+    const assignedCount = schedule.filter(s => s.is_fully_assigned).length;
+    const todayCount = schedule.filter(s => s.is_today).length;
+
+    const elTeaching = document.getElementById('stat-class-obs-teaching-count');
+    const elAssigned = document.getElementById('stat-class-obs-assigned-count');
+    const elToday = document.getElementById('stat-class-obs-today-count');
+    if (elTeaching) elTeaching.textContent = teachingCount;
+    if (elAssigned) elAssigned.textContent = `${assignedCount} / ${teachingCount}`;
+    if (elToday) elToday.textContent = todayCount;
+
+    // 4. Setup Day filter tabs dynamically
+    const activeDays = (data.active_days && data.active_days.length > 0) 
+      ? data.active_days 
+      : ['Sunday', 'Monday'];
+    
+    const dayTabsContainer = document.getElementById('container-class-obs-day-tabs');
+    if (dayTabsContainer) {
+      let buttonsHtml = `
+        <button type="button" class="btn btn-sm ${teacherClassObserversFilter.day === 'ALL' ? 'btn-primary' : 'btn-outline'} day-filter-btn" data-day="ALL" onclick="filterClassObserversDay('ALL')">All Days</button>
+      `;
+      activeDays.forEach(dayName => {
+        const isSelected = (teacherClassObserversFilter.day === dayName);
+        const isCurrentDay = (dayName === data.current_day);
+        buttonsHtml += `
+          <button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : 'btn-outline'} day-filter-btn" data-day="${escapeHtml(dayName)}" onclick="filterClassObserversDay('${escapeHtml(dayName)}')">
+            ${escapeHtml(dayName)} ${isCurrentDay ? '<span style="font-size:0.65rem; padding:1px 5px; border-radius:9999px; background:#10b981; color:#fff; font-weight:800; margin-left:3px;">TODAY</span>' : ''}
+          </button>
+        `;
+      });
+      dayTabsContainer.innerHTML = buttonsHtml;
+    }
+
+    renderTeacherClassObserversView();
   } catch (err) {
-    console.error('Error loading teacher observer duties:', err);
+    console.error('Error loading teacher class observers:', err);
+    if (container) {
+      container.innerHTML = `
+        <div class="alert-box alert-danger">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <div><strong>Failed to load class observers:</strong> ${escapeHtml(err.message || 'Unknown error')}</div>
+        </div>
+      `;
+    }
   }
+}
+
+function filterClassObserversDay(day) {
+  teacherClassObserversFilter.day = day;
+  document.querySelectorAll('#container-class-obs-day-tabs .day-filter-btn').forEach(btn => {
+    const d = btn.getAttribute('data-day');
+    if (d === day) {
+      btn.classList.remove('btn-outline');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+  });
+  renderTeacherClassObserversView();
+}
+
+function filterClassObserversPeriod(period) {
+  teacherClassObserversFilter.period = period;
+  renderTeacherClassObserversView();
+}
+
+function filterClassObserversSearch(query) {
+  teacherClassObserversFilter.search = (query || '').trim().toLowerCase();
+  renderTeacherClassObserversView();
+}
+
+function renderTeacherClassObserversView() {
+  const container = document.getElementById('container-teacher-class-observers-content');
+  if (!container || !teacherClassObserversData) return;
+
+  const rawSchedule = teacherClassObserversData.schedule || [];
+  const currentDay = teacherClassObserversData.current_day || 'Sunday';
+
+  if (rawSchedule.length === 0) {
+    container.innerHTML = `
+      <div class="text-center text-muted" style="padding: 48px 24px; background: #ffffff; border-radius: 16px; border: 1.5px dashed #cbd5e1;">
+        <i class="fa-solid fa-chalkboard-user" style="font-size: 2.5rem; color: #94a3b8; margin-bottom: 12px;"></i>
+        <h4 style="color: #475569; font-weight: 800; margin: 0 0 6px 0;">No teaching periods assigned</h4>
+        <p style="color: #64748b; font-size: 0.9rem; margin: 0;">You have not selected or been assigned any teaching periods in this department yet.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Filter Schedule
+  const filtered = rawSchedule.filter(item => {
+    // Day match
+    if (teacherClassObserversFilter.day !== 'ALL' && item.day !== teacherClassObserversFilter.day) {
+      return false;
+    }
+    // Period match
+    if (teacherClassObserversFilter.period !== 'ALL' && String(item.period) !== String(teacherClassObserversFilter.period)) {
+      return false;
+    }
+    // Search match
+    if (teacherClassObserversFilter.search) {
+      const q = teacherClassObserversFilter.search;
+      const matchClass = (item.class_name || '').toLowerCase().includes(q);
+      const matchSubject = (item.subject || '').toLowerCase().includes(q);
+      const matchObs1 = item.observer_1 ? (item.observer_1.name || '').toLowerCase().includes(q) : false;
+      const matchObs2 = item.observer_2 ? (item.observer_2.name || '').toLowerCase().includes(q) : false;
+      if (!matchClass && !matchSubject && !matchObs1 && !matchObs2) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="text-center text-muted" style="padding: 36px 20px; background: #ffffff; border-radius: 14px; border: 1.5px solid #e2e8f0;">
+        <i class="fa-solid fa-filter-circle-xmark" style="font-size: 2rem; color: #94a3b8; margin-bottom: 10px;"></i>
+        <h5 style="color: #475569; font-weight: 700; margin: 0 0 4px 0;">No matching teaching periods found</h5>
+        <p style="color: #64748b; font-size: 0.85rem; margin: 0;">Try adjusting your day filter, period selector, or search term.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Group by Day preserving standard day order
+  const dayOrder = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const groupedByDay = new Map();
+  filtered.forEach(item => {
+    const day = item.day || 'Sunday';
+    if (!groupedByDay.has(day)) groupedByDay.set(day, []);
+    groupedByDay.get(day).push(item);
+  });
+
+  // Sort day keys
+  const sortedDays = Array.from(groupedByDay.keys()).sort((a, b) => {
+    const idxA = dayOrder.indexOf(a) !== -1 ? dayOrder.indexOf(a) : 99;
+    const idxB = dayOrder.indexOf(b) !== -1 ? dayOrder.indexOf(b) : 99;
+    return idxA - idxB;
+  });
+
+  let html = '';
+
+  sortedDays.forEach(dayName => {
+    const dayItems = groupedByDay.get(dayName);
+    // Sort by period ascending
+    dayItems.sort((a, b) => a.period - b.period);
+
+    const isToday = (dayName === currentDay);
+    const dayBadgeHtml = getDayBadgeHtml(dayName);
+
+    let statusTag = '';
+    if (isToday) {
+      statusTag = `<span class="badge badge-success" style="font-weight: 800; letter-spacing: 0.5px; font-size: 0.72rem; padding: 4px 10px; border-radius: 9999px;"><i class="fa-solid fa-circle-dot"></i> TODAY</span>`;
+    } else {
+      statusTag = `<span class="badge badge-secondary" style="font-weight: 700; font-size: 0.72rem; padding: 4px 10px; border-radius: 9999px;">SCHEDULED</span>`;
+    }
+
+    html += `
+      <div class="class-obs-day-block">
+        <div class="class-obs-day-header">
+          <div class="class-obs-day-title">
+            <i class="fa-solid fa-calendar-day"></i>
+            <span>${escapeHtml(dayName.toUpperCase())}</span>
+            ${dayBadgeHtml}
+            ${statusTag}
+          </div>
+          <div style="font-size: 0.82rem; color: #64748b; font-weight: 700;">
+            ${dayItems.length} Teaching ${dayItems.length === 1 ? 'Period' : 'Periods'}
+          </div>
+        </div>
+
+        <!-- DESKTOP TABLE VIEW -->
+        <div class="table-responsive class-obs-desktop-table" style="margin: 0;">
+          <table class="data-table" style="margin: 0; width: 100%;">
+            <thead>
+              <tr style="background: #f8fafc;">
+                <th style="width: 90px;">Period</th>
+                <th style="width: 170px;">Time</th>
+                <th style="width: 120px;">Class</th>
+                <th>Subject</th>
+                <th style="min-width: 180px;">Observer 1</th>
+                <th style="min-width: 180px;">Observer 2</th>
+                <th style="width: 120px; text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    dayItems.forEach(p => {
+      const timingDisplay = (p.start_time && p.end_time)
+        ? `${escapeHtml(p.start_time)} – ${escapeHtml(p.end_time)}`
+        : escapeHtml(p.time_slot || `Period ${p.period}`);
+
+      // Observer 1 formatting
+      let obs1Html = '';
+      if (p.observer_1 && p.observer_1.name) {
+        obs1Html = `
+          <div class="class-obs-pill class-obs-slot-1" title="${escapeHtml(p.observer_1.phone ? `Phone: ${p.observer_1.phone}` : '')}">
+            <span class="class-obs-slot-num">①</span>
+            <span style="font-weight: 700; color: #1e1b4b;"><i class="fa-solid fa-user-check" style="font-size:0.75rem; color:#4338ca; margin-right:3px;"></i>${escapeHtml(p.observer_1.name)}</span>
+          </div>
+        `;
+      } else {
+        obs1Html = `
+          <div class="class-obs-pill class-obs-unassigned">
+            <span class="class-obs-slot-num" style="background:#e2e8f0; color:#64748b;">①</span>
+            <span>Observer Not Assigned</span>
+          </div>
+        `;
+      }
+
+      // Observer 2 formatting
+      let obs2Html = '';
+      if (p.observer_2 && p.observer_2.name) {
+        obs2Html = `
+          <div class="class-obs-pill class-obs-slot-2" title="${escapeHtml(p.observer_2.phone ? `Phone: ${p.observer_2.phone}` : '')}">
+            <span class="class-obs-slot-num">②</span>
+            <span style="font-weight: 700; color: #3b0764;"><i class="fa-solid fa-user-check" style="font-size:0.75rem; color:#6d28d9; margin-right:3px;"></i>${escapeHtml(p.observer_2.name)}</span>
+          </div>
+        `;
+      } else {
+        obs2Html = `
+          <div class="class-obs-pill class-obs-unassigned">
+            <span class="class-obs-slot-num" style="background:#e2e8f0; color:#64748b;">②</span>
+            <span>Not Assigned</span>
+          </div>
+        `;
+      }
+
+      // Row status indicator
+      let rowBadge = '';
+      if (p.status === 'LIVE_NOW') {
+        rowBadge = `<span class="badge badge-success" style="font-size:0.75rem; font-weight:800;"><i class="fa-solid fa-circle-dot"></i> LIVE NOW</span>`;
+      } else if (p.status === 'COMPLETED') {
+        rowBadge = `<span class="badge badge-secondary" style="font-size:0.75rem;"><i class="fa-solid fa-check"></i> Completed</span>`;
+      } else if (p.is_today) {
+        rowBadge = `<span class="badge badge-info" style="font-size:0.75rem;"><i class="fa-solid fa-clock"></i> Today</span>`;
+      } else {
+        rowBadge = `<span class="badge badge-primary" style="font-size:0.75rem;">Scheduled</span>`;
+      }
+
+      const rowClass = (p.status === 'LIVE_NOW') ? 'bg-primary-50 font-weight-bold' : '';
+
+      html += `
+        <tr class="${rowClass}">
+          <td>
+            <strong style="color: #0f172a; font-size: 0.95rem;">Period ${p.period}</strong>
+          </td>
+          <td>
+            <span class="font-mono text-muted" style="font-size: 0.85rem; font-weight: 600;">
+              <i class="fa-regular fa-clock" style="font-size: 0.78rem; margin-right: 4px;"></i>${timingDisplay}
+            </span>
+          </td>
+          <td>
+            <span class="badge" style="background: #f1f5f9; color: #0f172a; font-weight: 800; font-size: 0.84rem; padding: 4px 10px; border: 1px solid #e2e8f0;">
+              ${escapeHtml(p.class_name)}
+            </span>
+          </td>
+          <td>
+            <strong style="color: #1e293b; font-size: 0.92rem;">${escapeHtml(p.subject || '—')}</strong>
+          </td>
+          <td>${obs1Html}</td>
+          <td>${obs2Html}</td>
+          <td style="text-align: center;">${rowBadge}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+
+        <!-- MOBILE / TABLET CARDS VIEW -->
+        <div class="class-obs-cards-list">
+    `;
+
+    dayItems.forEach(p => {
+      const timingDisplay = (p.start_time && p.end_time)
+        ? `${escapeHtml(p.start_time)} – ${escapeHtml(p.end_time)}`
+        : escapeHtml(p.time_slot || `Period ${p.period}`);
+
+      const isLive = (p.status === 'LIVE_NOW');
+
+      let statusBadge = '';
+      if (isLive) {
+        statusBadge = `<span class="badge badge-success" style="font-size:0.75rem; font-weight:800;"><i class="fa-solid fa-circle-dot"></i> Live Now</span>`;
+      } else if (p.status === 'COMPLETED') {
+        statusBadge = `<span class="badge badge-secondary" style="font-size:0.72rem;"><i class="fa-solid fa-check"></i> Completed</span>`;
+      } else if (p.is_today) {
+        statusBadge = `<span class="badge badge-info" style="font-size:0.72rem;"><i class="fa-solid fa-clock"></i> Today</span>`;
+      } else {
+        statusBadge = `<span class="badge badge-primary" style="font-size:0.72rem;">Scheduled</span>`;
+      }
+
+      html += `
+        <div class="class-obs-card-item ${isLive ? 'is-live' : ''}">
+          <div class="class-obs-card-top">
+            <div class="class-obs-card-period">
+              <span class="badge badge-primary" style="font-size:0.8rem; font-weight:800;">P${p.period}</span>
+              <span>Period ${p.period}</span>
+            </div>
+            <div>${statusBadge}</div>
+          </div>
+
+          <div class="class-obs-card-time">
+            <i class="fa-regular fa-clock"></i> ${timingDisplay}
+          </div>
+
+          <div class="class-obs-card-grid">
+            <div class="class-obs-card-grid-item">
+              <span class="class-obs-card-grid-label"><i class="fa-solid fa-graduation-cap"></i> Class</span>
+              <span class="class-obs-card-grid-val">${escapeHtml(p.class_name)}</span>
+            </div>
+            <div class="class-obs-card-grid-item">
+              <span class="class-obs-card-grid-label"><i class="fa-solid fa-book"></i> Subject</span>
+              <span class="class-obs-card-grid-val">${escapeHtml(p.subject || '—')}</span>
+            </div>
+          </div>
+
+          <div class="class-obs-card-observers-section">
+            <div class="class-obs-card-obs-title"><i class="fa-solid fa-user-shield"></i> Assigned Observers</div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              ${p.observer_1 && p.observer_1.name ? `
+                <div class="class-obs-pill class-obs-slot-1">
+                  <span class="class-obs-slot-num">①</span>
+                  <span style="font-weight: 700; color: #1e1b4b;">Observer 1: ${escapeHtml(p.observer_1.name)}</span>
+                </div>
+              ` : `
+                <div class="class-obs-pill class-obs-unassigned">
+                  <span class="class-obs-slot-num" style="background:#e2e8f0; color:#64748b;">①</span>
+                  <span>Observer 1: Not Assigned</span>
+                </div>
+              `}
+
+              ${p.observer_2 && p.observer_2.name ? `
+                <div class="class-obs-pill class-obs-slot-2">
+                  <span class="class-obs-slot-num">②</span>
+                  <span style="font-weight: 700; color: #3b0764;">Observer 2: ${escapeHtml(p.observer_2.name)}</span>
+                </div>
+              ` : `
+                <div class="class-obs-pill class-obs-unassigned">
+                  <span class="class-obs-slot-num" style="background:#e2e8f0; color:#64748b;">②</span>
+                  <span>Observer 2: Not Assigned</span>
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
 }
 
 // 1.3 TEACHER: MY MOVEMENT VIEW

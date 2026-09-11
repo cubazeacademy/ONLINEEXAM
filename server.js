@@ -6540,12 +6540,15 @@ app.get('/api/observer/overview', async (req, res) => {
         a.*,
         u_obs.full_name as observer_name,
         u_obs.phone as observer_phone,
-        u_teacher.full_name as class_teacher_name,
+        COALESCE(u_teacher.full_name, u_sel_teacher.full_name, 'Unassigned') as class_teacher_name,
+        COALESCE(a.subject, ts.subject, t.subject, 'General') as resolved_subject,
         t.time_slot
       FROM observer_duty_allocations a
       JOIN users u_obs ON a.observer_teacher_id = u_obs.id
       LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
       LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      LEFT JOIN teacher_selections ts ON (ts.department_id = a.department_id AND ts.day = a.day AND ts.period = a.period AND LOWER(TRIM(ts.class_name)) = LOWER(TRIM(a.class_name)))
+      LEFT JOIN users u_sel_teacher ON ts.teacher_id = u_sel_teacher.id
       WHERE a.department_id = $1 AND a.generation_version = $2 ${whereDay}
       ORDER BY 
         CASE a.day 
@@ -6572,9 +6575,12 @@ app.get('/api/observer/overview', async (req, res) => {
           period: a.period,
           time_slot: a.time_slot || STANDARD_PERIOD_TIMES[a.period]?.label || `P${a.period}`,
           class_name: a.class_name,
-          subject: a.subject,
+          subject: a.resolved_subject || a.subject || 'General',
+          subject_code: a.resolved_subject || a.subject || 'General',
+          subject_name: a.resolved_subject || a.subject || 'General',
           class_teacher_id: a.class_teacher_id,
           class_teacher_name: a.class_teacher_name || 'Unassigned',
+          teaching_teacher_name: a.class_teacher_name || 'Unassigned',
           observer_1_id: null,
           observer_1_name: null,
           observer_2_id: null,
@@ -8699,12 +8705,15 @@ app.get('/api/leader/observer-schedule', async (req, res) => {
         a.*,
         u_obs.full_name as observer_name,
         u_obs.phone as observer_phone,
-        u_teacher.full_name as class_teacher_name,
+        COALESCE(u_teacher.full_name, u_sel_teacher.full_name, 'Unassigned') as class_teacher_name,
+        COALESCE(a.subject, ts.subject, t.subject, 'General') as resolved_subject,
         t.time_slot
       FROM observer_duty_allocations a
       JOIN users u_obs ON a.observer_teacher_id = u_obs.id
       LEFT JOIN users u_teacher ON a.class_teacher_id = u_teacher.id
       LEFT JOIN teacher_selection_timetable t ON a.timetable_id = t.id
+      LEFT JOIN teacher_selections ts ON (ts.department_id = a.department_id AND ts.day = a.day AND ts.period = a.period AND LOWER(TRIM(ts.class_name)) = LOWER(TRIM(a.class_name)))
+      LEFT JOIN users u_sel_teacher ON ts.teacher_id = u_sel_teacher.id
       WHERE a.department_id = $1 AND a.generation_version = $2 ${whereDay}
       ORDER BY 
         CASE a.day 
@@ -8728,9 +8737,12 @@ app.get('/api/leader/observer-schedule', async (req, res) => {
           period: a.period,
           time_slot: a.time_slot || STANDARD_PERIOD_TIMES[a.period]?.label || `P${a.period}`,
           class_name: a.class_name,
-          subject: a.subject,
+          subject: a.resolved_subject || a.subject || 'General',
+          subject_code: a.resolved_subject || a.subject || 'General',
+          subject_name: a.resolved_subject || a.subject || 'General',
           class_teacher_id: a.class_teacher_id,
           class_teacher_name: a.class_teacher_name || 'Unassigned',
+          teaching_teacher_name: a.class_teacher_name || 'Unassigned',
           observer_1_id: null,
           observer_1_name: null,
           observer_2_id: null,

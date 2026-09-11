@@ -9995,13 +9995,20 @@ function renderLeaderObserverScheduleTable(slots, isLocked) {
   }
 
   tbody.innerHTML = slots.map(s => {
-    const obs1Html = s.observer_1_name 
+    const obs1Assigned = s.observer_1_name && s.observer_1_name !== 'Unassigned' && s.observer_1_name !== '—';
+    const obs2Assigned = s.observer_2_name && s.observer_2_name !== 'Unassigned' && s.observer_2_name !== '—';
+
+    const obs1Html = obs1Assigned 
       ? `<span style="font-weight:700; color:#1e1b4b;"><i class="fa-solid fa-user-shield" style="color:#4f46e5;"></i> ${escapeHtml(s.observer_1_name)}</span>`
       : `<span class="badge badge-danger">Unassigned</span>`;
 
-    const obs2Html = s.observer_2_name 
+    const obs2Html = obs2Assigned 
       ? `<span style="font-weight:700; color:#064e3b;"><i class="fa-solid fa-user-shield" style="color:#059669;"></i> ${escapeHtml(s.observer_2_name)}</span>`
       : `<span class="badge badge-danger">Unassigned</span>`;
+
+    const subjectDisplay = s.subject || s.subject_code || s.subject_name || 'General';
+    const teacherDisplay = s.teaching_teacher_name || s.class_teacher_name || s.teacher_name || 'Unassigned';
+    const isTeacherAssigned = teacherDisplay && teacherDisplay !== 'None' && teacherDisplay !== 'Unassigned' && teacherDisplay !== '—';
 
     return `
       <tr>
@@ -10010,10 +10017,10 @@ function renderLeaderObserverScheduleTable(slots, isLocked) {
           <span style="font-size:0.8rem; color:#64748b; margin-left:4px;">${escapeHtml(s.time_slot || '')}</span>
         </td>
         <td><strong style="color:#0f172a; font-size:0.92rem;">${escapeHtml(s.class_name)}</strong></td>
-        <td><span style="font-weight:600; color:#475569;">${escapeHtml(s.subject_code || 'General')}</span></td>
+        <td><span style="font-weight:700; color:#1e293b; background:#f1f5f9; padding:4px 10px; border-radius:6px; font-size:0.84rem; display:inline-block;"><i class="fa-solid fa-book" style="color:#6366f1; font-size:0.75rem; margin-right:4px;"></i>${escapeHtml(subjectDisplay)}</span></td>
         <td>
-          <span class="obs-badge-teaching">
-            <i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(s.teaching_teacher_name || 'None')}
+          <span class="obs-badge-teaching" style="font-weight:700; color:${isTeacherAssigned ? '#0f172a' : '#94a3b8'};">
+            <i class="fa-solid fa-chalkboard-user" style="color:${isTeacherAssigned ? '#0891b2' : '#cbd5e1'};"></i> ${escapeHtml(teacherDisplay)}
           </span>
         </td>
         <td>${obs1Html}</td>

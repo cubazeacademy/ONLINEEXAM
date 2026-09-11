@@ -134,16 +134,16 @@ input, button, select, textarea {
   display: flex !important;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 26px;
+  padding: 14px 24px;
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(226, 232, 240, 0.85);
   border-radius: var(--radius-lg);
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
   position: sticky;
-  top: 20px;
+  top: 16px;
   z-index: 90;
   transition: var(--transition);
 }
@@ -564,10 +564,11 @@ input, button, select, textarea {
    ========================================================================== */
 .app-layout {
   display: flex;
-  gap: 24px;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 24px;
+  gap: 20px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 16px 20px;
   min-height: 100vh;
   position: relative;
 }
@@ -594,8 +595,8 @@ input, button, select, textarea {
   display: flex;
   flex-direction: column;
   position: sticky;
-  top: 24px;
-  height: calc(100vh - 48px);
+  top: 16px;
+  height: calc(100vh - 32px);
   z-index: 100;
   border: 1px solid #e2e8f0;
   border-radius: 20px;

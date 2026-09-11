@@ -3632,6 +3632,11 @@ async function loadTeacherObserverDutiesView(isSilent = false) {
         `).join('');
       }
     }
+  } catch (err) {
+    console.error('Error loading teacher observer duties:', err);
+  }
+}
+
 // =========================================================================
 // 1.25 TEACHER: MY CLASS OBSERVERS (WHO IS OBSERVING MY TEACHING PERIODS)
 // =========================================================================
@@ -6513,22 +6518,6 @@ function viewTeacherAllocationsModal(teacherId, teacherName) {
   }
 
   openModal('modal-view-teacher-allocations');
-}
-
-async function adminRemoveAllocation(selectionId) {
-  if (!confirm('Remove this allocation? The slot will become available again.')) return;
-  try {
-    await fetch(apiUrl('/api/teaching/remove'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teacher_id: currentUser.id, selection_id: selectionId })
-    });
-    closeModal('modal-view-teacher-allocations');
-    loadAdminTeachingTeachers();
-    loadAdminTeachingDashboard();
-  } catch (e) {
-    alert('Error removing allocation');
-  }
 }
 
 // 3. MASTER TIMETABLE (DEPARTMENT-SCOPED)

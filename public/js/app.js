@@ -8701,13 +8701,36 @@ async function toggleObserverLock(forceLock = null) {
       body: JSON.stringify({
         department_id: deptId,
         admin_id: currentUser ? currentUser.id : null,
-        admin_name: currentUser ? currentUser.full_name : 'Admin'
+        admin_name: currentUser ? currentUser.full_name : 'Admin',
+        admin_role: currentUser ? currentUser.role : null
       })
     });
 
     const data = await res.json();
     if (!res.ok) {
-      if (data.conflicts) {
+      if (data.conflicts && data.conflicts.length > 0) {
+        const isSuperAdminOrAdmin = !currentUser || currentUser.role === 'super_admin' || currentUser.role === 'admin';
+        if (shouldLock && isSuperAdminOrAdmin) {
+          const userConfirm = confirm(`${data.error}\n\nConflicts Detected:\n- ` + data.conflicts.join('\n- ') + `\n\nAs Super Admin / Administrator, would you like to OVERRIDE and FORCE LOCK this schedule anyway?`);
+          if (userConfirm) {
+            const forceRes = await fetch(apiUrl('/api/observer/lock'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                department_id: deptId,
+                admin_id: currentUser ? currentUser.id : null,
+                admin_name: currentUser ? currentUser.full_name : 'Admin',
+                admin_role: currentUser ? currentUser.role : null,
+                force_lock: true
+              })
+            });
+            const forceData = await forceRes.json();
+            if (!forceRes.ok) throw new Error(forceData.error || 'Failed to force lock schedule');
+            alert(forceData.message || 'Schedule Force Locked successfully.');
+            loadObserverDutyDashboard(true);
+            return;
+          }
+        }
         throw new Error(`${data.error}\n\nConflicts:\n- ` + data.conflicts.join('\n- '));
       }
       throw new Error(data.error || `Failed to ${actionName} schedule`);

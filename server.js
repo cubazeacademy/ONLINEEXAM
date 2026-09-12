@@ -6367,7 +6367,7 @@ app.post('/api/observer/generate', async (req, res) => {
 
 // 8.6 LOCK OBSERVER SCHEDULE
 app.post('/api/observer/lock', async (req, res) => {
-  const { department_id, admin_id, admin_name } = req.body;
+  const { department_id, admin_id, admin_name, admin_role, force_lock } = req.body;
   const deptId = department_id ? parseInt(department_id) : 1;
 
   try {
@@ -6395,7 +6395,11 @@ app.post('/api/observer/lock', async (req, res) => {
       return res.status(400).json({ error: 'No observer allocations exist in this generation version.' });
     }
 
+    const currentPeriodExclusion = settings ? (settings.current_period_exclusion !== false) : true;
+    const nextPeriodExclusion = settings ? (settings.next_period_exclusion !== false) : true;
+    const leaderRequired = settings ? (settings.leader_required !== false) : true;
     const leaderTeacherId = leader ? leader.teacher_id : null;
+
     const currentTeachingMap = new Map();
     teacherSelections.forEach(ts => {
       const k = `${ts.day}_${ts.period}_${ts.teacher_id}`;
@@ -6422,13 +6426,13 @@ app.post('/api/observer/lock', async (req, res) => {
         conflicts.push(`Teacher ${a.observer_name} does not belong to this department.`);
       }
 
-      // 3. Current period teaching conflict (Rule 1)
-      if (currentTeachingMap.has(`${a.day}_${a.period}_${a.observer_teacher_id}`)) {
+      // 3. Current period teaching conflict (Rule 1) - only if rule is enabled
+      if (currentPeriodExclusion && currentTeachingMap.has(`${a.day}_${a.period}_${a.observer_teacher_id}`)) {
         conflicts.push(`Teacher ${a.observer_name} is teaching ${a.day} Period ${a.period} (Current period clash).`);
       }
 
-      // 4. Next period teaching conflict (Rule 2)
-      if (nextTeachingMap.has(`${a.day}_${a.period}_${a.observer_teacher_id}`)) {
+      // 4. Next period teaching conflict (Rule 2) - only if rule is enabled
+      if (nextPeriodExclusion && nextTeachingMap.has(`${a.day}_${a.period}_${a.observer_teacher_id}`)) {
         conflicts.push(`Teacher ${a.observer_name} is teaching in the next period ${a.day} Period ${a.period + 1}.`);
       }
 
@@ -6437,8 +6441,8 @@ app.post('/api/observer/lock', async (req, res) => {
         conflicts.push(`Teacher ${a.observer_name} is the class teacher of ${a.class_name} during ${a.day} Period ${a.period}.`);
       }
 
-      // 6. Leader clash (Rule 5)
-      if (leaderTeacherId && a.observer_teacher_id === leaderTeacherId) {
+      // 6. Leader clash (Rule 5) - only if leader standby rule is active and allocation is automatic
+      if (leaderRequired && leaderTeacherId && a.observer_teacher_id === leaderTeacherId && a.allocation_type !== 'manual') {
         conflicts.push(`Department Leader ${a.observer_name} is assigned as an automatic observer.`);
       }
 
@@ -6450,10 +6454,11 @@ app.post('/api/observer/lock', async (req, res) => {
       periodTeacherDutyMap.set(slotKey, true);
     }
 
-    if (conflicts.length > 0) {
+    if (conflicts.length > 0 && !force_lock) {
       return res.status(400).json({
         error: 'Cannot lock schedule: Critical conflicts detected.',
-        conflicts
+        conflicts,
+        can_force_lock: true
       });
     }
 
@@ -6462,11 +6467,14 @@ app.post('/api/observer/lock', async (req, res) => {
     await db.query(`UPDATE observer_generation SET status = 'locked', locked_by = $1, locked_at = CURRENT_TIMESTAMP WHERE id = $2`, [admin_id || null, latestGen.id]);
 
     invalidateCache(`dept_obs_`);
-    await logObserverAction(admin_id, admin_name || 'Admin', `Locked Observer Schedule (v${version})`, { version }, deptId);
+    const actionLabel = force_lock && conflicts.length > 0
+      ? `Force Locked Observer Schedule (v${version}) with ${conflicts.length} overridden conflict(s)`
+      : `Locked Observer Schedule (v${version})`;
+    await logObserverAction(admin_id, admin_name || 'Admin', actionLabel, { version, force_lock: Boolean(force_lock), conflicts }, deptId);
 
     res.json({
       success: true,
-      message: `Observer Schedule (v${version}) is now LOCKED and official.`,
+      message: `Observer Schedule (v${version}) is now LOCKED and official.` + (force_lock && conflicts.length > 0 ? ' (Force Locked by Admin)' : ''),
       status: 'locked',
       locked_at: new Date()
     });

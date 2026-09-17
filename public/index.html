@@ -90,73 +90,107 @@
 
       <!-- ADMIN SIDEBAR NAVIGATION -->
       <nav id="nav-admin" class="nav-menu">
-        <div class="nav-category">EXAMINATION SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
-        <a href="#admin-dashboard" class="nav-item active" onclick="switchTab('admin-dashboard')">
-          <i class="fa-solid fa-chart-pie"></i> <span>Exam Dashboard</span>
-        </a>
-        <a href="#admin-students" class="nav-item" onclick="switchTab('admin-students')">
-          <i class="fa-solid fa-users"></i> <span>Students</span>
-        </a>
-        <a href="#admin-classes" class="nav-item" onclick="switchTab('admin-classes')">
-          <i class="fa-solid fa-graduation-cap"></i> <span>Exam Classes</span>
-        </a>
-        <a href="#admin-exams" class="nav-item" onclick="switchTab('admin-exams')">
-          <i class="fa-solid fa-file-signature"></i> <span>Exams</span>
-        </a>
-        <a href="#admin-results" class="nav-item" onclick="switchTab('admin-results')">
-          <i class="fa-solid fa-trophy"></i> <span>Exam Results</span>
-        </a>
-
-        <div class="nav-category">TEACHER SUBJECT SELECTION <i class="fa-solid fa-chevron-down"></i></div>
-        <a href="#admin-teaching-dashboard" class="nav-item" onclick="switchTab('admin-teaching-dashboard')">
-          <i class="fa-solid fa-gauge-high"></i> <span>Allocation Overview</span>
-        </a>
-        <a href="#admin-teaching-departments" class="nav-item" onclick="switchTab('admin-teaching-departments')">
-          <i class="fa-solid fa-building-user"></i> <span>Departments</span>
-        </a>
-        <a href="#admin-teaching-classes" class="nav-item" onclick="switchTab('admin-teaching-classes')">
-          <i class="fa-solid fa-layer-group"></i> <span>Class Assignment</span>
-        </a>
-        <a href="#admin-teaching-teachers" class="nav-item" onclick="switchTab('admin-teaching-teachers')">
-          <i class="fa-solid fa-chalkboard-user"></i> <span>Teachers</span>
-        </a>
-        <a href="#admin-teaching-timetable" class="nav-item" onclick="switchTab('admin-teaching-timetable')">
-          <i class="fa-solid fa-calendar-days"></i> <span>Timetable & Import</span>
-        </a>
-        <a href="#admin-teaching-periods" class="nav-item" onclick="switchTab('admin-teaching-periods')">
-          <i class="fa-solid fa-toggle-on"></i> <span>Period Settings</span>
-        </a>
-        <a href="#admin-teaching-rules" class="nav-item" onclick="switchTab('admin-teaching-rules')">
-          <i class="fa-solid fa-scale-balanced"></i> <span>Selection Rules</span>
-        </a>
-        <a href="#admin-teaching-settings" class="nav-item" onclick="switchTab('admin-teaching-settings')">
-          <i class="fa-solid fa-clock"></i> <span>Deadline & Settings</span>
-        </a>
-        <a href="#admin-teaching-reports" class="nav-item" onclick="switchTab('admin-teaching-reports')">
-          <i class="fa-solid fa-table-list"></i> <span>Reports & Exports</span>
-        </a>
-        <a href="#admin-teaching-logs" class="nav-item" onclick="switchTab('admin-teaching-logs')">
-          <i class="fa-solid fa-list-check"></i> <span>Audit Logs</span>
-        </a>
-
-        <div class="nav-category">OBSERVER &amp; LEADER MANAGEMENT <i class="fa-solid fa-chevron-down"></i></div>
-        <a href="#admin-observer" class="nav-item" onclick="switchTab('admin-observer')">
-          <i class="fa-solid fa-user-shield"></i> <span>Observer Duty</span>
-        </a>
-        <a href="#admin-department-leaders" class="nav-item" onclick="switchTab('admin-department-leaders')">
-          <i class="fa-solid fa-user-tie"></i> <span>Department Leaders</span>
-        </a>
-
-        <div class="nav-category sa-only-nav hidden" id="nav-category-super-admin" style="color: #f59e0b; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <i class="fa-solid fa-crown" style="color: #f59e0b;"></i> SUPER ADMIN
+        <!-- SYSTEM QUICK SWITCHER BOX (Visible inside a system) -->
+        <div id="sidebar-system-switcher-box" class="sidebar-system-banner hidden">
+          <div class="sidebar-current-system-badge" id="sidebar-current-system-badge">
+            <i class="fa-solid fa-graduation-cap"></i> <span id="sidebar-current-system-name">Online Examination</span>
+          </div>
+          <button type="button" class="btn-sidebar-switch" onclick="switchTab('system-selection')">
+            <i class="fa-solid fa-arrow-left-arrow-right"></i> Switch System
+          </button>
         </div>
-        <a href="#super-admin-override" id="nav-link-super-admin-override" class="nav-item sa-only-nav hidden" onclick="switchTab('super-admin-override')" style="border-left: 3px solid #f59e0b;">
-          <i class="fa-solid fa-wand-magic-sparkles" style="color: #f59e0b;"></i> <span>Teacher Subject Override</span>
-        </a>
 
-        <div class="nav-category">SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
-        <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
-          <i class="fa-solid fa-sliders"></i> <span>Exam Settings</span>
+        <!-- HUB NAVIGATION (Visible on System Selection Hub) -->
+        <div id="nav-group-hub" class="nav-system-group">
+          <div class="nav-category">SYSTEM WORKSPACES <i class="fa-solid fa-chevron-down"></i></div>
+          <a href="#system-selection" class="nav-item active" onclick="switchTab('system-selection')">
+            <i class="fa-solid fa-grip"></i> <span>System Selection Hub</span>
+          </a>
+          <a href="#" class="nav-item" onclick="selectSystem('online-examination'); return false;">
+            <i class="fa-solid fa-graduation-cap" style="color: #4f46e5;"></i> <span>1. Online Examination</span>
+          </a>
+          <a href="#" class="nav-item" onclick="selectSystem('subject-selection'); return false;">
+            <i class="fa-solid fa-chalkboard-user" style="color: #059669;"></i> <span>2. Subject &amp; Timetable</span>
+          </a>
+        </div>
+
+        <!-- EXAMINATION SYSTEM NAVIGATION GROUP -->
+        <div id="nav-group-exam" class="nav-system-group hidden">
+          <div class="nav-category">EXAMINATION SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
+          <a href="#admin-dashboard" class="nav-item" onclick="switchTab('admin-dashboard')">
+            <i class="fa-solid fa-chart-pie"></i> <span>Exam Dashboard</span>
+          </a>
+          <a href="#admin-students" class="nav-item" onclick="switchTab('admin-students')">
+            <i class="fa-solid fa-users"></i> <span>Students</span>
+          </a>
+          <a href="#admin-classes" class="nav-item" onclick="switchTab('admin-classes')">
+            <i class="fa-solid fa-graduation-cap"></i> <span>Exam Classes</span>
+          </a>
+          <a href="#admin-exams" class="nav-item" onclick="switchTab('admin-exams')">
+            <i class="fa-solid fa-file-signature"></i> <span>Exams</span>
+          </a>
+          <a href="#admin-results" class="nav-item" onclick="switchTab('admin-results')">
+            <i class="fa-solid fa-trophy"></i> <span>Exam Results</span>
+          </a>
+          <a href="#admin-settings" class="nav-item" onclick="switchTab('admin-settings')">
+            <i class="fa-solid fa-sliders"></i> <span>Exam Settings</span>
+          </a>
+        </div>
+
+        <!-- SUBJECT SELECTION & TIMETABLE NAVIGATION GROUP -->
+        <div id="nav-group-teaching" class="nav-system-group hidden">
+          <div class="nav-category">TEACHER SUBJECT SELECTION <i class="fa-solid fa-chevron-down"></i></div>
+          <a href="#admin-teaching-dashboard" class="nav-item" onclick="switchTab('admin-teaching-dashboard')">
+            <i class="fa-solid fa-gauge-high"></i> <span>Allocation Overview</span>
+          </a>
+          <a href="#admin-teaching-departments" class="nav-item" onclick="switchTab('admin-teaching-departments')">
+            <i class="fa-solid fa-building-user"></i> <span>Departments</span>
+          </a>
+          <a href="#admin-teaching-classes" class="nav-item" onclick="switchTab('admin-teaching-classes')">
+            <i class="fa-solid fa-layer-group"></i> <span>Class Assignment</span>
+          </a>
+          <a href="#admin-teaching-teachers" class="nav-item" onclick="switchTab('admin-teaching-teachers')">
+            <i class="fa-solid fa-chalkboard-user"></i> <span>Teachers</span>
+          </a>
+          <a href="#admin-teaching-timetable" class="nav-item" onclick="switchTab('admin-teaching-timetable')">
+            <i class="fa-solid fa-calendar-days"></i> <span>Timetable &amp; Import</span>
+          </a>
+          <a href="#admin-teaching-periods" class="nav-item" onclick="switchTab('admin-teaching-periods')">
+            <i class="fa-solid fa-toggle-on"></i> <span>Period Settings</span>
+          </a>
+          <a href="#admin-teaching-rules" class="nav-item" onclick="switchTab('admin-teaching-rules')">
+            <i class="fa-solid fa-scale-balanced"></i> <span>Selection Rules</span>
+          </a>
+          <a href="#admin-teaching-settings" class="nav-item" onclick="switchTab('admin-teaching-settings')">
+            <i class="fa-solid fa-clock"></i> <span>Deadline &amp; Settings</span>
+          </a>
+          <a href="#admin-teaching-reports" class="nav-item" onclick="switchTab('admin-teaching-reports')">
+            <i class="fa-solid fa-table-list"></i> <span>Reports &amp; Exports</span>
+          </a>
+          <a href="#admin-teaching-logs" class="nav-item" onclick="switchTab('admin-teaching-logs')">
+            <i class="fa-solid fa-list-check"></i> <span>Audit Logs</span>
+          </a>
+
+          <div class="nav-category">OBSERVER &amp; LEADER MANAGEMENT <i class="fa-solid fa-chevron-down"></i></div>
+          <a href="#admin-observer" class="nav-item" onclick="switchTab('admin-observer')">
+            <i class="fa-solid fa-user-shield"></i> <span>Observer Duty</span>
+          </a>
+          <a href="#admin-department-leaders" class="nav-item" onclick="switchTab('admin-department-leaders')">
+            <i class="fa-solid fa-user-tie"></i> <span>Department Leaders</span>
+          </a>
+
+          <div class="nav-category sa-only-nav hidden" id="nav-category-super-admin" style="color: #f59e0b; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-crown" style="color: #f59e0b;"></i> SUPER ADMIN
+          </div>
+          <a href="#super-admin-override" id="nav-link-super-admin-override" class="nav-item sa-only-nav hidden" onclick="switchTab('super-admin-override')" style="border-left: 3px solid #f59e0b;">
+            <i class="fa-solid fa-wand-magic-sparkles" style="color: #f59e0b;"></i> <span>Teacher Subject Override</span>
+          </a>
+        </div>
+
+        <!-- COMMON SYSTEM FOOTER NAVIGATION -->
+        <div class="nav-category">PORTAL CONTROLS <i class="fa-solid fa-chevron-down"></i></div>
+        <a href="#system-selection" class="nav-item" id="nav-item-bottom-switch" onclick="switchTab('system-selection')">
+          <i class="fa-solid fa-grip" style="color: #3b82f6;"></i> <span>Back to Systems</span>
         </a>
         <a href="#" class="nav-item text-danger" onclick="logout()">
           <i class="fa-solid fa-arrow-right-from-bracket"></i> <span>Logout</span>
@@ -270,10 +304,19 @@
           <button type="button" class="btn-icon mobile-toggle" onclick="toggleSidebar()">
             <i class="fa-solid fa-bars"></i>
           </button>
-          <h2 id="page-title" class="page-title">Dashboard</h2>
+          <div class="header-title-box">
+            <h2 id="page-title" class="page-title">Dashboard</h2>
+            <div id="header-system-pill" class="header-system-pill hidden">
+              <i class="fa-solid fa-layer-group"></i> <span id="header-system-pill-text">Online Examination</span>
+            </div>
+          </div>
         </div>
 
         <div class="header-right">
+          <!-- Switch System Button (Visible for Admin / Super Admin inside systems) -->
+          <button type="button" id="btn-header-switch-system" class="btn btn-switch-system hidden" onclick="switchTab('system-selection')" title="Return to System Selection Dashboard">
+            <i class="fa-solid fa-grip"></i> <span>Switch System</span>
+          </button>
           <div class="header-time" id="current-clock-display">
             <i class="fa-regular fa-clock"></i> <span id="live-clock">12:00:00 PM</span>
           </div>
@@ -285,6 +328,48 @@
 
       <!-- VIEW PAGES -->
       <div class="content-container">
+
+        <!-- ========================================== -->
+        <!-- SYSTEM SELECTION DASHBOARD HUB             -->
+        <!-- ========================================== -->
+        <section id="view-system-selection" class="tab-view">
+          <!-- HERO BANNER -->
+          <div class="system-hub-hero">
+            <div class="system-hub-hero-badge">
+              <i class="fa-solid fa-shield-halved"></i> UNIFIED ADMINISTRATIVE WORKSPACE
+            </div>
+            <h1 class="system-hub-hero-title">
+              System Selection Hub
+            </h1>
+            <p class="system-hub-hero-sub">
+              Welcome back, <span id="hub-user-name" style="font-weight: 700; color: #fff;">Administrator</span>. Choose an academic workspace below. Single Sign-On (SSO) is active with your full administrative permissions preserved.
+            </p>
+            <div class="system-hub-hero-meta">
+              <span class="hub-pill" id="hub-role-badge"><i class="fa-solid fa-crown"></i> Admin Access</span>
+              <span class="hub-pill"><i class="fa-solid fa-lock-open"></i> SSO Active • 1-Click Access</span>
+              <span class="hub-pill"><i class="fa-solid fa-cubes"></i> 2 Systems Available</span>
+            </div>
+          </div>
+
+          <!-- SYSTEM CARDS CONTAINER (Dynamic & Extensible) -->
+          <div id="system-cards-grid" class="system-cards-grid">
+            <!-- Rendered dynamically by renderSystemSelectionCards() -->
+          </div>
+
+          <!-- SYSTEM HUB FOOTER -->
+          <div class="system-hub-footer">
+            <div class="hub-security-note">
+              <i class="fa-solid fa-shield-check" style="color: #10b981; font-size: 1.25rem;"></i>
+              <div>
+                <strong>Single Sign-On Active</strong>
+                <span>You can switch between Online Examination and Subject Selection systems at any time without entering your password again.</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="logout()" style="border-radius: 8px; font-weight: 600; padding: 8px 16px;">
+              <i class="fa-solid fa-power-off"></i> Sign Out
+            </button>
+          </div>
+        </section>
 
         <!-- ========================================== -->
         <!-- SUPER ADMIN: SUBJECT SELECTION OVERRIDE    -->

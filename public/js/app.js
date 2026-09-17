@@ -123,10 +123,159 @@ const QUESTIONS_PER_PAGE = 999999;
 // STATE MANAGEMENT
 let currentUser = null;
 let currentRole = 'student';
+let currentSystemId = null; // 'online-examination' | 'subject-selection' | null
 let allExamsList = [];
 let selectedStudentIds = new Set();
 let selectedQuestionIds = new Set();
 let selectedResultIds = new Set();
+
+// UNIFIED SYSTEM REGISTRY (Extensible Architecture)
+const SYSTEM_REGISTRY = [
+  {
+    id: 'online-examination',
+    title: 'Online Examination',
+    shortTitle: 'Online Exam',
+    badge: 'Assessment & Exams',
+    badgeColor: '#4f46e5',
+    badgeBg: '#eff6ff',
+    badgeBorder: '#bfdbfe',
+    description: 'Manage online examinations, students, questions, exams, results, and related examination features.',
+    icon: 'fa-solid fa-graduation-cap',
+    gradient: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
+    accentColor: '#4f46e5',
+    glowColor: 'rgba(79, 70, 229, 0.3)',
+    defaultRoute: 'admin-dashboard',
+    allowedRoles: ['admin', 'super_admin'],
+    tags: ['Exams & Papers', 'Student Accounts', 'Class Batches', 'Results & Analytics', 'Exam Settings'],
+    status: 'active'
+  },
+  {
+    id: 'subject-selection',
+    title: 'Subject Selection & Teacher Timetable System',
+    shortTitle: 'Subject & Timetable',
+    badge: 'Academics & Timetable',
+    badgeColor: '#059669',
+    badgeBg: '#ecfdf5',
+    badgeBorder: '#a7f3d0',
+    description: 'Manage teacher subject selection, departments, classes, timetables, observers, and related academic features.',
+    icon: 'fa-solid fa-chalkboard-user',
+    gradient: 'linear-gradient(135deg, #059669 0%, #0d9488 100%)',
+    accentColor: '#059669',
+    glowColor: 'rgba(5, 150, 105, 0.3)',
+    defaultRoute: (user) => (user && user.role === 'super_admin') ? 'super-admin-override' : 'admin-teaching-dashboard',
+    allowedRoles: ['admin', 'super_admin'],
+    tags: ['Allocation Overview', 'Departments', 'Class Assignment', 'Teachers Directory', 'Timetable & Import', 'Period Settings', 'Observer Duty', 'Audit Logs'],
+    status: 'active'
+  }
+];
+
+// Helper to render System Selection Cards
+function renderSystemSelectionCards() {
+  const container = document.getElementById('system-cards-grid');
+  if (!container) return;
+
+  const role = currentUser ? (currentUser.role || 'student') : 'student';
+  const userNameEl = document.getElementById('hub-user-name');
+  const roleBadgeEl = document.getElementById('hub-role-badge');
+
+  if (userNameEl && currentUser) {
+    userNameEl.textContent = currentUser.full_name || currentUser.username || 'Administrator';
+  }
+
+  if (roleBadgeEl && currentUser) {
+    if (role === 'super_admin') {
+      roleBadgeEl.innerHTML = '<i class="fa-solid fa-crown" style="color: #f59e0b;"></i> Super Admin Access';
+    } else if (role === 'admin') {
+      roleBadgeEl.innerHTML = '<i class="fa-solid fa-shield-halved" style="color: #3b82f6;"></i> Admin Access';
+    } else {
+      roleBadgeEl.innerHTML = `<i class="fa-solid fa-user"></i> ${escapeHtml(role.toUpperCase())}`;
+    }
+  }
+
+  const availableSystems = SYSTEM_REGISTRY.filter(sys => {
+    if (sys.status !== 'active') return false;
+    if (!sys.allowedRoles || sys.allowedRoles.length === 0) return true;
+    return sys.allowedRoles.includes(role);
+  });
+
+  if (availableSystems.length === 0) {
+    container.innerHTML = `
+      <div class="alert-box alert-error" style="grid-column: 1 / -1;">
+        <i class="fa-solid fa-circle-exclamation"></i> No authorized administrative systems found for your role.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = availableSystems.map(sys => {
+    const tagsHtml = (sys.tags || []).map(t => `<span class="system-tag">${escapeHtml(t)}</span>`).join('');
+    return `
+      <div class="system-card" 
+           style="--card-accent: ${sys.accentColor}; --card-gradient: ${sys.gradient}; --card-glow: ${sys.glowColor}; --card-badge-bg: ${sys.badgeBg}; --card-badge-color: ${sys.badgeColor}; --card-badge-border: ${sys.badgeBorder};"
+           onclick="selectSystem('${sys.id}')"
+           tabindex="0"
+           role="button"
+           aria-label="Open ${escapeHtml(sys.title)}">
+        <div>
+          <div class="system-card-header">
+            <div class="system-card-icon">
+              <i class="${sys.icon}"></i>
+            </div>
+            <div class="system-card-badge">
+              ${escapeHtml(sys.badge)}
+            </div>
+          </div>
+          <div class="system-card-body">
+            <h3 class="system-card-title">${escapeHtml(sys.title)}</h3>
+            <p class="system-card-desc">${escapeHtml(sys.description)}</p>
+            <div class="system-card-tags">
+              ${tagsHtml}
+            </div>
+          </div>
+        </div>
+        <div class="system-card-footer">
+          <button type="button" class="btn-enter-system" onclick="event.stopPropagation(); selectSystem('${sys.id}')">
+            <span>Launch System</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+window.renderSystemSelectionCards = renderSystemSelectionCards;
+
+// Action handler to switch or enter a system
+function selectSystem(systemId, targetRoute = null) {
+  const sys = SYSTEM_REGISTRY.find(s => s.id === systemId);
+  if (!sys) {
+    console.error('System not found:', systemId);
+    return;
+  }
+
+  // Verify permission
+  const role = currentUser ? (currentUser.role || 'student') : 'student';
+  if (sys.allowedRoles && !sys.allowedRoles.includes(role)) {
+    alert('You do not have permission to access this system.');
+    return;
+  }
+
+  currentSystemId = systemId;
+
+  let route = targetRoute;
+  if (!route) {
+    route = typeof sys.defaultRoute === 'function' ? sys.defaultRoute(currentUser) : sys.defaultRoute;
+  }
+
+  switchTab(route);
+}
+window.selectSystem = selectSystem;
+
+// Quick helper to return to System Selection
+function openSystemSelection() {
+  switchTab('system-selection');
+}
+window.openSystemSelection = openSystemSelection;
 
 // TEACHER SELECTION STATE (WITH DEPARTMENT ISOLATION)
 let teacherSelectionState = {
@@ -338,7 +487,7 @@ function showPortalLayout() {
   const userName = document.getElementById('sidebar-user-name');
   const userSub = document.getElementById('sidebar-user-sub');
 
-  const role = currentUser.role || 'student';
+  const role = currentUser ? (currentUser.role || 'student') : 'student';
 
   if (roleBadge) {
     if (role === 'super_admin') {
@@ -365,12 +514,12 @@ function showPortalLayout() {
     else if (role === 'admin') roleLabel = 'Admin';
     else if (role === 'teacher') roleLabel = 'Teacher';
     else if (role === 'department_leader') roleLabel = 'Dept Leader';
-    rolePill.textContent = `@${currentUser.username || 'user'} - ${roleLabel}`;
+    rolePill.textContent = `@${(currentUser && currentUser.username) || 'user'} - ${roleLabel}`;
   }
 
-  if (avatarInit) avatarInit.textContent = currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U';
-  if (userName) userName.textContent = currentUser.full_name || currentUser.username;
-  if (userSub) userSub.textContent = currentUser.email || currentUser.username;
+  if (avatarInit) avatarInit.textContent = (currentUser && currentUser.full_name) ? currentUser.full_name.charAt(0).toUpperCase() : 'U';
+  if (userName) userName.textContent = (currentUser && (currentUser.full_name || currentUser.username)) || 'User';
+  if (userSub) userSub.textContent = (currentUser && (currentUser.email || currentUser.username)) || 'user@portal.com';
 
   // Navigation switching
   const navAdmin = document.getElementById('nav-admin');
@@ -383,14 +532,15 @@ function showPortalLayout() {
   if (navStudent) navStudent.classList.add('hidden');
   if (navLeader) navLeader.classList.add('hidden');
 
-  if (role === 'super_admin') {
+  if (role === 'super_admin' || role === 'admin') {
     if (navAdmin) navAdmin.classList.remove('hidden');
-    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.remove('hidden'));
-    switchTab('super-admin-override');
-  } else if (role === 'admin') {
-    document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
-    if (navAdmin) navAdmin.classList.remove('hidden');
-    switchTab('admin-teaching-dashboard');
+    if (role === 'super_admin') {
+      document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.remove('hidden'));
+    } else {
+      document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
+    }
+    renderSystemSelectionCards();
+    switchTab('system-selection');
   } else if (role === 'teacher') {
     document.querySelectorAll('.sa-only-nav').forEach(el => el.classList.add('hidden'));
     if (navTeacher) navTeacher.classList.remove('hidden');
@@ -408,6 +558,7 @@ function showPortalLayout() {
 
 function logout() {
   currentUser = null;
+  currentSystemId = null;
   localStorage.removeItem('edupulse_user');
   document.getElementById('app-portal').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -428,6 +579,98 @@ function switchTab(tabId) {
   const overlay = document.getElementById('sidebar-overlay');
   if (sidebar) sidebar.classList.remove('show');
   if (overlay) overlay.classList.remove('active');
+
+  // Role validation
+  const role = currentUser ? (currentUser.role || 'student') : 'student';
+  const isAdminOrSuper = (role === 'admin' || role === 'super_admin');
+
+  // Super admin override route guard
+  if (tabId === 'super-admin-override' && role !== 'super_admin') {
+    alert('Access restricted to Super Administrators only.');
+    switchTab(isAdminOrSuper ? 'system-selection' : 'teacher-dashboard');
+    return;
+  }
+
+  // System category detection
+  const isExamTab = [
+    'admin-dashboard', 'admin-students', 'admin-classes', 'admin-exams', 'admin-results', 'admin-settings'
+  ].includes(tabId);
+
+  const isTeachingTab = [
+    'admin-teaching-dashboard', 'admin-teaching-departments', 'admin-teaching-classes',
+    'admin-teaching-teachers', 'admin-teaching-timetable', 'admin-teaching-periods',
+    'admin-teaching-rules', 'admin-teaching-settings', 'admin-teaching-reports',
+    'admin-teaching-logs', 'admin-observer', 'admin-department-leaders', 'super-admin-override'
+  ].includes(tabId);
+
+  const isSystemSelectionTab = tabId === 'system-selection';
+
+  // System Switcher & Header Synchronization
+  const btnHeaderSwitch = document.getElementById('btn-header-switch-system');
+  const headerSystemPill = document.getElementById('header-system-pill');
+  const headerSystemPillText = document.getElementById('header-system-pill-text');
+  const sidebarSwitcherBox = document.getElementById('sidebar-system-switcher-box');
+  const sidebarSystemName = document.getElementById('sidebar-current-system-name');
+  const navGroupHub = document.getElementById('nav-group-hub');
+  const navGroupExam = document.getElementById('nav-group-exam');
+  const navGroupTeaching = document.getElementById('nav-group-teaching');
+  const navItemBottomSwitch = document.getElementById('nav-item-bottom-switch');
+
+  if (isAdminOrSuper) {
+    if (isSystemSelectionTab) {
+      currentSystemId = null;
+      if (btnHeaderSwitch) btnHeaderSwitch.classList.add('hidden');
+      if (headerSystemPill) headerSystemPill.classList.add('hidden');
+      if (sidebarSwitcherBox) sidebarSwitcherBox.classList.add('hidden');
+      if (navGroupHub) navGroupHub.classList.remove('hidden');
+      if (navGroupExam) navGroupExam.classList.add('hidden');
+      if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
+      if (navItemBottomSwitch) navItemBottomSwitch.classList.add('hidden');
+      renderSystemSelectionCards();
+    } else if (isExamTab) {
+      currentSystemId = 'online-examination';
+      if (btnHeaderSwitch) btnHeaderSwitch.classList.remove('hidden');
+      if (headerSystemPill) {
+        headerSystemPill.className = 'header-system-pill pill-exam';
+        if (headerSystemPillText) headerSystemPillText.textContent = 'Online Examination';
+        headerSystemPill.classList.remove('hidden');
+      }
+      if (sidebarSwitcherBox) {
+        sidebarSwitcherBox.classList.remove('hidden');
+        if (sidebarSystemName) {
+          sidebarSystemName.innerHTML = '<i class="fa-solid fa-graduation-cap" style="color:#4f46e5;"></i> Online Examination';
+        }
+      }
+      if (navGroupHub) navGroupHub.classList.add('hidden');
+      if (navGroupExam) navGroupExam.classList.remove('hidden');
+      if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
+      if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
+    } else if (isTeachingTab) {
+      currentSystemId = 'subject-selection';
+      if (btnHeaderSwitch) btnHeaderSwitch.classList.remove('hidden');
+      if (headerSystemPill) {
+        headerSystemPill.className = 'header-system-pill pill-teaching';
+        if (headerSystemPillText) headerSystemPillText.textContent = 'Subject & Timetable';
+        headerSystemPill.classList.remove('hidden');
+      }
+      if (sidebarSwitcherBox) {
+        sidebarSwitcherBox.classList.remove('hidden');
+        if (sidebarSystemName) {
+          sidebarSystemName.innerHTML = '<i class="fa-solid fa-chalkboard-user" style="color:#059669;"></i> Subject &amp; Timetable';
+        }
+      }
+      if (navGroupHub) navGroupHub.classList.add('hidden');
+      if (navGroupExam) navGroupExam.classList.add('hidden');
+      if (navGroupTeaching) navGroupTeaching.classList.remove('hidden');
+      if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
+    }
+  } else {
+    // Non-admin roles (Teacher, Leader, Student)
+    if (btnHeaderSwitch) btnHeaderSwitch.classList.add('hidden');
+    if (headerSystemPill) headerSystemPill.classList.add('hidden');
+    if (sidebarSwitcherBox) sidebarSwitcherBox.classList.add('hidden');
+    if (navItemBottomSwitch) navItemBottomSwitch.classList.add('hidden');
+  }
 
   // Hide all tab views
   document.querySelectorAll('.tab-view').forEach(view => view.classList.add('hidden'));
@@ -459,6 +702,7 @@ function switchTab(tabId) {
 
   // Update Top Title
   const titleMap = {
+    'system-selection': 'System Selection Hub',
     'super-admin-override': 'Super Admin: Teacher Subject Selection Override',
     'admin-dashboard': 'Exam Dashboard Overview',
     'admin-students': 'Student Accounts Management',

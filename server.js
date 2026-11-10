@@ -9498,9 +9498,34 @@ app.post('/api/leader/profile/change-password', async (req, res) => {
 const scheduleRouter = require('./scheduleRoutes');
 app.use('/api/schedule', scheduleRouter);
 
+// Serverless-safe streaming for generated schedule PDFs
+app.get('/uploads/generated_schedules/:fileName', (req, res) => {
+  const fileName = path.basename(req.params.fileName);
+  const diskPath = path.join(__dirname, 'public', 'uploads', 'generated_schedules', fileName);
+  if (fs.existsSync(diskPath)) {
+    return res.sendFile(diskPath);
+  }
+  const schedulePdfEngine = require('./schedulePdfEngine');
+  const buffer = schedulePdfEngine.getPdfBuffer(fileName);
+  if (buffer) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    return res.send(buffer);
+  }
+  res.status(404).send('Schedule PDF not found.');
+});
+
 // Fallback to index.html for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Server unhandled error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err.message || 'Internal Server Error' });
+  }
 });
 
 if (require.main === module) {

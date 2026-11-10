@@ -1,7 +1,8 @@
-const { PDFDocument, rgb } = require('pdf-lib');
+const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { timeToMinutes, formatDisplayDate } = require('./scheduleExcelParser');
 
 // Colors
@@ -18,6 +19,28 @@ const PAGE_WIDTH = 595.32;
 const PAGE_HEIGHT = 841.92;
 
 /**
+ * Safely reads an asset file from multiple candidate locations
+ */
+function readAssetSafe(relSubPath) {
+  const candidates = [
+    path.join(__dirname, 'public', 'assets', 'schedule_templates', relSubPath),
+    path.join(process.cwd(), 'public', 'assets', 'schedule_templates', relSubPath),
+    path.join(__dirname, 'assets', 'schedule_templates', relSubPath),
+    path.join(process.cwd(), 'assets', 'schedule_templates', relSubPath)
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) {
+        return fs.readFileSync(c);
+      }
+    } catch (e) {
+      // Continue searching
+    }
+  }
+  return null;
+}
+
+/**
  * Loads and caches Azurio font files and letterhead background images
  */
 let cachedAssets = null;
@@ -25,16 +48,13 @@ let cachedAssets = null;
 function loadAssets() {
   if (cachedAssets) return cachedAssets;
 
-  const fontDir = path.join(__dirname, 'public', 'assets', 'schedule_templates', 'fonts');
-  const bgDir = path.join(__dirname, 'public', 'assets', 'schedule_templates', 'backgrounds');
+  const lightBytes = readAssetSafe(path.join('fonts', 'AzurioTrial-Light.otf'));
+  const regularBytes = readAssetSafe(path.join('fonts', 'AzurioTrial-Regular.otf'));
+  const mediumBytes = readAssetSafe(path.join('fonts', 'AzurioTrial-Medium.otf'));
+  const semiboldBytes = readAssetSafe(path.join('fonts', 'AzurioTrial-Semibold.otf'));
 
-  const lightBytes = fs.readFileSync(path.join(fontDir, 'AzurioTrial-Light.otf'));
-  const regularBytes = fs.readFileSync(path.join(fontDir, 'AzurioTrial-Regular.otf'));
-  const mediumBytes = fs.readFileSync(path.join(fontDir, 'AzurioTrial-Medium.otf'));
-  const semiboldBytes = fs.readFileSync(path.join(fontDir, 'AzurioTrial-Semibold.otf'));
-
-  const frontBgBytes = fs.readFileSync(path.join(bgDir, 'SHEDULE LETTERPAD front.jpg'));
-  const secondBgBytes = fs.readFileSync(path.join(bgDir, 'Sibaq-letter-pad-second.jpg'));
+  const frontBgBytes = readAssetSafe(path.join('backgrounds', 'SHEDULE LETTERPAD front.jpg'));
+  const secondBgBytes = readAssetSafe(path.join('backgrounds', 'Sibaq-letter-pad-second.jpg'));
 
   cachedAssets = {
     fonts: {
@@ -50,6 +70,53 @@ function loadAssets() {
   };
 
   return cachedAssets;
+}
+
+/**
+ * Setup fonts and backgrounds for a document with robust fallbacks
+ */
+async function setupDocAssets(doc, assets) {
+  let fontLight, fontRegular, fontMedium, fontSemibold;
+
+  if (assets.fonts.regular) {
+    try {
+      doc.registerFontkit(fontkit);
+      fontRegular = await doc.embedFont(assets.fonts.regular);
+      fontLight = assets.fonts.light ? await doc.embedFont(assets.fonts.light) : fontRegular;
+      fontMedium = assets.fonts.medium ? await doc.embedFont(assets.fonts.medium) : fontRegular;
+      fontSemibold = assets.fonts.semibold ? await doc.embedFont(assets.fonts.semibold) : fontRegular;
+    } catch (fontErr) {
+      console.warn('Custom font registration failed, using standard fonts:', fontErr.message);
+    }
+  }
+
+  // Graceful fallback to PDF standard fonts if custom fonts failed or were not found
+  if (!fontRegular) {
+    fontLight = await doc.embedFont(StandardFonts.Helvetica);
+    fontRegular = await doc.embedFont(StandardFonts.Helvetica);
+    fontMedium = await doc.embedFont(StandardFonts.HelveticaBold);
+    fontSemibold = await doc.embedFont(StandardFonts.HelveticaBold);
+  }
+
+  let frontImg = null;
+  let secondImg = null;
+
+  if (assets.backgrounds.front) {
+    try {
+      frontImg = await doc.embedJpg(assets.backgrounds.front);
+    } catch (e) {
+      console.warn('Front letterhead embed failed:', e.message);
+    }
+  }
+  if (assets.backgrounds.second) {
+    try {
+      secondImg = await doc.embedJpg(assets.backgrounds.second);
+    } catch (e) {
+      console.warn('Second letterhead embed failed:', e.message);
+    }
+  }
+
+  return { fontLight, fontRegular, fontMedium, fontSemibold, frontImg, secondImg };
 }
 
 /**
@@ -96,6 +163,7 @@ function hexToRgb(hex, defaultColor = COLOR_HEADER_RED) {
  */
 function drawPageBackground(page, isFirstPage, frontImg, secondImg) {
   const img = isFirstPage ? frontImg : secondImg;
+  if (!img) return;
   page.drawImage(img, {
     x: 0,
     y: 0,
@@ -113,17 +181,15 @@ function drawPageBackground(page, isFirstPage, frontImg, secondImg) {
 async function generateDayBasedSchedulePdf(programmes, options = {}) {
   const assets = loadAssets();
   const doc = await PDFDocument.create();
-  doc.registerFontkit(fontkit);
 
-  // Embed Azurio Fonts
-  const fontLight = await doc.embedFont(assets.fonts.light);
-  const fontRegular = await doc.embedFont(assets.fonts.regular);
-  const fontMedium = await doc.embedFont(assets.fonts.medium);
-  const fontSemibold = await doc.embedFont(assets.fonts.semibold);
-
-  // Embed Letterhead Images
-  const frontImg = await doc.embedJpg(assets.backgrounds.front);
-  const secondImg = await doc.embedJpg(assets.backgrounds.second);
+  const {
+    fontLight,
+    fontRegular,
+    fontMedium,
+    fontSemibold,
+    frontImg,
+    secondImg
+  } = await setupDocAssets(doc, assets);
 
   // Template / Styling settings
   const tmpl = options.templateSettings || {};
@@ -366,17 +432,15 @@ async function generateDayBasedSchedulePdf(programmes, options = {}) {
 async function generateVenueBasedSchedulePdf(programmes, options = {}) {
   const assets = loadAssets();
   const doc = await PDFDocument.create();
-  doc.registerFontkit(fontkit);
 
-  // Embed Azurio Fonts
-  const fontLight = await doc.embedFont(assets.fonts.light);
-  const fontRegular = await doc.embedFont(assets.fonts.regular);
-  const fontMedium = await doc.embedFont(assets.fonts.medium);
-  const fontSemibold = await doc.embedFont(assets.fonts.semibold);
-
-  // Embed Letterhead Images
-  const frontImg = await doc.embedJpg(assets.backgrounds.front);
-  const secondImg = await doc.embedJpg(assets.backgrounds.second);
+  const {
+    fontLight,
+    fontRegular,
+    fontMedium,
+    fontSemibold,
+    frontImg,
+    secondImg
+  } = await setupDocAssets(doc, assets);
 
   // Template settings
   const tmpl = options.templateSettings || {};
@@ -638,15 +702,53 @@ async function generateVenueBasedSchedulePdf(programmes, options = {}) {
 }
 
 /**
+ * In-memory store for generated PDFs (essential for serverless environments like Vercel)
+ */
+const pdfStore = new Map();
+
+function storePdf(fileName, buffer) {
+  pdfStore.set(fileName, buffer);
+
+  // Attempt to save to disk if directory is writable
+  try {
+    const outDir = path.join(__dirname, 'public', 'uploads', 'generated_schedules');
+    if (!fs.existsSync(outDir)) {
+      fs.mkdirSync(outDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(outDir, fileName), buffer);
+  } catch (e) {
+    // Read-only filesystem in serverless environments like Vercel
+    try {
+      const tmpDir = path.join(os.tmpdir(), 'generated_schedules');
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(tmpDir, fileName), buffer);
+    } catch (tmpErr) {
+      // In-memory pdfStore will serve the file
+    }
+  }
+}
+
+function getPdfBuffer(fileName) {
+  if (pdfStore.has(fileName)) {
+    return pdfStore.get(fileName);
+  }
+  try {
+    const p1 = path.join(__dirname, 'public', 'uploads', 'generated_schedules', fileName);
+    if (fs.existsSync(p1)) return fs.readFileSync(p1);
+    const p2 = path.join(os.tmpdir(), 'generated_schedules', fileName);
+    if (fs.existsSync(p2)) return fs.readFileSync(p2);
+  } catch (e) {}
+  return null;
+}
+
+/**
  * Generates both Day-Based and Venue-Based PDFs for all detected pools
  */
 async function generateAllSchedulePdfs(programmes, options = {}) {
   const detectedPools = options.pools || Array.from(new Set(programmes.map(p => p.pool || 'POOL B'))).sort();
   const results = [];
-
-  const outDir = path.join(__dirname, 'public', 'uploads', 'generated_schedules');
-  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-
   const timestamp = Date.now();
 
   for (const pool of detectedPools) {
@@ -655,8 +757,7 @@ async function generateAllSchedulePdfs(programmes, options = {}) {
     // 1. Day-Based PDF
     const dayPdfBytes = await generateDayBasedSchedulePdf(programmes, { ...options, pool });
     const dayFileName = `SIBAQ_2026_${poolClean}_DAY_BASED_${timestamp}.pdf`;
-    const dayFilePath = path.join(outDir, dayFileName);
-    fs.writeFileSync(dayFilePath, dayPdfBytes);
+    storePdf(dayFileName, dayPdfBytes);
 
     results.push({
       pool,
@@ -670,8 +771,7 @@ async function generateAllSchedulePdfs(programmes, options = {}) {
     // 2. Venue-Based PDF
     const venuePdfBytes = await generateVenueBasedSchedulePdf(programmes, { ...options, pool });
     const venueFileName = `SIBAQ_2026_${poolClean}_VENUE_BASED_${timestamp}.pdf`;
-    const venueFilePath = path.join(outDir, venueFileName);
-    fs.writeFileSync(venueFilePath, venuePdfBytes);
+    storePdf(venueFileName, venuePdfBytes);
 
     results.push({
       pool,
@@ -689,6 +789,8 @@ async function generateAllSchedulePdfs(programmes, options = {}) {
 module.exports = {
   generateDayBasedSchedulePdf,
   generateVenueBasedSchedulePdf,
-  generateAllSchedulePdfs
+  generateAllSchedulePdfs,
+  getPdfBuffer,
+  storePdf
 };
 

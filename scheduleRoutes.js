@@ -7,9 +7,13 @@ const db = require('./db');
 const scheduleParser = require('./scheduleExcelParser');
 const schedulePdfEngine = require('./schedulePdfEngine');
 
-// Ensure upload and output directories exist
+// Ensure upload and output directories exist if filesystem is writable
 const generatedDir = path.join(__dirname, 'public', 'uploads', 'generated_schedules');
-if (!fs.existsSync(generatedDir)) fs.mkdirSync(generatedDir, { recursive: true });
+try {
+  if (!fs.existsSync(generatedDir)) fs.mkdirSync(generatedDir, { recursive: true });
+} catch (e) {
+  // Read-only filesystem in serverless environments like Vercel
+}
 
 /**
  * 1. POST /api/schedule/parse-excel
@@ -356,9 +360,19 @@ router.post('/download-all-zip', async (req, res) => {
     archive.pipe(res);
 
     for (const file of files) {
-      const filePath = path.join(__dirname, 'public', file.url.replace(/^\//, ''));
+      const fileName = file.fileName || path.basename(file.url || '');
+      const filePath = path.join(__dirname, 'public', (file.url || '').replace(/^\//, ''));
+      let buf = null;
       if (fs.existsSync(filePath)) {
-        archive.file(filePath, { name: file.fileName });
+        try {
+          buf = fs.readFileSync(filePath);
+        } catch (e) {}
+      }
+      if (!buf) {
+        buf = schedulePdfEngine.getPdfBuffer(fileName);
+      }
+      if (buf) {
+        archive.append(buf, { name: fileName });
       }
     }
 
@@ -369,6 +383,25 @@ router.post('/download-all-zip', async (req, res) => {
       res.status(500).json({ error: err.message });
     }
   }
+});
+
+/**
+ * 9. GET /api/schedule/file/:fileName
+ * Streams generated PDF directly from memory or disk (works seamlessly on Vercel)
+ */
+router.get('/file/:fileName', (req, res) => {
+  const fileName = path.basename(req.params.fileName);
+  const diskPath = path.join(__dirname, 'public', 'uploads', 'generated_schedules', fileName);
+  if (fs.existsSync(diskPath)) {
+    return res.sendFile(diskPath);
+  }
+  const buffer = schedulePdfEngine.getPdfBuffer(fileName);
+  if (buffer) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    return res.send(buffer);
+  }
+  res.status(404).send('Schedule PDF not found.');
 });
 
 module.exports = router;

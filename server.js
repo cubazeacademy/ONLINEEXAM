@@ -9492,6 +9492,12 @@ app.post('/api/leader/profile/change-password', async (req, res) => {
   }
 });
 
+// =========================================================================
+// 12. SCHEDULE TEMPLATE CREATION SYSTEM APIs
+// =========================================================================
+const scheduleRouter = require('./scheduleRoutes');
+app.use('/api/schedule', scheduleRouter);
+
 // Fallback to index.html for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

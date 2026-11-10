@@ -18,7 +18,7 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=4.8">
+  <link rel="stylesheet" href="css/style.css?v=5.2">
 </head>
 
 <body>
@@ -112,6 +112,9 @@
           <a href="#" class="nav-item" onclick="selectSystem('subject-selection'); return false;">
             <i class="fa-solid fa-chalkboard-user" style="color: #059669;"></i> <span>2. Subject &amp; Timetable</span>
           </a>
+          <a href="#" class="nav-item" onclick="selectSystem('schedule-template'); return false;">
+            <i class="fa-solid fa-calendar-days" style="color: #b91c1c;"></i> <span>3. Schedule Template</span>
+          </a>
         </div>
 
         <!-- EXAMINATION SYSTEM NAVIGATION GROUP -->
@@ -184,6 +187,38 @@
           </div>
           <a href="#super-admin-override" id="nav-link-super-admin-override" class="nav-item sa-only-nav hidden" onclick="switchTab('super-admin-override')" style="border-left: 3px solid #f59e0b;">
             <i class="fa-solid fa-wand-magic-sparkles" style="color: #f59e0b;"></i> <span>Teacher Subject Override</span>
+          </a>
+        </div>
+
+        <!-- SCHEDULE TEMPLATE CREATION NAVIGATION GROUP -->
+        <div id="nav-group-schedule" class="nav-system-group hidden">
+          <div class="nav-category">SCHEDULE TEMPLATE SYSTEM <i class="fa-solid fa-chevron-down"></i></div>
+          <a href="#schedule-dashboard" class="nav-item" onclick="switchTab('schedule-dashboard')">
+            <i class="fa-solid fa-chart-pie" style="color: #b91c1c;"></i> <span>Dashboard</span>
+          </a>
+          <a href="#schedule-upload" class="nav-item" onclick="switchTab('schedule-upload')">
+            <i class="fa-solid fa-file-excel" style="color: #059669;"></i> <span>Upload Excel</span>
+          </a>
+          <a href="#schedule-data" class="nav-item" onclick="switchTab('schedule-data')">
+            <i class="fa-solid fa-table-cells" style="color: #2563eb;"></i> <span>Schedule Data</span>
+          </a>
+          <a href="#schedule-detection" class="nav-item" onclick="switchTab('schedule-detection')">
+            <i class="fa-solid fa-wand-magic-sparkles" style="color: #f59e0b;"></i> <span>Automatic Detection</span>
+          </a>
+          <a href="#schedule-editor" class="nav-item" onclick="switchTab('schedule-editor')">
+            <i class="fa-solid fa-pen-ruler" style="color: #c2410c;"></i> <span>Design &amp; Text Editor</span>
+          </a>
+          <a href="#schedule-preview" class="nav-item" onclick="switchTab('schedule-preview')">
+            <i class="fa-solid fa-file-pdf" style="color: #dc2626;"></i> <span>PDF Preview</span>
+          </a>
+          <a href="#schedule-generated" class="nav-item" onclick="switchTab('schedule-generated')">
+            <i class="fa-solid fa-folder-tree" style="color: #7c2d12;"></i> <span>Generated PDFs</span>
+          </a>
+          <a href="#schedule-projects" class="nav-item" onclick="switchTab('schedule-projects')">
+            <i class="fa-solid fa-box-archive" style="color: #4f46e5;"></i> <span>Saved Projects</span>
+          </a>
+          <a href="#schedule-settings" class="nav-item" onclick="switchTab('schedule-settings')">
+            <i class="fa-solid fa-sliders" style="color: #64748b;"></i> <span>Template Settings</span>
           </a>
         </div>
 
@@ -347,7 +382,7 @@
             <div class="system-hub-hero-meta">
               <span class="hub-pill" id="hub-role-badge"><i class="fa-solid fa-crown"></i> Admin Access</span>
               <span class="hub-pill"><i class="fa-solid fa-lock-open"></i> SSO Active • 1-Click Access</span>
-              <span class="hub-pill"><i class="fa-solid fa-cubes"></i> 2 Systems Available</span>
+              <span class="hub-pill"><i class="fa-solid fa-cubes"></i> 3 Systems Available</span>
             </div>
           </div>
 
@@ -362,7 +397,7 @@
               <i class="fa-solid fa-shield-check" style="color: #10b981; font-size: 1.25rem;"></i>
               <div>
                 <strong>Single Sign-On Active</strong>
-                <span>You can switch between Online Examination and Subject Selection systems at any time without entering your password again.</span>
+                <span>You can switch between Online Examination, Subject Selection, and Schedule Template systems at any time without entering your password again.</span>
               </div>
             </div>
             <button type="button" class="btn btn-outline-danger btn-sm" onclick="logout()" style="border-radius: 8px; font-weight: 600; padding: 8px 16px;">
@@ -4363,6 +4398,459 @@
           </div>
         </section>
 
+        <!-- ========================================================================= -->
+        <!-- SYSTEM 3: SCHEDULE TEMPLATE CREATION SYSTEM                               -->
+        <!-- ========================================================================= -->
+
+        <!-- 1. SCHEDULE DASHBOARD VIEW -->
+        <section id="view-schedule-dashboard" class="tab-view hidden">
+          <!-- HERO BANNER -->
+          <div class="schedule-hero-banner">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-calendar-days"></i> SCHEDULE TEMPLATE CREATION ENGINE
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-file-invoice"></i> Schedule Template Creation Dashboard
+            </h1>
+            <p class="schedule-hero-sub">
+              Upload Excel programme schedules, automatically organize dates, pools and venues, customize template typography, and generate professional print-ready PDFs using the original SIBAQ design.
+            </p>
+          </div>
+
+          <!-- DASHBOARD STATS GRID -->
+          <div class="schedule-stats-grid">
+            <div class="schedule-stat-card">
+              <div class="schedule-stat-icon red">
+                <i class="fa-solid fa-list-check"></i>
+              </div>
+              <div>
+                <h3 class="schedule-stat-val" id="sched-stat-programmes">0</h3>
+                <p class="schedule-stat-lbl">Total Programmes</p>
+              </div>
+            </div>
+
+            <div class="schedule-stat-card">
+              <div class="schedule-stat-icon blue">
+                <i class="fa-solid fa-calendar-day"></i>
+              </div>
+              <div>
+                <h3 class="schedule-stat-val" id="sched-stat-dates">0</h3>
+                <p class="schedule-stat-lbl">Detected Dates</p>
+              </div>
+            </div>
+
+            <div class="schedule-stat-card">
+              <div class="schedule-stat-icon orange">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+              <div>
+                <h3 class="schedule-stat-val" id="sched-stat-pools">0</h3>
+                <p class="schedule-stat-lbl">Detected Pools</p>
+              </div>
+            </div>
+
+            <div class="schedule-stat-card">
+              <div class="schedule-stat-icon amber">
+                <i class="fa-solid fa-landmark"></i>
+              </div>
+              <div>
+                <h3 class="schedule-stat-val" id="sched-stat-venues">0</h3>
+                <p class="schedule-stat-lbl">Detected Venues</p>
+              </div>
+            </div>
+
+            <div class="schedule-stat-card">
+              <div class="schedule-stat-icon emerald">
+                <i class="fa-solid fa-file-pdf"></i>
+              </div>
+              <div>
+                <h3 class="schedule-stat-val" id="sched-stat-pdfs">0</h3>
+                <p class="schedule-stat-lbl">Generated PDFs</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- QUICK ACTIONS BAR -->
+          <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:14px; padding:20px 24px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+            <div>
+              <h4 style="margin:0 0 4px 0; font-size:1.05rem; font-weight:800; color:#0f172a;">
+                <i class="fa-solid fa-bolt" style="color:#ea580c; margin-right:6px;"></i> Quick Operations
+              </h4>
+              <p style="margin:0; font-size:0.82rem; color:#64748b;">
+                Execute one-click workflows for schedule parsing, design customization, and PDF generation.
+              </p>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a href="/assets/sample_schedule.xlsx" download="SIBAQ_Sample_Schedule.xlsx" class="btn btn-sm btn-outline-secondary" style="font-weight:700;">
+                <i class="fa-solid fa-download"></i> Sample Excel
+              </a>
+              <button class="btn btn-sm btn-outline-primary" onclick="switchTab('schedule-upload')" style="font-weight:700;">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Upload Excel
+              </button>
+              <button class="btn btn-sm btn-outline-danger" onclick="switchTab('schedule-editor')" style="font-weight:700;">
+                <i class="fa-solid fa-pen-ruler"></i> Design Editor
+              </button>
+              <button class="btn btn-sm btn-schedule-primary" id="btn-generate-both-pdfs" onclick="generateBothSchedulePdfs()">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Both PDF Formats
+              </button>
+            </div>
+          </div>
+
+          <!-- 2-COLUMN SECTION: RECENT PROJECTS & RECENT GENERATED PDFS -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:20px;">
+            <!-- Left: Saved Projects -->
+            <div class="card" style="background:#fff; border-radius:14px; border:1.5px solid #e2e8f0; padding:22px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                <h4 style="margin:0; font-size:1rem; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                  <i class="fa-solid fa-box-archive" style="color:#4f46e5;"></i> Recent Saved Projects
+                </h4>
+                <button class="btn btn-sm btn-link text-primary" onclick="switchTab('schedule-projects')" style="padding:0; font-weight:700;">
+                  View All <i class="fa-solid fa-arrow-right"></i>
+                </button>
+              </div>
+              <div id="sched-dash-recent-projects">
+                <!-- Dynamically loaded -->
+              </div>
+            </div>
+
+            <!-- Right: Generated PDFs -->
+            <div class="card" style="background:#fff; border-radius:14px; border:1.5px solid #fed7aa; padding:22px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                <h4 style="margin:0; font-size:1rem; font-weight:800; color:#7c2d12; display:flex; align-items:center; gap:8px;">
+                  <i class="fa-solid fa-file-pdf" style="color:#b91c1c;"></i> Recently Generated PDFs
+                </h4>
+                <button class="btn btn-sm btn-link text-danger" onclick="switchTab('schedule-generated')" style="padding:0; font-weight:700;">
+                  View All <i class="fa-solid fa-arrow-right"></i>
+                </button>
+              </div>
+              <div id="sched-dash-recent-pdfs">
+                <!-- Dynamically loaded -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. EXCEL UPLOAD VIEW -->
+        <section id="view-schedule-upload" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #1e293b 0%, #334155 60%, #475569 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-file-excel"></i> WORKBOOK PARSER &amp; COLUMN DETECTOR
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Upload Excel Programme Schedule
+            </h1>
+            <p class="schedule-hero-sub">
+              Upload your event timetable. Supports .xlsx, .xls, and .csv files. Automatic detection handles flexible header variations, duplicate "From" columns, multi-sheet workbooks, and sectional dates.
+            </p>
+          </div>
+
+          <!-- DROPZONE CARD -->
+          <div class="card" style="background:#fff; border-radius:16px; border:1.5px solid #e2e8f0; padding:32px; margin-bottom:24px; box-shadow:0 4px 16px rgba(0,0,0,0.03);">
+            <div class="schedule-dropzone" id="sched-upload-dropzone" onclick="document.getElementById('sched-excel-file-input').click()">
+              <input type="file" id="sched-excel-file-input" accept=".xlsx,.xls,.csv" style="display:none;">
+              <div class="schedule-dropzone-icon">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <h3 style="margin:0 0 6px 0; font-size:1.25rem; font-weight:800; color:#0f172a;">
+                Drag &amp; Drop Excel Schedule Here
+              </h3>
+              <p style="margin:0 0 16px 0; color:#64748b; font-size:0.9rem;">
+                or click to browse your computer (.xlsx, .xls, .csv up to 25MB)
+              </p>
+              <div style="display:inline-flex; gap:10px;">
+                <span class="badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; padding:6px 12px; font-weight:700;">
+                  <i class="fa-solid fa-shield-check"></i> Non-destructive Parsing
+                </span>
+                <span class="badge" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:6px 12px; font-weight:700;">
+                  <i class="fa-solid fa-table"></i> Duplicate Header Detection
+                </span>
+              </div>
+            </div>
+
+            <div id="sched-upload-status" class="hidden" style="margin-top:20px;"></div>
+
+            <!-- SAMPLE FILE HELPER BANNER -->
+            <div style="margin-top:24px; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:12px; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <i class="fa-solid fa-file-excel" style="color:#ea580c; font-size:1.6rem;"></i>
+                <div>
+                  <strong style="color:#7c2d12; font-size:0.92rem; display:block;">Need a ready-to-test sample Excel workbook?</strong>
+                  <span style="font-size:0.8rem; color:#9a3412;">
+                    Download the official SIBAQ sample schedule containing 37 programmes across 2 dates and 5 venues.
+                  </span>
+                </div>
+              </div>
+              <a href="/assets/sample_schedule.xlsx" download="SIBAQ_Sample_Schedule.xlsx" class="btn btn-sm btn-outline-danger" style="font-weight:700;">
+                <i class="fa-solid fa-download"></i> Download Sample Excel (.xlsx)
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. AUTOMATIC DETECTION & SUMMARY VIEW -->
+        <section id="view-schedule-detection" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> AI-ASSISTED COLUMN &amp; ENTITY DETECTION
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-compass-drafting"></i> Automatic Detection &amp; Validation Summary
+            </h1>
+            <p class="schedule-hero-sub">
+              Review all automatically recognized dates, pools, and venues. Check data integrity warnings, time range validations, and verify the structure before generating PDF templates.
+            </p>
+          </div>
+
+          <div id="sched-detection-container">
+            <!-- Dynamically populated by renderScheduleDetectionSummary() -->
+          </div>
+        </section>
+
+        <!-- 4. SCHEDULE DATA EDITOR VIEW -->
+        <section id="view-schedule-data" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 60%, #2563eb 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-table-cells"></i> INTERACTIVE SCHEDULE DATA MANAGER
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-pen-to-square"></i> Programme Schedule Data Editor
+            </h1>
+            <p class="schedule-hero-sub">
+              Inline spreadsheet editor. Modify programme names, codes, venues, pools, dates, and timings. Filter by pool, date, or venue, add new records, and sort chronologically.
+            </p>
+          </div>
+
+          <div id="sched-data-table-container">
+            <!-- Dynamically populated by renderScheduleDataTable() -->
+          </div>
+        </section>
+
+        <!-- 5. DESIGN & TEXT EDITOR VIEW -->
+        <section id="view-schedule-editor" class="tab-view hidden">
+          <div class="schedule-hero-banner">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-pen-ruler"></i> SIBAQ VISUAL IDENTITY CONTROLLER
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-palette"></i> Design &amp; Text Template Editor
+            </h1>
+            <p class="schedule-hero-sub">
+              Customize event titles, table header colors, and typography. The template defaults to the official SIBAQ crimson header (#C00000) and embedded Azurio Trial font family.
+            </p>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:24px;">
+            <!-- Controls Form -->
+            <div class="card" style="background:#fff; border-radius:14px; border:1.5px solid #e2e8f0; padding:24px;">
+              <h4 style="margin:0 0 16px 0; font-size:1.05rem; font-weight:800; color:#0f172a; border-bottom:1px solid #f1f5f9; padding-bottom:10px;">
+                <i class="fa-solid fa-sliders text-danger"></i> Header &amp; Branding Settings
+              </h4>
+
+              <form onsubmit="saveScheduleDesignSettings(event)">
+                <div class="form-group mb-3">
+                  <label style="font-weight:700; font-size:0.85rem; color:#1e293b; display:block; margin-bottom:6px;">
+                    Event Branding Tag:
+                  </label>
+                  <input type="text" id="sched-edit-event-name" class="form-control" value="SIBAQ'26" style="font-weight:700;">
+                  <small style="color:#64748b; font-size:0.75rem;">Displayed in headers, project cards, and PDF output.</small>
+                </div>
+
+                <div class="form-group mb-3">
+                  <label style="font-weight:700; font-size:0.85rem; color:#1e293b; display:block; margin-bottom:6px;">
+                    Programme Schedule Title:
+                  </label>
+                  <input type="text" id="sched-edit-title" class="form-control" value="PROGRAMME SCHEDULE" style="font-weight:700;">
+                </div>
+
+                <div class="form-group mb-3">
+                  <label style="font-weight:700; font-size:0.85rem; color:#1e293b; display:block; margin-bottom:6px;">
+                    Table Header Color (Official SIBAQ Crimson):
+                  </label>
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <input type="color" id="sched-edit-header-color" value="#C00000" style="width:48px; height:40px; padding:2px; border:1.5px solid #cbd5e1; border-radius:8px; cursor:pointer;"
+                      onchange="document.getElementById('sched-edit-color-hex').value = this.value; document.getElementById('sched-mini-preview-hdr').style.background = this.value;">
+                    <input type="text" id="sched-edit-color-hex" value="#C00000" class="form-control" style="width:120px; font-weight:700; font-family:monospace;"
+                      onchange="document.getElementById('sched-edit-header-color').value = this.value; document.getElementById('sched-mini-preview-hdr').style.background = this.value;">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('sched-edit-header-color').value = '#C00000'; document.getElementById('sched-edit-color-hex').value = '#C00000'; document.getElementById('sched-mini-preview-hdr').style.background = '#C00000';">
+                      Reset Default
+                    </button>
+                  </div>
+                </div>
+
+                <div class="form-group mb-4">
+                  <label style="font-weight:700; font-size:0.85rem; color:#1e293b; display:block; margin-bottom:6px;">
+                    Typography Font Family:
+                  </label>
+                  <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:10px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-weight:700; color:#0f172a; font-family:'Azurio', sans-serif;">
+                      <i class="fa-solid fa-font" style="color:#b91c1c; margin-right:6px;"></i> Azurio Trial (Embedded OTF)
+                    </span>
+                    <span class="badge" style="background:#ecfdf5; color:#059669; font-weight:800; font-size:0.75rem;">ACTIVE</span>
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-schedule-primary btn-block">
+                  <i class="fa-solid fa-floppy-disk"></i> Save Template Design Settings
+                </button>
+              </form>
+            </div>
+
+            <!-- Live Mini Preview -->
+            <div class="card" style="background:#fff; border-radius:14px; border:1.5px solid #e2e8f0; padding:24px;">
+              <h4 style="margin:0 0 16px 0; font-size:1.05rem; font-weight:800; color:#0f172a; border-bottom:1px solid #f1f5f9; padding-bottom:10px;">
+                <i class="fa-solid fa-eye text-primary"></i> Live Typography &amp; Table Header Preview
+              </h4>
+              <p style="font-size:0.8rem; color:#64748b; margin-bottom:14px;">
+                This preview renders real-time CSS using the uploaded Azurio font and selected header color.
+              </p>
+
+              <div style="border:1.5px solid #e2e8f0; border-radius:10px; overflow:hidden; font-family:'Azurio', sans-serif;">
+                <div id="sched-mini-preview-hdr" style="background:#C00000; color:#fff; padding:10px 14px; display:flex; justify-content:space-between; font-weight:700; font-size:0.88rem;">
+                  <span>From</span>
+                  <span>To</span>
+                  <span>Code</span>
+                  <span>Programme Name</span>
+                  <span>Venue</span>
+                </div>
+                <div style="padding:10px 14px; display:flex; justify-content:space-between; font-size:0.85rem; border-bottom:1px solid #f1f5f9; background:#fff;">
+                  <span>09:00 AM</span>
+                  <span>10:30 AM</span>
+                  <strong style="color:#b91c1c;">TS13</strong>
+                  <span style="font-weight:600;">TALENT HUNT</span>
+                  <span style="color:#ea580c; font-weight:600;">Venue 1</span>
+                </div>
+                <div style="padding:10px 14px; display:flex; justify-content:space-between; font-size:0.85rem; background:#fcf8f8;">
+                  <span>11:30 AM</span>
+                  <span>12:50 PM</span>
+                  <strong style="color:#b91c1c;">BS9</strong>
+                  <span style="font-weight:600;">SPEECH &amp; SONG MLM</span>
+                  <span style="color:#ea580c; font-weight:600;">Venue 1</span>
+                </div>
+              </div>
+
+              <div style="margin-top:20px; text-align:center;">
+                <button class="btn btn-schedule-primary" onclick="generateBothSchedulePdfs()">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i> Render &amp; Preview Full PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. LIVE PDF PREVIEW VIEW -->
+        <section id="view-schedule-preview" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-file-pdf"></i> HIGH-PRECISION VECTOR PDF PREVIEW
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-display"></i> Live PDF Schedule Preview
+            </h1>
+            <p class="schedule-hero-sub">
+              Inspect the exact generated PDF layout with official Darul Huda / SIBAQ letterhead backgrounds, watermarks, embedded Azurio typography, and pagination before downloading or printing.
+            </p>
+          </div>
+
+          <div id="sched-preview-container">
+            <!-- Dynamically populated by renderSchedulePdfPreview() -->
+          </div>
+        </section>
+
+        <!-- 7. GENERATED PDFS VIEW -->
+        <section id="view-schedule-generated" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #7c2d12 0%, #9a3412 50%, #c2410c 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-file-zipper"></i> PRODUCTION SCHEDULE BUNDLE
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-folder-tree"></i> Generated Official PDF Schedules
+            </h1>
+            <p class="schedule-hero-sub">
+              Day-Based and Venue-Based schedules generated in parallel for all detected pools. Download individual pool PDFs or download all files at once as an organized ZIP package.
+            </p>
+          </div>
+
+          <div id="sched-generated-container">
+            <!-- Dynamically populated by loadScheduleGeneratedPdfs() -->
+          </div>
+        </section>
+
+        <!-- 8. SAVED PROJECTS VIEW -->
+        <section id="view-schedule-projects" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #312e81 0%, #4338ca 60%, #4f46e5 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-database"></i> SUPABASE PERSISTENCE ENGINE
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-box-archive"></i> Saved Schedule Projects
+            </h1>
+            <p class="schedule-hero-sub">
+              Access your saved schedules. Reopen projects to edit records, re-run detection, or generate new PDFs without needing to re-upload the original Excel file.
+            </p>
+          </div>
+
+          <div id="sched-projects-container">
+            <!-- Dynamically populated by loadScheduleProjects() -->
+          </div>
+        </section>
+
+        <!-- 9. TEMPLATE SETTINGS VIEW -->
+        <section id="view-schedule-settings" class="tab-view hidden">
+          <div class="schedule-hero-banner" style="background: linear-gradient(135deg, #334155 0%, #1e293b 100%);">
+            <div class="schedule-hero-badge">
+              <i class="fa-solid fa-sliders"></i> SYSTEM ARCHITECTURE &amp; ASSETS
+            </div>
+            <h1 class="schedule-hero-title">
+              <i class="fa-solid fa-gear"></i> Schedule System &amp; Asset Status
+            </h1>
+            <p class="schedule-hero-sub">
+              Verification of embedded fonts, letterhead background assets, A4 page layout rules, and Supabase database connectivity.
+            </p>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+            <div class="card" style="background:#fff; border-radius:14px; border:1.5px solid #e2e8f0; padding:22px;">
+              <h4 style="margin:0 0 14px 0; font-size:1.05rem; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-font text-danger"></i> Embedded Font Family
+              </h4>
+              <div style="display:flex; flex-direction:column; gap:8px; font-size:0.85rem;">
+                <div style="display:flex; justify-content:space-between; padding:8px 12px; background:#f8fafc; border-radius:8px;">
+                  <span>AzurioTrial-Light.otf</span>
+                  <span class="badge" style="background:#ecfdf5; color:#059669;">Embedded (300)</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:8px 12px; background:#f8fafc; border-radius:8px;">
+                  <span>AzurioTrial-Regular.otf</span>
+                  <span class="badge" style="background:#ecfdf5; color:#059669;">Embedded (400)</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:8px 12px; background:#f8fafc; border-radius:8px;">
+                  <span>AzurioTrial-Medium.otf</span>
+                  <span class="badge" style="background:#ecfdf5; color:#059669;">Embedded (500)</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:8px 12px; background:#f8fafc; border-radius:8px;">
+                  <span>AzurioTrial-Semibold.otf</span>
+                  <span class="badge" style="background:#ecfdf5; color:#059669;">Embedded (600)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="background:#fff; border-radius:14px; border:1.5px solid #fed7aa; padding:22px;">
+              <h4 style="margin:0 0 14px 0; font-size:1.05rem; font-weight:800; color:#7c2d12; display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-image text-danger"></i> Letterhead Background Layers
+              </h4>
+              <div style="display:flex; flex-direction:column; gap:8px; font-size:0.85rem;">
+                <div style="padding:10px 12px; background:#fff7ed; border-radius:8px; border:1px solid #fed7aa;">
+                  <strong style="color:#7c2d12; display:block;">Page 1 Letterhead:</strong>
+                  <span style="color:#9a3412; font-size:0.8rem;">SHEDULE LETTERPAD front.jpg (2480x3508 300DPI)</span>
+                </div>
+                <div style="padding:10px 12px; background:#fff7ed; border-radius:8px; border:1px solid #fed7aa;">
+                  <strong style="color:#7c2d12; display:block;">Page 2+ Letterhead:</strong>
+                  <span style="color:#9a3412; font-size:0.8rem;">Sibaq-letter-pad-second.jpg (Continuation watermark &amp; footer)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
 
@@ -6430,8 +6918,24 @@
     </div>
   </div>
 
+  <!-- MODAL: DUPLICATE COLUMN MAPPING RESOLUTION -->
+  <div id="modal-duplicate-column" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm" style="max-width: 500px;">
+      <div class="modal-header" style="background:#fff7ed; color:#7c2d12; border-bottom:1.5px solid #fed7aa;">
+        <h3 style="color:#7c2d12; margin:0; font-size:1.1rem;">
+          <i class="fa-solid fa-code-compare" style="color:#ea580c;"></i> Duplicate Column Detected
+        </h3>
+        <button class="btn-close" onclick="closeDuplicateColumnModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px 22px;" id="duplicate-column-options">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+  </div>
+
   <!-- JS APP LOGIC -->
-  <script src="js/app.js?v=5.1"></script>
+  <script src="js/app.js?v=5.2"></script>
+  <script src="js/scheduleApp.js?v=1.0.1"></script>
 </body>
 
 </html>

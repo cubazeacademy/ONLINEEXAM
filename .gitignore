@@ -2,3 +2,4 @@ node_modules/
 *.log
 .env
 .DS_Store
+public/uploads/generated_schedules/*.pdf

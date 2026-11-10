@@ -674,6 +674,67 @@ async function runMigration() {
       console.log('✅ Seeded default Super Admin user.');
     }
 
+    // 8. SCHEDULE TEMPLATE CREATION SYSTEM TABLES
+    console.log('📦 8. Migrating Schedule Template Creation System tables...');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schedule_projects (
+        id SERIAL PRIMARY KEY,
+        project_name VARCHAR(255) NOT NULL,
+        event_name VARCHAR(255) DEFAULT 'SIBAQ''26',
+        uploaded_file_name VARCHAR(255),
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS schedule_programmes (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES schedule_projects(id) ON DELETE CASCADE,
+        serial_number VARCHAR(50),
+        programme_date VARCHAR(100),
+        starting_time VARCHAR(50),
+        ending_time VARCHAR(50),
+        programme_code VARCHAR(100),
+        pool VARCHAR(100),
+        programme_name VARCHAR(255),
+        category VARCHAR(100),
+        venue VARCHAR(100),
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS schedule_templates (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES schedule_projects(id) ON DELETE CASCADE,
+        template_name VARCHAR(255) DEFAULT 'SIBAQ Official Template',
+        header_settings JSONB DEFAULT '{}'::jsonb,
+        table_settings JSONB DEFAULT '{}'::jsonb,
+        footer_settings JSONB DEFAULT '{}'::jsonb,
+        font_settings JSONB DEFAULT '{}'::jsonb,
+        layout_settings JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS generated_schedule_pdfs (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES schedule_projects(id) ON DELETE CASCADE,
+        pool VARCHAR(100),
+        pdf_type VARCHAR(50) NOT NULL, -- 'day_based' | 'venue_based'
+        file_name VARCHAR(255) NOT NULL,
+        file_path TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sched_prog_proj ON schedule_programmes(project_id);
+      CREATE INDEX IF NOT EXISTS idx_sched_prog_pool ON schedule_programmes(pool);
+      CREATE INDEX IF NOT EXISTS idx_sched_prog_date ON schedule_programmes(programme_date);
+      CREATE INDEX IF NOT EXISTS idx_sched_prog_venue ON schedule_programmes(venue);
+      CREATE INDEX IF NOT EXISTS idx_sched_tmpl_proj ON schedule_templates(project_id);
+      CREATE INDEX IF NOT EXISTS idx_sched_pdfs_proj ON generated_schedule_pdfs(project_id);
+    `);
+    console.log('✅ Schedule Template Creation tables and indexes verified.');
+
     const duration = Date.now() - startTime;
     console.log(`🎉 Migration & Department isolation completed successfully in ${duration}ms!`);
     client.release();

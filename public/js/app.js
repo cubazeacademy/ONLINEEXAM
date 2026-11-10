@@ -166,6 +166,32 @@ const SYSTEM_REGISTRY = [
     allowedRoles: ['admin', 'super_admin'],
     tags: ['Allocation Overview', 'Departments', 'Class Assignment', 'Teachers Directory', 'Timetable & Import', 'Period Settings', 'Observer Duty', 'Audit Logs'],
     status: 'active'
+  },
+  {
+    id: 'schedule-template',
+    title: 'Schedule Template Creation',
+    shortTitle: 'Schedule Template',
+    badge: 'SCHEDULE MANAGEMENT',
+    badgeColor: '#b91c1c',
+    badgeBg: '#fef2f2',
+    badgeBorder: '#fecaca',
+    description: 'Upload Excel programme schedules, automatically organize dates, pools and venues, edit schedule information, and generate professional PDF schedules using the original SIBAQ design.',
+    icon: 'fa-solid fa-calendar-days',
+    gradient: 'linear-gradient(135deg, #991b1b 0%, #c2410c 100%)',
+    accentColor: '#b91c1c',
+    glowColor: 'rgba(185, 28, 28, 0.3)',
+    defaultRoute: 'schedule-dashboard',
+    allowedRoles: ['admin', 'super_admin'],
+    tags: [
+      'Excel Schedule Upload',
+      'Automatic Date Detection',
+      'Automatic Pool Detection',
+      'Automatic Venue Detection',
+      'Day-Based PDF',
+      'Venue-Based PDF',
+      'PDF Template Editor'
+    ],
+    status: 'active'
   }
 ];
 
@@ -603,6 +629,11 @@ function switchTab(tabId) {
     'admin-teaching-logs', 'admin-observer', 'admin-department-leaders', 'super-admin-override'
   ].includes(tabId);
 
+  const isScheduleTab = [
+    'schedule-dashboard', 'schedule-upload', 'schedule-data', 'schedule-detection',
+    'schedule-editor', 'schedule-preview', 'schedule-generated', 'schedule-projects', 'schedule-settings'
+  ].includes(tabId);
+
   const isSystemSelectionTab = tabId === 'system-selection';
 
   // System Switcher & Header Synchronization
@@ -614,6 +645,7 @@ function switchTab(tabId) {
   const navGroupHub = document.getElementById('nav-group-hub');
   const navGroupExam = document.getElementById('nav-group-exam');
   const navGroupTeaching = document.getElementById('nav-group-teaching');
+  const navGroupSchedule = document.getElementById('nav-group-schedule');
   const navItemBottomSwitch = document.getElementById('nav-item-bottom-switch');
 
   if (isAdminOrSuper) {
@@ -625,6 +657,7 @@ function switchTab(tabId) {
       if (navGroupHub) navGroupHub.classList.remove('hidden');
       if (navGroupExam) navGroupExam.classList.add('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
+      if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.add('hidden');
       renderSystemSelectionCards();
     } else if (isExamTab) {
@@ -644,6 +677,7 @@ function switchTab(tabId) {
       if (navGroupHub) navGroupHub.classList.add('hidden');
       if (navGroupExam) navGroupExam.classList.remove('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
+      if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
     } else if (isTeachingTab) {
       currentSystemId = 'subject-selection';
@@ -662,6 +696,26 @@ function switchTab(tabId) {
       if (navGroupHub) navGroupHub.classList.add('hidden');
       if (navGroupExam) navGroupExam.classList.add('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.remove('hidden');
+      if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
+      if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
+    } else if (isScheduleTab) {
+      currentSystemId = 'schedule-template';
+      if (btnHeaderSwitch) btnHeaderSwitch.classList.remove('hidden');
+      if (headerSystemPill) {
+        headerSystemPill.className = 'header-system-pill pill-schedule';
+        if (headerSystemPillText) headerSystemPillText.textContent = 'Schedule Template';
+        headerSystemPill.classList.remove('hidden');
+      }
+      if (sidebarSwitcherBox) {
+        sidebarSwitcherBox.classList.remove('hidden');
+        if (sidebarSystemName) {
+          sidebarSystemName.innerHTML = '<i class="fa-solid fa-calendar-days" style="color:#b91c1c;"></i> Schedule Template';
+        }
+      }
+      if (navGroupHub) navGroupHub.classList.add('hidden');
+      if (navGroupExam) navGroupExam.classList.add('hidden');
+      if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
+      if (navGroupSchedule) navGroupSchedule.classList.remove('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
     }
   } else {
@@ -740,7 +794,16 @@ function switchTab(tabId) {
     'student-dashboard': 'Student Dashboard Overview',
     'student-exams': 'Available Examinations',
     'student-results': 'My Exam Performance & Results',
-    'student-profile': 'Student Profile Settings'
+    'student-profile': 'Student Profile Settings',
+    'schedule-dashboard': 'Schedule Template Creation Dashboard',
+    'schedule-upload': 'Upload Programme Excel Schedule',
+    'schedule-data': 'Programme Schedule Data Editor',
+    'schedule-detection': 'Automatic Detection & Validation',
+    'schedule-editor': 'Design & Text Template Editor',
+    'schedule-preview': 'Live PDF Schedule Preview',
+    'schedule-generated': 'Generated PDF Schedules',
+    'schedule-projects': 'Saved Schedule Projects',
+    'schedule-settings': 'Template & System Settings'
   };
 
   if (tabId === 'super-admin-override') {
@@ -775,6 +838,16 @@ function switchTab(tabId) {
   // Observer Duty Management Admin View
   if (tabId === 'admin-observer') loadObserverDutyDashboard();
   if (tabId === 'admin-department-leaders') loadAdminDepartmentLeaders();
+
+  // Schedule Template Creation System Views
+  if (tabId === 'schedule-dashboard') { if (window.loadScheduleDashboardStats) loadScheduleDashboardStats(); }
+  if (tabId === 'schedule-upload') { if (window.setupScheduleDropzone) setupScheduleDropzone(); }
+  if (tabId === 'schedule-data') { if (window.renderScheduleDataTable) renderScheduleDataTable(); }
+  if (tabId === 'schedule-detection') { if (window.renderScheduleDetectionSummary) renderScheduleDetectionSummary(); }
+  if (tabId === 'schedule-editor') { if (window.initScheduleDesignEditor) initScheduleDesignEditor(); }
+  if (tabId === 'schedule-preview') { if (window.renderSchedulePdfPreview) renderSchedulePdfPreview(); }
+  if (tabId === 'schedule-generated') { if (window.loadScheduleGeneratedPdfs) loadScheduleGeneratedPdfs(); }
+  if (tabId === 'schedule-projects') { if (window.loadScheduleProjects) loadScheduleProjects(); }
 
   // Leader Portal Views
   if (tabId === 'leader-dashboard') loadLeaderDashboard();

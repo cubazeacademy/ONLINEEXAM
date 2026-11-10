@@ -2,10 +2,18 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const archiver = require('archiver');
 const db = require('./db');
-const scheduleParser = require('./scheduleExcelParser');
-const schedulePdfEngine = require('./schedulePdfEngine');
+
+// Lazy-loaded helpers to ensure zero startup overhead or bundling failures
+function getParser() {
+  return require('./scheduleExcelParser');
+}
+function getPdfEngine() {
+  return require('./schedulePdfEngine');
+}
+function getArchiver() {
+  return require('archiver');
+}
 
 // Ensure upload and output directories exist if filesystem is writable
 const generatedDir = path.join(__dirname, 'public', 'uploads', 'generated_schedules');
@@ -34,7 +42,7 @@ router.post('/parse-excel', async (req, res) => {
     }
     const buffer = Buffer.from(base64Content, 'base64');
 
-    const result = scheduleParser.parseScheduleWorkbook(buffer, {
+    const result = getParser().parseScheduleWorkbook(buffer, {
       chosenFromCol: chosen_from_col !== undefined ? parseInt(chosen_from_col, 10) : undefined
     });
 
@@ -313,7 +321,7 @@ router.post('/generate-pdfs', async (req, res) => {
       return res.status(400).json({ error: 'No programme records provided for PDF generation.' });
     }
 
-    const generatedResults = await schedulePdfEngine.generateAllSchedulePdfs(programmes, {
+    const generatedResults = await getPdfEngine().generateAllSchedulePdfs(programmes, {
       templateSettings: template_settings || {},
       pools: Array.isArray(pools) && pools.length > 0 ? pools : undefined
     });
@@ -355,7 +363,8 @@ router.post('/download-all-zip', async (req, res) => {
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
 
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archiverModule = getArchiver();
+    const archive = archiverModule('zip', { zlib: { level: 9 } });
     archive.on('error', (err) => { throw err; });
     archive.pipe(res);
 
@@ -369,7 +378,7 @@ router.post('/download-all-zip', async (req, res) => {
         } catch (e) {}
       }
       if (!buf) {
-        buf = schedulePdfEngine.getPdfBuffer(fileName);
+        buf = getPdfEngine().getPdfBuffer(fileName);
       }
       if (buf) {
         archive.append(buf, { name: fileName });
@@ -395,7 +404,7 @@ router.get('/file/:fileName', (req, res) => {
   if (fs.existsSync(diskPath)) {
     return res.sendFile(diskPath);
   }
-  const buffer = schedulePdfEngine.getPdfBuffer(fileName);
+  const buffer = getPdfEngine().getPdfBuffer(fileName);
   if (buffer) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);

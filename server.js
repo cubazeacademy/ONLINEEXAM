@@ -9495,29 +9495,63 @@ app.post('/api/leader/profile/change-password', async (req, res) => {
 // =========================================================================
 // 12. SCHEDULE TEMPLATE CREATION SYSTEM APIs
 // =========================================================================
-const scheduleRouter = require('./scheduleRoutes');
-app.use('/api/schedule', scheduleRouter);
+// Health check endpoint for instant verification
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Lazy-mount scheduleRouter inside a protective wrapper
+app.use('/api/schedule', (req, res, next) => {
+  try {
+    const scheduleRouter = require('./scheduleRoutes');
+    return scheduleRouter(req, res, next);
+  } catch (err) {
+    console.error('Failed to load schedule router:', err);
+    return res.status(500).json({
+      error: 'Schedule system router failed to load: ' + err.message,
+      stack: err.stack
+    });
+  }
+});
 
 // Serverless-safe streaming for generated schedule PDFs
 app.get('/uploads/generated_schedules/:fileName', (req, res) => {
-  const fileName = path.basename(req.params.fileName);
-  const diskPath = path.join(__dirname, 'public', 'uploads', 'generated_schedules', fileName);
-  if (fs.existsSync(diskPath)) {
-    return res.sendFile(diskPath);
-  }
-  const schedulePdfEngine = require('./schedulePdfEngine');
-  const buffer = schedulePdfEngine.getPdfBuffer(fileName);
-  if (buffer) {
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-    return res.send(buffer);
+  try {
+    const fileName = path.basename(req.params.fileName);
+    const diskPath = path.join(__dirname, 'public', 'uploads', 'generated_schedules', fileName);
+    if (fs.existsSync(diskPath)) {
+      return res.sendFile(diskPath);
+    }
+    const schedulePdfEngine = require('./schedulePdfEngine');
+    const buffer = schedulePdfEngine.getPdfBuffer(fileName);
+    if (buffer) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+      return res.send(buffer);
+    }
+  } catch (e) {
+    console.error('Error streaming PDF:', e);
   }
   res.status(404).send('Schedule PDF not found.');
 });
 
-// Fallback to index.html for SPA routing
+// Fallback to index.html for SPA routing with multi-path resolution
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  const candidates = [
+    path.join(__dirname, 'public', 'index.html'),
+    path.join(process.cwd(), 'public', 'index.html'),
+    path.join(__dirname, 'index.html')
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return res.sendFile(c);
+    }
+  }
+  res.status(404).send('index.html not found');
 });
 
 // Global error handler

@@ -9518,6 +9518,21 @@ app.use('/api/schedule', (req, res, next) => {
   }
 });
 
+// 13. JUDGE GUIDELINE PDF GENERATOR SYSTEM APIs
+// Lazy-mount judgeRouter inside a protective wrapper
+app.use('/api/judge-guidelines', (req, res, next) => {
+  try {
+    const judgeRouter = require('./judgeRoutes');
+    return judgeRouter(req, res, next);
+  } catch (err) {
+    console.error('Failed to load judge guidelines router:', err);
+    return res.status(500).json({
+      error: 'Judge Guidelines router failed to load: ' + err.message,
+      stack: err.stack
+    });
+  }
+});
+
 // Serverless-safe streaming for generated schedule PDFs
 app.get('/uploads/generated_schedules/:fileName', (req, res) => {
   try {

@@ -192,6 +192,30 @@ const SYSTEM_REGISTRY = [
       'PDF Template Editor'
     ],
     status: 'active'
+  },
+  {
+    id: 'judge-guidelines',
+    title: 'Judge Guideline PDF Generator',
+    shortTitle: 'Judge Guidelines',
+    badge: 'JUDGE MANAGEMENT',
+    badgeColor: '#d97706',
+    badgeBg: '#fffbeb',
+    badgeBorder: '#fde68a',
+    description: 'Upload judge assignments, concept note and schedule, then generate individual judge guideline PDFs automatically',
+    icon: 'fa-solid fa-gavel',
+    gradient: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
+    accentColor: '#d97706',
+    glowColor: 'rgba(217, 119, 6, 0.3)',
+    defaultRoute: 'judge-guidelines-dashboard',
+    allowedRoles: ['admin', 'super_admin'],
+    tags: [
+      'Excel Upload',
+      'Concept Note Parser',
+      'Individual PDFs',
+      'Merged PDFs',
+      'Template Editor'
+    ],
+    status: 'active'
   }
 ];
 
@@ -634,6 +658,11 @@ function switchTab(tabId) {
     'schedule-editor', 'schedule-preview', 'schedule-generated', 'schedule-projects', 'schedule-settings'
   ].includes(tabId);
 
+  const isJudgeTab = [
+    'judge-guidelines-dashboard', 'judge-step1', 'judge-step2', 'judge-step3',
+    'judge-step4', 'judge-step5', 'judge-template-settings', 'judge-projects'
+  ].includes(tabId) || tabId.startsWith('judge-');
+
   const isSystemSelectionTab = tabId === 'system-selection';
 
   // System Switcher & Header Synchronization
@@ -646,6 +675,7 @@ function switchTab(tabId) {
   const navGroupExam = document.getElementById('nav-group-exam');
   const navGroupTeaching = document.getElementById('nav-group-teaching');
   const navGroupSchedule = document.getElementById('nav-group-schedule');
+  const navGroupJudge = document.getElementById('nav-group-judge-guidelines');
   const navItemBottomSwitch = document.getElementById('nav-item-bottom-switch');
 
   if (isAdminOrSuper) {
@@ -658,6 +688,7 @@ function switchTab(tabId) {
       if (navGroupExam) navGroupExam.classList.add('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
       if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
+      if (navGroupJudge) navGroupJudge.classList.add('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.add('hidden');
       renderSystemSelectionCards();
     } else if (isExamTab) {
@@ -678,6 +709,7 @@ function switchTab(tabId) {
       if (navGroupExam) navGroupExam.classList.remove('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
       if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
+      if (navGroupJudge) navGroupJudge.classList.add('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
     } else if (isTeachingTab) {
       currentSystemId = 'subject-selection';
@@ -697,6 +729,7 @@ function switchTab(tabId) {
       if (navGroupExam) navGroupExam.classList.add('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.remove('hidden');
       if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
+      if (navGroupJudge) navGroupJudge.classList.add('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
     } else if (isScheduleTab) {
       currentSystemId = 'schedule-template';
@@ -716,6 +749,27 @@ function switchTab(tabId) {
       if (navGroupExam) navGroupExam.classList.add('hidden');
       if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
       if (navGroupSchedule) navGroupSchedule.classList.remove('hidden');
+      if (navGroupJudge) navGroupJudge.classList.add('hidden');
+      if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
+    } else if (isJudgeTab) {
+      currentSystemId = 'judge-guidelines';
+      if (btnHeaderSwitch) btnHeaderSwitch.classList.remove('hidden');
+      if (headerSystemPill) {
+        headerSystemPill.className = 'header-system-pill pill-judge';
+        if (headerSystemPillText) headerSystemPillText.textContent = 'Judge Guidelines';
+        headerSystemPill.classList.remove('hidden');
+      }
+      if (sidebarSwitcherBox) {
+        sidebarSwitcherBox.classList.remove('hidden');
+        if (sidebarSystemName) {
+          sidebarSystemName.innerHTML = '<i class="fa-solid fa-gavel" style="color:#d97706;"></i> Judge Guidelines';
+        }
+      }
+      if (navGroupHub) navGroupHub.classList.add('hidden');
+      if (navGroupExam) navGroupExam.classList.add('hidden');
+      if (navGroupTeaching) navGroupTeaching.classList.add('hidden');
+      if (navGroupSchedule) navGroupSchedule.classList.add('hidden');
+      if (navGroupJudge) navGroupJudge.classList.remove('hidden');
       if (navItemBottomSwitch) navItemBottomSwitch.classList.remove('hidden');
     }
   } else {

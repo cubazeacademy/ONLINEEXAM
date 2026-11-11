@@ -735,6 +735,97 @@ async function runMigration() {
     `);
     console.log('✅ Schedule Template Creation tables and indexes verified.');
 
+    // 13. JUDGE GUIDELINE PDF GENERATOR TABLES (PREFIXED WITH jg_)
+    console.log('📦 13. Creating Judge Guideline PDF Generator tables (jg_ prefixed)...');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS jg_projects (
+        id SERIAL PRIMARY KEY,
+        project_name VARCHAR(255) NOT NULL,
+        event_name VARCHAR(255) DEFAULT 'SIBAQ''26',
+        current_step INT DEFAULT 1,
+        created_by INTEGER,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS jg_judges (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES jg_projects(id) ON DELETE CASCADE,
+        judge_no VARCHAR(50),
+        judge_name VARCHAR(255) NOT NULL,
+        teams_blocks TEXT,
+        assigned_codes TEXT[],
+        total_hours VARCHAR(100),
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS jg_concept_notes (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES jg_projects(id) ON DELETE CASCADE,
+        code VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        portion_text TEXT,
+        description TEXT,
+        category VARCHAR(100),
+        time_allowed VARCHAR(100),
+        skill VARCHAR(100),
+        candidates VARCHAR(100),
+        has_arabic BOOLEAN DEFAULT FALSE,
+        arabic_verified BOOLEAN DEFAULT FALSE,
+        raw_text TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS jg_schedule (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES jg_projects(id) ON DELETE CASCADE,
+        code VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100),
+        programme_date VARCHAR(50),
+        from_time VARCHAR(50),
+        to_time VARCHAR(50),
+        venue VARCHAR(100),
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS jg_templates (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES jg_projects(id) ON DELETE CASCADE,
+        event_title VARCHAR(255) DEFAULT 'DARUL HUDA SIBĀQ''26',
+        cover_image_url TEXT,
+        back_image_url TEXT,
+        border_image_url TEXT,
+        general_rules JSONB DEFAULT '[]'::jsonb,
+        feedback_lines_count INT DEFAULT 24,
+        styles JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS jg_generated_pdfs (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES jg_projects(id) ON DELETE CASCADE,
+        judge_id INTEGER REFERENCES jg_judges(id) ON DELETE CASCADE,
+        pdf_type VARCHAR(50) NOT NULL, -- 'individual' | 'merged_all' | 'merged_inner' | 'merged_covers'
+        file_name VARCHAR(255) NOT NULL,
+        file_size INTEGER DEFAULT 0,
+        storage_url TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_jg_judges_proj ON jg_judges(project_id);
+      CREATE INDEX IF NOT EXISTS idx_jg_cn_proj ON jg_concept_notes(project_id);
+      CREATE INDEX IF NOT EXISTS idx_jg_cn_code ON jg_concept_notes(code);
+      CREATE INDEX IF NOT EXISTS idx_jg_sched_proj ON jg_schedule(project_id);
+      CREATE INDEX IF NOT EXISTS idx_jg_sched_code ON jg_schedule(code);
+      CREATE INDEX IF NOT EXISTS idx_jg_tmpl_proj ON jg_templates(project_id);
+      CREATE INDEX IF NOT EXISTS idx_jg_pdfs_proj ON jg_generated_pdfs(project_id);
+    `);
+    console.log('✅ Judge Guideline Generator tables and indexes verified.');
+
     const duration = Date.now() - startTime;
     console.log(`🎉 Migration & Department isolation completed successfully in ${duration}ms!`);
     client.release();

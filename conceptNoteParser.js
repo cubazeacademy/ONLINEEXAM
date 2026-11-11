@@ -1,3 +1,4 @@
+require('./polyfillDom');
 const { PDFParse } = require('pdf-parse');
 
 /**

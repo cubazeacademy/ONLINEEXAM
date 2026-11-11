@@ -1,3 +1,4 @@
+require('./polyfillDom');
 const XLSX = require('xlsx');
 const { PDFParse } = require('pdf-parse');
 const { normalizeCode } = require('./conceptNoteParser');

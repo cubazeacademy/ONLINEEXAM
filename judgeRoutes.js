@@ -3,6 +3,7 @@
  * Prefixed tables: jg_projects, jg_judges, jg_concept_notes, jg_schedule, jg_templates, jg_generated_pdfs
  */
 
+require('./polyfillDom');
 const express = require('express');
 const router = express.Router();
 const path = require('path');
@@ -171,7 +172,7 @@ router.post('/upload-judges', async (req, res) => {
         project_id,
         j.judge_no,
         j.judge_name,
-        j.teams || '',
+        j.teams || j.teams_blocks || '',
         j.total_hours || '',
         JSON.stringify(j.assigned_programmes || []),
         JSON.stringify({ raw: j })

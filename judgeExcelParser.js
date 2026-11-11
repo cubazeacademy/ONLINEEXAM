@@ -1,3 +1,4 @@
+require('./polyfillDom');
 const XLSX = require('xlsx');
 const { PDFParse } = require('pdf-parse');
 
@@ -27,146 +28,171 @@ async function parseJudgeRoster(buffer, fileName = '', options = {}) {
 
 /**
  * Parses Judge Roster from Excel / CSV workbook
+ * Supports:
+ * 1. Composite / multi-table sheets (e.g. Summary table on top, Detailed programme schedule below)
+ * 2. Multi-sheet workbooks (Sheet 1 = Summary, Sheet 2 = Detailed schedule)
+ * 3. Flat single table sheets (every row has judge info + programme info)
  */
 function parseJudgeRosterFromExcel(buffer, options = {}) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[sheetName];
-  const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
-  if (!rawData || rawData.length === 0) {
-    throw new Error('The uploaded roster sheet is empty.');
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error('The uploaded workbook has no sheets.');
   }
 
-  // 1. Locate header row
-  let headerRowIdx = -1;
-  let colMap = {
-    no: -1,
-    name: -1,
-    team: -1,
-    date: -1,
-    code: -1,
-    progName: -1,
-    venue: -1,
-    time: -1,
-    hours: -1
-  };
+  const judgesMap = new Map(); // cleanNo -> Judge Record
+  const nameToNoMap = new Map(); // normalizedName -> cleanNo
+  let detectedHeaders = null;
+  let firstSampleRows = [];
 
-  for (let r = 0; r < Math.min(rawData.length, 15); r++) {
-    const row = rawData[r].map(c => normalizeHeader(c));
-    let hasName = false;
-    let hasCodeOrTeam = false;
+  for (const sheetName of workbook.SheetNames) {
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) continue;
+    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+    if (!rawData || rawData.length === 0) continue;
 
-    row.forEach((cell, cIdx) => {
-      if (cell.includes('judgename') || cell === 'name' || cell.includes('judge')) {
-        colMap.name = cIdx;
-        hasName = true;
-      } else if (cell === 'no' || cell === 'sl' || cell === 'slno' || cell === 'srno') {
-        colMap.no = cIdx;
-      } else if (cell.includes('block') || cell.includes('team')) {
-        colMap.team = cIdx;
-        hasCodeOrTeam = true;
-      } else if (cell === 'date' || cell.includes('date')) {
-        colMap.date = cIdx;
-      } else if (cell === 'code' || cell.includes('progcode') || cell.includes('programcode')) {
-        colMap.code = cIdx;
-        hasCodeOrTeam = true;
-      } else if (cell.includes('prog') || cell.includes('programmename')) {
-        colMap.progName = cIdx;
-      } else if (cell.includes('venue')) {
-        colMap.venue = cIdx;
-      } else if (cell.includes('judgingtime') || cell.includes('time')) {
-        colMap.time = cIdx;
-      } else if (cell.includes('totalhours') || cell.includes('hours') || cell.includes('duration')) {
-        colMap.hours = cIdx;
+    let activeColMap = null;
+
+    for (let r = 0; r < rawData.length; r++) {
+      const row = rawData[r];
+      if (!row || row.every(cell => String(cell || '').trim() === '')) continue;
+
+      const normCells = row.map(c => normalizeHeader(c));
+
+      // Check if this row is a header row
+      const hasJudgeName = normCells.some(c => c.includes('judgename') || c === 'name' || (c.includes('judge') && !c.includes('no') && !c.includes('time')));
+      const hasCode = normCells.some(c => c === 'code' || c.includes('progcode') || c.includes('programcode'));
+      const hasBlock = normCells.some(c => c.includes('block') || c.includes('team'));
+      const hasVenue = normCells.some(c => c.includes('venue'));
+      const hasTime = normCells.some(c => c.includes('time') || c.includes('hours') || c.includes('duration'));
+      const hasNo = normCells.some(c => c === 'no' || c === 'sl' || c === 'slno' || c === 'srno' || c.includes('judgeno') || c.includes('jno'));
+
+      if ((hasJudgeName || hasNo) && (hasCode || hasBlock || hasVenue || hasTime)) {
+        // Build column map for this table section
+        const colMap = {
+          no: -1,
+          name: -1,
+          team: -1,
+          date: -1,
+          code: -1,
+          progName: -1,
+          venue: -1,
+          time: -1,
+          hours: -1
+        };
+
+        normCells.forEach((cell, cIdx) => {
+          if (cell === 'no' || cell === 'sl' || cell === 'slno' || cell === 'srno' || cell.includes('judgeno') || cell.includes('jno')) {
+            colMap.no = cIdx;
+          } else if (cell.includes('judgename') || cell === 'name' || (cell.includes('judge') && !cell.includes('no') && !cell.includes('time'))) {
+            colMap.name = cIdx;
+          } else if (cell.includes('block') || cell.includes('team')) {
+            colMap.team = cIdx;
+          } else if (cell === 'date' || cell.includes('date')) {
+            colMap.date = cIdx;
+          } else if (cell === 'code' || cell.includes('progcode') || cell.includes('programcode')) {
+            colMap.code = cIdx;
+          } else if (cell.includes('prog') || cell.includes('programmename') || cell.includes('event')) {
+            colMap.progName = cIdx;
+          } else if (cell.includes('venue') || cell.includes('stage')) {
+            colMap.venue = cIdx;
+          } else if (cell.includes('totalhours') || cell.includes('hours') || cell.includes('duration')) {
+            colMap.hours = cIdx;
+          } else if (cell.includes('time') || cell.includes('judgingtime')) {
+            colMap.time = cIdx;
+          }
+        });
+
+        activeColMap = colMap;
+        if (!detectedHeaders) detectedHeaders = colMap;
+        if (firstSampleRows.length === 0) firstSampleRows = rawData.slice(r, r + 6);
+        continue;
       }
-    });
 
-    if (hasName && (hasCodeOrTeam || colMap.no !== -1)) {
-      headerRowIdx = r;
-      break;
-    }
-  }
+      // If no active header was found in this sheet yet, attempt fallback defaults for row 0
+      if (!activeColMap && r === 0) {
+        activeColMap = {
+          no: 0,
+          name: 1,
+          team: 2,
+          date: 3,
+          code: 4,
+          progName: 5,
+          venue: 6,
+          time: 7,
+          hours: 8
+        };
+        detectedHeaders = activeColMap;
+      }
 
-  // Fallback defaults if header row not explicitly identified
-  if (headerRowIdx === -1) {
-    headerRowIdx = 0;
-    colMap = {
-      no: 0,
-      name: 1,
-      team: 2,
-      date: 3,
-      code: 4,
-      progName: 5,
-      venue: 6,
-      time: 7,
-      hours: 8
-    };
-  }
+      if (!activeColMap) continue;
 
-  // Override with manual options if provided
-  if (options.manualMapping) {
-    colMap = { ...colMap, ...options.manualMapping };
-  }
+      // Extract values for this data row
+      const getVal = (colIdx) => (colIdx !== -1 && row[colIdx] !== undefined) ? String(row[colIdx]).trim() : '';
 
-  // 2. Iterate rows and extract judges and programme assignments
-  const judgesMap = new Map(); // judge_no -> Judge Record
-  let currentJudge = null;
+      const noVal = getVal(activeColMap.no);
+      const nameVal = getVal(activeColMap.name);
+      const teamVal = getVal(activeColMap.team);
+      const dateVal = getVal(activeColMap.date);
+      const codeVal = getVal(activeColMap.code).toUpperCase();
+      const progVal = getVal(activeColMap.progName);
+      const venueVal = getVal(activeColMap.venue);
+      const timeVal = getVal(activeColMap.time);
+      const hoursVal = getVal(activeColMap.hours);
 
-  for (let r = headerRowIdx + 1; r < rawData.length; r++) {
-    const row = rawData[r];
-    if (!row || row.every(cell => String(cell).trim() === '')) continue;
+      // Skip row if neither judge identifier nor programme code is present
+      if (!noVal && !nameVal && !codeVal) continue;
+      // Skip repeated header text in data rows
+      if (normalizeHeader(noVal) === 'no' || normalizeHeader(nameVal) === 'judgename') continue;
 
-    const noVal = colMap.no !== -1 ? String(row[colMap.no] || '').trim() : '';
-    const nameVal = colMap.name !== -1 ? String(row[colMap.name] || '').trim() : '';
-    const teamVal = colMap.team !== -1 ? String(row[colMap.team] || '').trim() : '';
-    const dateVal = colMap.date !== -1 ? String(row[colMap.date] || '').trim() : '';
-    const codeVal = colMap.code !== -1 ? String(row[colMap.code] || '').trim().toUpperCase() : '';
-    const progVal = colMap.progName !== -1 ? String(row[colMap.progName] || '').trim() : '';
-    const venueVal = colMap.venue !== -1 ? String(row[colMap.venue] || '').trim() : '';
-    const timeVal = colMap.time !== -1 ? String(row[colMap.time] || '').trim() : '';
-    const hoursVal = colMap.hours !== -1 ? String(row[colMap.hours] || '').trim() : '';
+      // Resolve clean judge number (2-digit padded e.g. "01")
+      let cleanNo = '';
+      if (noVal && /\d+/.test(noVal)) {
+        cleanNo = String(parseInt(noVal.replace(/[^0-9]/g, ''), 10)).padStart(2, '0');
+      } else if (nameVal && nameToNoMap.has(normalizeHeader(nameVal))) {
+        cleanNo = nameToNoMap.get(normalizeHeader(nameVal));
+      } else {
+        cleanNo = String(judgesMap.size + 1).padStart(2, '0');
+      }
 
-    // Check if new judge entry starts
-    if (noVal || nameVal) {
-      const judgeNo = noVal || (currentJudge ? String(judgesMap.size + 1).padStart(2, '0') : '01');
-      const cleanNo = judgeNo.replace(/[^0-9]/g, '').padStart(2, '0');
-
-      if (!judgesMap.has(cleanNo)) {
-        currentJudge = {
+      // Retrieve or instantiate Judge record
+      let judge = judgesMap.get(cleanNo);
+      if (!judge) {
+        judge = {
           judge_no: cleanNo,
-          judge_name: nameVal || (currentJudge ? currentJudge.judge_name : 'Judge ' + cleanNo),
-          teams_blocks: teamVal || (currentJudge ? currentJudge.teams_blocks : ''),
+          judge_name: nameVal || `Judge ${cleanNo}`,
+          teams: teamVal || '',
+          teams_blocks: teamVal || '',
           total_hours: hoursVal || '',
           assigned_programmes: [],
           assigned_codes: []
         };
-        judgesMap.set(cleanNo, currentJudge);
+        judgesMap.set(cleanNo, judge);
+        if (nameVal) nameToNoMap.set(normalizeHeader(nameVal), cleanNo);
       } else {
-        currentJudge = judgesMap.get(cleanNo);
-        if (nameVal && !currentJudge.judge_name) currentJudge.judge_name = nameVal;
-        if (teamVal && !currentJudge.teams_blocks) currentJudge.teams_blocks = teamVal;
-        if (hoursVal && !currentJudge.total_hours) currentJudge.total_hours = hoursVal;
+        if (nameVal && (!judge.judge_name || judge.judge_name.startsWith('Judge '))) {
+          judge.judge_name = nameVal;
+          nameToNoMap.set(normalizeHeader(nameVal), cleanNo);
+        }
+        if (teamVal) {
+          if (!judge.teams_blocks) judge.teams_blocks = teamVal;
+          if (!judge.teams) judge.teams = teamVal;
+        }
+        if (hoursVal && !judge.total_hours) judge.total_hours = hoursVal;
       }
-    }
 
-    if (currentJudge) {
-      if (hoursVal && !currentJudge.total_hours) currentJudge.total_hours = hoursVal;
-      if (teamVal && !currentJudge.teams_blocks) currentJudge.teams_blocks = teamVal;
-
-      if (codeVal) {
-        // Parse time slot e.g. "09:00 AM - 09:53 AM"
+      // If this row contains a programme assignment, attach it
+      if (codeVal && codeVal !== 'CODE') {
         let fromTime = '';
         let toTime = '';
         if (timeVal.includes('-')) {
-          const parts = timeVal.split('-').map(p => p.trim());
+          const parts = timeVal.split('-').map(t => t.trim());
           fromTime = parts[0] || '';
           toTime = parts[1] || '';
         } else {
           fromTime = timeVal;
         }
 
-        currentJudge.assigned_programmes.push({
+        judge.assigned_programmes.push({
           date: dateVal,
           code: codeVal,
           name: progVal,
@@ -176,11 +202,15 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
           raw_time: timeVal
         });
 
-        if (!currentJudge.assigned_codes.includes(codeVal)) {
-          currentJudge.assigned_codes.push(codeVal);
+        if (!judge.assigned_codes.includes(codeVal)) {
+          judge.assigned_codes.push(codeVal);
         }
       }
     }
+  }
+
+  if (judgesMap.size === 0) {
+    throw new Error('No judges could be parsed from the uploaded spreadsheet. Please check the column headers.');
   }
 
   const judgesList = Array.from(judgesMap.values()).sort((a, b) =>
@@ -192,8 +222,8 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
     file_type: 'excel',
     totalJudges: judgesList.length,
     judges: judgesList,
-    detectedHeaders: colMap,
-    sampleRows: rawData.slice(headerRowIdx, headerRowIdx + 6)
+    detectedHeaders: detectedHeaders || {},
+    sampleRows: firstSampleRows
   };
 }
 
@@ -225,6 +255,7 @@ async function parseJudgeRosterFromPdf(buffer) {
       currentJudge = {
         judge_no: cleanNo,
         judge_name: judgeMatch[2].trim(),
+        teams: judgeMatch[3].trim(),
         teams_blocks: judgeMatch[3].trim(),
         total_hours: '',
         assigned_programmes: [],

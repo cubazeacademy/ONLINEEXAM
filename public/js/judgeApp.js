@@ -36,24 +36,19 @@ const judgeState = {
 // =========================================================================
 
 async function ensureActiveProject() {
-  if (judgeState.currentProjectId) return judgeState.currentProjectId;
-
-  const storedId = localStorage.getItem('jg_current_project_id');
-  if (storedId) {
-    const parsed = parseInt(storedId, 10);
-    if (!isNaN(parsed) && parsed > 0) {
-      judgeState.currentProjectId = parsed;
-    }
-  }
-
   try {
     const res = await fetch('/api/judge-guidelines/projects');
     const data = await res.json();
-    if (data.success && data.projects && data.projects.length > 0) {
+    if (data.success && Array.isArray(data.projects) && data.projects.length > 0) {
       judgeState.projects = data.projects;
-      judgeState.currentProjectId = data.projects[0].id;
-      judgeState.projectName = data.projects[0].name;
-      localStorage.setItem('jg_current_project_id', judgeState.currentProjectId);
+      const storedId = localStorage.getItem('jg_current_project_id');
+      const found = storedId ? data.projects.find(p => String(p.id) === String(storedId)) : null;
+      const active = found || data.projects[0];
+
+      judgeState.currentProjectId = active.id;
+      judgeState.projectName = active.name;
+      localStorage.setItem('jg_current_project_id', active.id);
+      return active.id;
     } else {
       const createRes = await fetch('/api/judge-guidelines/projects', {
         method: 'POST',
@@ -68,7 +63,8 @@ async function ensureActiveProject() {
       if (createData.success && createData.project) {
         judgeState.currentProjectId = createData.project.id;
         judgeState.projectName = createData.project.name;
-        localStorage.setItem('jg_current_project_id', judgeState.currentProjectId);
+        localStorage.setItem('jg_current_project_id', createData.project.id);
+        return createData.project.id;
       }
     }
   } catch (err) {

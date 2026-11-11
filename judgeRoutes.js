@@ -29,32 +29,57 @@ function getPdfEngine() {
 
 /**
  * Resolves project_id or auto-picks/creates the active project if omitted
+ * Validates that the returned ID exists in jg_projects to satisfy foreign key constraints
  */
 async function resolveProjectId(rawId) {
-  if (rawId) {
-    const parsed = parseInt(rawId, 10);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
-  }
   try {
+    if (rawId) {
+      const parsed = parseInt(rawId, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        const existing = await db.get('SELECT id FROM jg_projects WHERE id = $1', [parsed]);
+        if (existing && existing.id) return existing.id;
+      }
+    }
+
     const latest = await db.get('SELECT id FROM jg_projects ORDER BY id DESC LIMIT 1');
     if (latest && latest.id) return latest.id;
 
     const defaultRules = getPdfEngine().DEFAULT_RULES;
     const created = await db.get(`
       INSERT INTO jg_projects (name, description, academic_year, status)
-      VALUES ('SIBAQ 2026 Judge Guidelines', 'Default Judge Project', '2026', 'draft')
+      VALUES ('SIBAQ 2026 Judge Guidelines', 'Official Judge Guidelines for SIBAQ 2026', '2026', 'draft')
       RETURNING id
     `);
     if (created && created.id) {
-      await db.query(`
-        INSERT INTO jg_templates (project_id, name, general_rules, settings)
-        VALUES ($1, 'Default SIBAQ Template', $2, $3)
-      `, [created.id, JSON.stringify(defaultRules), JSON.stringify({ accent_color: '#d97706', event_title: 'SIBAQ 2026' })]);
+      try {
+        await db.query(`
+          INSERT INTO jg_templates (project_id, name, general_rules, settings)
+          VALUES ($1, 'Default SIBAQ Template', $2, $3)
+        `, [created.id, JSON.stringify(defaultRules), JSON.stringify({ accent_color: '#d97706', event_title: 'SIBAQ 2026' })]);
+      } catch (tmplErr) {
+        console.warn('Template auto-seed notice:', tmplErr.message);
+      }
       return created.id;
     }
   } catch (err) {
-    console.warn('resolveProjectId database lookup/create fallback:', err.message);
+    console.error('Error in resolveProjectId:', err.message);
   }
+
+  // Safety fallback: ensure at least one real record in jg_projects
+  try {
+    const row = await db.get(`
+      INSERT INTO jg_projects (name, description, academic_year, status)
+      VALUES ('SIBAQ 2026 Judge Guidelines', 'Official Judge Guidelines for SIBAQ 2026', '2026', 'draft')
+      RETURNING id
+    `);
+    if (row && row.id) return row.id;
+
+    const any = await db.get('SELECT id FROM jg_projects ORDER BY id ASC LIMIT 1');
+    if (any && any.id) return any.id;
+  } catch (e) {
+    console.error('Final project_id resolution fallback:', e.message);
+  }
+
   return 1;
 }
 

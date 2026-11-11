@@ -235,3 +235,4 @@ module.exports = {
   normalizeCode,
   containsArabic
 };
+

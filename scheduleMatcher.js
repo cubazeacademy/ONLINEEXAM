@@ -211,7 +211,6 @@ function crossValidateAll(judges = [], conceptNotes = [], scheduleList = []) {
   const missingFromSched = new Set();
   const typoSuggestions = [];
   const warnings = [];
-
   let matchedCount = 0;
 
   // Check judge codes
@@ -388,3 +387,4 @@ module.exports = {
   buildJudgeDossier,
   timeToMinutes
 };
+

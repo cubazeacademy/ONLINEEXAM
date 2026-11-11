@@ -862,3 +862,4 @@ if (document.readyState === 'loading') {
 } else {
   initJudgeSystem();
 }
+

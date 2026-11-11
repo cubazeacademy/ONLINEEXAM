@@ -35,17 +35,26 @@ const judgeState = {
 // 1. INITIALIZATION & PROJECT MANAGEMENT
 // =========================================================================
 
-async function initJudgeSystem() {
+async function ensureActiveProject() {
+  if (judgeState.currentProjectId) return judgeState.currentProjectId;
+
+  const storedId = localStorage.getItem('jg_current_project_id');
+  if (storedId) {
+    const parsed = parseInt(storedId, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      judgeState.currentProjectId = parsed;
+    }
+  }
+
   try {
     const res = await fetch('/api/judge-guidelines/projects');
     const data = await res.json();
     if (data.success && data.projects && data.projects.length > 0) {
       judgeState.projects = data.projects;
-      const active = data.projects[0];
-      judgeState.currentProjectId = active.id;
-      judgeState.projectName = active.name;
+      judgeState.currentProjectId = data.projects[0].id;
+      judgeState.projectName = data.projects[0].name;
+      localStorage.setItem('jg_current_project_id', judgeState.currentProjectId);
     } else {
-      // Create initial project
       const createRes = await fetch('/api/judge-guidelines/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,10 +68,22 @@ async function initJudgeSystem() {
       if (createData.success && createData.project) {
         judgeState.currentProjectId = createData.project.id;
         judgeState.projectName = createData.project.name;
+        localStorage.setItem('jg_current_project_id', judgeState.currentProjectId);
       }
     }
+  } catch (err) {
+    console.warn('Could not auto-fetch projects:', err);
+  }
 
-    await loadProjectDetails(judgeState.currentProjectId);
+  return judgeState.currentProjectId;
+}
+
+async function initJudgeSystem() {
+  try {
+    const projId = await ensureActiveProject();
+    if (projId) {
+      await loadProjectDetails(projId);
+    }
     setupDropzones();
     renderGeneralRulesInputs();
   } catch (err) {
@@ -178,12 +199,13 @@ async function handleJudgeFile(file) {
   if (infoEl) infoEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading and parsing ${file.name}...`;
 
   try {
+    const projectId = await ensureActiveProject();
     const base64 = await readFileAsBase64(file);
     const res = await fetch('/api/judge-guidelines/upload-judges', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: judgeState.currentProjectId,
+        project_id: projectId || judgeState.currentProjectId,
         file_data: base64,
         file_name: file.name
       })
@@ -193,6 +215,11 @@ async function handleJudgeFile(file) {
     if (!data.success) {
       if (infoEl) infoEl.innerHTML = `<span style="color:#dc2626;"><i class="fa-solid fa-circle-exclamation"></i> ${data.error}</span>`;
       return;
+    }
+
+    if (data.project_id) {
+      judgeState.currentProjectId = data.project_id;
+      localStorage.setItem('jg_current_project_id', data.project_id);
     }
 
     judgeState.judges = data.judges || [];
@@ -279,12 +306,13 @@ async function handleConceptNoteFile(file) {
   if (infoEl) infoEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Parsing Concept Note (${file.name})... This may take a few seconds.`;
 
   try {
+    const projectId = await ensureActiveProject();
     const base64 = await readFileAsBase64(file);
     const res = await fetch('/api/judge-guidelines/upload-concept-notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: judgeState.currentProjectId,
+        project_id: projectId || judgeState.currentProjectId,
         file_data: base64,
         file_name: file.name
       })
@@ -294,6 +322,11 @@ async function handleConceptNoteFile(file) {
     if (!data.success) {
       if (infoEl) infoEl.innerHTML = `<span style="color:#dc2626;"><i class="fa-solid fa-circle-exclamation"></i> ${data.error}</span>`;
       return;
+    }
+
+    if (data.project_id) {
+      judgeState.currentProjectId = data.project_id;
+      localStorage.setItem('jg_current_project_id', data.project_id);
     }
 
     judgeState.conceptNotes = data.entries || [];
@@ -427,12 +460,13 @@ async function handleScheduleFile(file) {
   if (infoEl) infoEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Parsing Schedule (${file.name})...`;
 
   try {
+    const projectId = await ensureActiveProject();
     const base64 = await readFileAsBase64(file);
     const res = await fetch('/api/judge-guidelines/upload-schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: judgeState.currentProjectId,
+        project_id: projectId || judgeState.currentProjectId,
         file_data: base64,
         file_name: file.name
       })
@@ -442,6 +476,11 @@ async function handleScheduleFile(file) {
     if (!data.success) {
       if (infoEl) infoEl.innerHTML = `<span style="color:#dc2626;"><i class="fa-solid fa-circle-exclamation"></i> ${data.error}</span>`;
       return;
+    }
+
+    if (data.project_id) {
+      judgeState.currentProjectId = data.project_id;
+      localStorage.setItem('jg_current_project_id', data.project_id);
     }
 
     judgeState.schedule = data.schedule || [];
@@ -489,10 +528,11 @@ function renderScheduleTable() {
 async function runCrossValidation() {
   switchTab('judge-step4');
   try {
+    const projectId = await ensureActiveProject();
     const res = await fetch('/api/judge-guidelines/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: judgeState.currentProjectId })
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
     });
 
     const data = await res.json();
@@ -624,11 +664,12 @@ async function generateSingleSelectedJudge() {
   }
 
   try {
+    const projectId = await ensureActiveProject();
     const res = await fetch('/api/judge-guidelines/generate-single', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: judgeState.currentProjectId,
+        project_id: projectId || judgeState.currentProjectId,
         judge_id: judgeId
       })
     });
@@ -669,6 +710,7 @@ async function generateAllJudgesBatch() {
 
   judgeState.isGeneratingBatch = true;
   let completed = 0;
+  const projectId = await ensureActiveProject();
 
   for (let i = 0; i < judges.length; i++) {
     const j = judges[i];
@@ -683,7 +725,7 @@ async function generateAllJudgesBatch() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project_id: judgeState.currentProjectId,
+          project_id: projectId || judgeState.currentProjectId,
           judge_id: j.id
         })
       });
@@ -699,7 +741,7 @@ async function generateAllJudgesBatch() {
 
   // Set the first judge as preview
   if (judges.length > 0) {
-    const firstUrl = `/api/judge-guidelines/preview-pdf/${judges[0].id}?project_id=${judgeState.currentProjectId}`;
+    const firstUrl = `/api/judge-guidelines/preview-pdf/${judges[0].id}?project_id=${projectId || judgeState.currentProjectId}`;
     const previewFrame = document.getElementById('judge-pdf-preview-frame');
     if (previewFrame) previewFrame.src = firstUrl;
     judgeState.previewPdfUrl = firstUrl;
@@ -708,10 +750,11 @@ async function generateAllJudgesBatch() {
 
 async function downloadZipArchive() {
   try {
+    const projectId = await ensureActiveProject();
     const res = await fetch('/api/judge-guidelines/download-zip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: judgeState.currentProjectId })
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
     });
 
     if (!res.ok) throw new Error('Failed to generate ZIP');
@@ -732,11 +775,12 @@ async function downloadZipArchive() {
 
 async function downloadMergedPdf(mode = 'A') {
   try {
+    const projectId = await ensureActiveProject();
     const res = await fetch('/api/judge-guidelines/download-merged', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: judgeState.currentProjectId,
+        project_id: projectId || judgeState.currentProjectId,
         mode: mode
       })
     });
@@ -814,7 +858,8 @@ async function saveTemplateSettings() {
   const accentColor = document.getElementById('template-accent-color')?.value || '#d97706';
 
   try {
-    const res = await fetch(`/api/judge-guidelines/template/${judgeState.currentProjectId}`, {
+    const projectId = await ensureActiveProject();
+    const res = await fetch(`/api/judge-guidelines/template/${projectId || judgeState.currentProjectId || 1}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

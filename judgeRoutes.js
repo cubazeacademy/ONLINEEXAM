@@ -27,6 +27,37 @@ function getPdfEngine() {
 }
 
 /**
+ * Resolves project_id or auto-picks/creates the active project if omitted
+ */
+async function resolveProjectId(rawId) {
+  if (rawId) {
+    const parsed = parseInt(rawId, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  try {
+    const latest = await db.get('SELECT id FROM jg_projects ORDER BY id DESC LIMIT 1');
+    if (latest && latest.id) return latest.id;
+
+    const defaultRules = getPdfEngine().DEFAULT_RULES;
+    const created = await db.get(`
+      INSERT INTO jg_projects (name, description, academic_year, status)
+      VALUES ('SIBAQ 2026 Judge Guidelines', 'Default Judge Project', '2026', 'draft')
+      RETURNING id
+    `);
+    if (created && created.id) {
+      await db.query(`
+        INSERT INTO jg_templates (project_id, name, general_rules, settings)
+        VALUES ($1, 'Default SIBAQ Template', $2, $3)
+      `, [created.id, JSON.stringify(defaultRules), JSON.stringify({ accent_color: '#d97706', event_title: 'SIBAQ 2026' })]);
+      return created.id;
+    }
+  } catch (err) {
+    console.warn('resolveProjectId database lookup/create fallback:', err.message);
+  }
+  return 1;
+}
+
+/**
  * 1. GET /api/judge-guidelines/projects
  * List all projects with stats
  */
@@ -116,9 +147,9 @@ router.get('/projects/:id', async (req, res) => {
  */
 router.post('/upload-judges', async (req, res) => {
   try {
-    const { project_id, file_data, file_name, column_mappings } = req.body;
-    if (!project_id) return res.status(400).json({ error: 'project_id is required.' });
+    const { file_data, file_name, column_mappings } = req.body;
     if (!file_data) return res.status(400).json({ error: 'file_data (base64) is required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
 
     const buffer = Buffer.from(file_data, 'base64');
     const parser = getExcelParser();
@@ -151,6 +182,7 @@ router.post('/upload-judges', async (req, res) => {
 
     res.json({
       success: true,
+      project_id: project_id,
       totalJudges: savedJudges.length,
       judges: savedJudges
     });
@@ -166,9 +198,9 @@ router.post('/upload-judges', async (req, res) => {
  */
 router.post('/upload-concept-notes', async (req, res) => {
   try {
-    const { project_id, file_data, file_name } = req.body;
-    if (!project_id) return res.status(400).json({ error: 'project_id is required.' });
+    const { file_data, file_name } = req.body;
     if (!file_data) return res.status(400).json({ error: 'file_data (base64) is required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
 
     const buffer = Buffer.from(file_data, 'base64');
     const parser = getConceptNoteParser();
@@ -210,6 +242,7 @@ router.post('/upload-concept-notes', async (req, res) => {
 
     res.json({
       success: true,
+      project_id: project_id,
       totalEntries: savedNotes.length,
       arabicEntriesCount: savedNotes.filter(n => n.has_arabic).length,
       entries: savedNotes
@@ -226,9 +259,9 @@ router.post('/upload-concept-notes', async (req, res) => {
  */
 router.post('/upload-schedule', async (req, res) => {
   try {
-    const { project_id, file_data, file_name } = req.body;
-    if (!project_id) return res.status(400).json({ error: 'project_id is required.' });
+    const { file_data, file_name } = req.body;
     if (!file_data) return res.status(400).json({ error: 'file_data (base64) is required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
 
     const buffer = Buffer.from(file_data, 'base64');
     const matcher = getScheduleMatcher();
@@ -266,6 +299,7 @@ router.post('/upload-schedule', async (req, res) => {
 
     res.json({
       success: true,
+      project_id: project_id,
       totalEntries: savedSchedule.length,
       schedule: savedSchedule
     });
@@ -281,8 +315,7 @@ router.post('/upload-schedule', async (req, res) => {
  */
 router.post('/validate', async (req, res) => {
   try {
-    const { project_id } = req.body;
-    if (!project_id) return res.status(400).json({ error: 'project_id is required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
 
     const judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
     const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [project_id]);
@@ -293,6 +326,7 @@ router.post('/validate', async (req, res) => {
 
     res.json({
       success: true,
+      project_id: project_id,
       validation
     });
   } catch (err) {
@@ -345,9 +379,14 @@ router.post('/update-concept-note', async (req, res) => {
  */
 router.post('/generate-single', async (req, res) => {
   try {
-    const { project_id, judge_id } = req.body;
-    if (!project_id || !judge_id) {
-      return res.status(400).json({ error: 'project_id and judge_id are required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
+    let { judge_id } = req.body;
+    if (!judge_id) {
+      const firstJudge = await db.get('SELECT id FROM jg_judges WHERE project_id = $1 ORDER BY id ASC LIMIT 1', [project_id]);
+      if (firstJudge) judge_id = firstJudge.id;
+    }
+    if (!judge_id) {
+      return res.status(400).json({ error: 'judge_id is required.' });
     }
 
     const judge = await db.get('SELECT * FROM jg_judges WHERE id = $1 AND project_id = $2', [judge_id, project_id]);
@@ -464,8 +503,8 @@ router.get('/preview-pdf/:judgeId', async (req, res) => {
  */
 router.post('/download-merged', async (req, res) => {
   try {
-    const { project_id, mode = 'A', judge_ids } = req.body;
-    if (!project_id) return res.status(400).json({ error: 'project_id is required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
+    const { mode = 'A', judge_ids } = req.body;
 
     let judges;
     if (Array.isArray(judge_ids) && judge_ids.length > 0) {
@@ -526,8 +565,8 @@ router.post('/download-merged', async (req, res) => {
  */
 router.post('/download-zip', async (req, res) => {
   try {
-    const { project_id, judge_ids } = req.body;
-    if (!project_id) return res.status(400).json({ error: 'project_id is required.' });
+    const project_id = await resolveProjectId(req.body.project_id);
+    const { judge_ids } = req.body;
 
     let judges;
     if (Array.isArray(judge_ids) && judge_ids.length > 0) {
@@ -585,7 +624,7 @@ router.post('/download-zip', async (req, res) => {
  */
 router.get('/template/:projectId', async (req, res) => {
   try {
-    const projectId = parseInt(req.params.projectId, 10);
+    const projectId = await resolveProjectId(req.params.projectId);
     const tmpl = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [projectId]);
     const pdfEngine = getPdfEngine();
 
@@ -608,7 +647,7 @@ router.get('/template/:projectId', async (req, res) => {
  */
 router.post('/template/:projectId', async (req, res) => {
   try {
-    const projectId = parseInt(req.params.projectId, 10);
+    const projectId = await resolveProjectId(req.params.projectId);
     const { general_rules, settings } = req.body;
 
     const existing = await db.get('SELECT id FROM jg_templates WHERE project_id = $1 LIMIT 1', [projectId]);

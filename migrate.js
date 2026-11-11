@@ -753,12 +753,21 @@ async function runMigration() {
         project_id INTEGER REFERENCES jg_projects(id) ON DELETE CASCADE,
         judge_no VARCHAR(50),
         judge_name VARCHAR(255) NOT NULL,
+        teams TEXT,
         teams_blocks TEXT,
         assigned_codes TEXT[],
         total_hours VARCHAR(100),
+        assigned_programmes JSONB DEFAULT '[]'::jsonb,
+        metadata JSONB DEFAULT '{}'::jsonb,
         sort_order INTEGER DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS teams TEXT;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS teams_blocks TEXT;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_programmes JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_codes TEXT[];
 
       CREATE TABLE IF NOT EXISTS jg_concept_notes (
         id SERIAL PRIMARY KEY,

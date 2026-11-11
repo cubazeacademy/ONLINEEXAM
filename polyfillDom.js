@@ -91,3 +91,4 @@ module.exports = {
   ImageData: globalThis.ImageData,
   Path2D: globalThis.Path2D
 };
+

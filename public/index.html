@@ -5079,12 +5079,24 @@
 
           <!-- Dropzone -->
           <div class="card" style="padding:28px; margin-bottom:24px;">
-            <h3 style="margin:0 0 8px 0; font-size:1.2rem; font-weight:800; color:#1f2937;">
-              <i class="fa-solid fa-file-excel" style="color:#059669;"></i> Step 1: Upload Judge Master Schedule / Excel Roster
-            </h3>
-            <p style="font-size:0.88rem; color:#6b7280; margin:0 0 20px 0;">
-              Upload your Judge assignment spreadsheet or PDF roster. Supported formats: .xlsx, .xls, .csv, .pdf
-            </p>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:18px;">
+              <div>
+                <h3 style="margin:0 0 6px 0; font-size:1.2rem; font-weight:800; color:#1f2937;">
+                  <i class="fa-solid fa-file-excel" style="color:#059669;"></i> Step 1: Upload Judge Master Schedule / Excel Roster
+                </h3>
+                <p style="font-size:0.88rem; color:#6b7280; margin:0;">
+                  Upload your Judge assignment spreadsheet or PDF roster. Supported formats: .xlsx, .xls, .csv, .pdf
+                </p>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <a href="/api/judge-guidelines/sample-template?format=xlsx" download="judge_roster_sample.xlsx" class="btn" style="background:#ecfdf5; color:#065f46; border:1.5px solid #a7f3d0; padding:8px 14px; border-radius:8px; font-size:0.84rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:7px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.2s ease;">
+                  <i class="fa-solid fa-file-excel" style="color:#059669; font-size:1rem;"></i> Sample Excel (.xlsx)
+                </a>
+                <a href="/api/judge-guidelines/sample-template?format=csv" download="judge_roster_sample.csv" class="btn" style="background:#fffbeb; color:#92400e; border:1.5px solid #fde68a; padding:8px 14px; border-radius:8px; font-size:0.84rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:7px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.2s ease;">
+                  <i class="fa-solid fa-file-csv" style="color:#d97706; font-size:1rem;"></i> Sample CSV (.csv)
+                </a>
+              </div>
+            </div>
 
             <div class="judge-dropzone" id="judge-excel-dropzone" onclick="document.getElementById('judge-excel-file-input').click()">
               <input type="file" id="judge-excel-file-input" style="display:none;" accept=".xlsx,.xls,.csv,.pdf" onchange="judgeApp.handleJudgeFile(this.files[0])">
@@ -5094,9 +5106,12 @@
               <h4 style="margin:0 0 6px 0; font-size:1.1rem; font-weight:800; color:#78350f;">
                 Drag &amp; Drop Judge Roster Here
               </h4>
-              <p style="margin:0; font-size:0.85rem; color:#92400e;">
+              <p style="margin:0 0 4px 0; font-size:0.85rem; color:#92400e;">
                 or click to browse from your computer
               </p>
+              <span style="font-size:0.75rem; color:#b45309; font-weight:500;">
+                Accepts .xlsx, .xls, .csv, and .pdf • Click "Sample Excel" or "Sample CSV" above to download the template format
+              </span>
               <div id="judge-file-info" style="margin-top:14px; font-weight:700; color:#059669; font-size:0.9rem;"></div>
             </div>
           </div>

@@ -58,6 +58,79 @@ async function resolveProjectId(rawId) {
   return 1;
 }
 
+let schemaEnsured = false;
+async function ensureJudgeSchema() {
+  if (schemaEnsured) return;
+  try {
+    await db.query(`
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS teams TEXT;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS teams_blocks TEXT;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_programmes JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_codes TEXT[];
+    `);
+    schemaEnsured = true;
+  } catch (err) {
+    console.warn('ensureJudgeSchema warning:', err.message);
+  }
+}
+
+function formatJudgeRecord(row) {
+  if (!row) return row;
+  let progs = [];
+  if (Array.isArray(row.assigned_programmes)) {
+    progs = row.assigned_programmes;
+  } else if (typeof row.assigned_programmes === 'string') {
+    try { progs = JSON.parse(row.assigned_programmes); } catch (e) {}
+  } else if (row.metadata) {
+    let meta = row.metadata;
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch (e) {}
+    }
+    if (meta && meta.raw && Array.isArray(meta.raw.assigned_programmes)) {
+      progs = meta.raw.assigned_programmes;
+    }
+  }
+
+  const teamsStr = row.teams || row.teams_blocks || '';
+  return {
+    ...row,
+    teams: teamsStr,
+    teams_blocks: row.teams_blocks || teamsStr,
+    assigned_programmes: progs,
+    assigned_codes: row.assigned_codes || progs.map(p => p.code)
+  };
+}
+
+/**
+ * 0. GET /api/judge-guidelines/sample-template
+ * Download sample judge roster in Excel (.xlsx) or CSV (.csv) format
+ */
+router.get('/sample-template', (req, res) => {
+  try {
+    const format = (req.query.format || 'xlsx').toLowerCase();
+    const fileName = format === 'csv' ? 'judge_roster_sample.csv' : 'judge_roster_sample.xlsx';
+    const filePath = path.join(__dirname, 'public', 'samples', fileName);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Sample file not found on server.' });
+    }
+
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="judge_roster_sample.csv"');
+    } else {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="judge_roster_sample.xlsx"');
+    }
+
+    return res.sendFile(filePath);
+  } catch (err) {
+    console.error('Error serving sample template:', err);
+    res.status(500).json({ error: 'Failed to download sample: ' + err.message });
+  }
+});
+
 /**
  * 1. GET /api/judge-guidelines/projects
  * List all projects with stats
@@ -123,7 +196,8 @@ router.get('/projects/:id', async (req, res) => {
       return res.status(404).json({ error: 'Project not found.' });
     }
 
-    const judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [projectId]);
+    const rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [projectId]);
+    const judges = rawJudges.map(formatJudgeRecord);
     const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [projectId]);
     const schedule = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1 ORDER BY id ASC', [projectId]);
     const template = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [projectId]);
@@ -160,26 +234,46 @@ router.post('/upload-judges', async (req, res) => {
       return res.status(400).json({ error: 'Could not detect any judges in the uploaded file.' });
     }
 
+    await ensureJudgeSchema();
+
     // Clear previous judges for this project
     await db.query('DELETE FROM jg_judges WHERE project_id = $1', [project_id]);
 
-    // Insert new judges
+    // Insert new judges with resilient column mapping
     for (const j of result.judges) {
-      await db.query(`
-        INSERT INTO jg_judges (project_id, judge_no, judge_name, teams, total_hours, assigned_programmes, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [
-        project_id,
-        j.judge_no,
-        j.judge_name,
-        j.teams || j.teams_blocks || '',
-        j.total_hours || '',
-        JSON.stringify(j.assigned_programmes || []),
-        JSON.stringify({ raw: j })
-      ]);
+      const teamsVal = j.teams_blocks || j.teams || '';
+      try {
+        await db.query(`
+          INSERT INTO jg_judges (project_id, judge_no, judge_name, teams_blocks, total_hours, assigned_codes, assigned_programmes, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
+          project_id,
+          j.judge_no,
+          j.judge_name,
+          teamsVal,
+          j.total_hours || '',
+          j.assigned_codes || [],
+          JSON.stringify(j.assigned_programmes || []),
+          JSON.stringify({ raw: j })
+        ]);
+      } catch (insertErr) {
+        // Fallback for strict initial schema without JSONB columns
+        await db.query(`
+          INSERT INTO jg_judges (project_id, judge_no, judge_name, teams_blocks, total_hours, assigned_codes)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+          project_id,
+          j.judge_no,
+          j.judge_name,
+          teamsVal,
+          j.total_hours || '',
+          j.assigned_codes || []
+        ]);
+      }
     }
 
-    const savedJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
+    const rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
+    const savedJudges = rawJudges.map(formatJudgeRecord);
 
     res.json({
       success: true,
@@ -318,7 +412,8 @@ router.post('/validate', async (req, res) => {
   try {
     const project_id = await resolveProjectId(req.body.project_id);
 
-    const judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
+    const rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
+    const judges = rawJudges.map(formatJudgeRecord);
     const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [project_id]);
     const schedule = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1 ORDER BY id ASC', [project_id]);
 
@@ -390,8 +485,9 @@ router.post('/generate-single', async (req, res) => {
       return res.status(400).json({ error: 'judge_id is required.' });
     }
 
-    const judge = await db.get('SELECT * FROM jg_judges WHERE id = $1 AND project_id = $2', [judge_id, project_id]);
-    if (!judge) return res.status(404).json({ error: 'Judge not found.' });
+    const rawJudge = await db.get('SELECT * FROM jg_judges WHERE id = $1 AND project_id = $2', [judge_id, project_id]);
+    if (!rawJudge) return res.status(404).json({ error: 'Judge not found.' });
+    const judge = formatJudgeRecord(rawJudge);
 
     const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1', [project_id]);
     const scheduleRows = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1', [project_id]);
@@ -462,8 +558,9 @@ router.get('/preview-pdf/:judgeId', async (req, res) => {
 
     if (!buffer) {
       // Regenerate on demand if not in cache
-      const judge = await db.get('SELECT * FROM jg_judges WHERE id = $1', [judgeId]);
-      if (!judge) return res.status(404).send('Judge not found.');
+      const rawJudge = await db.get('SELECT * FROM jg_judges WHERE id = $1', [judgeId]);
+      if (!rawJudge) return res.status(404).send('Judge not found.');
+      const judge = formatJudgeRecord(rawJudge);
 
       const projId = judge.project_id;
       const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1', [projId]);
@@ -507,12 +604,13 @@ router.post('/download-merged', async (req, res) => {
     const project_id = await resolveProjectId(req.body.project_id);
     const { mode = 'A', judge_ids } = req.body;
 
-    let judges;
+    let rawJudges;
     if (Array.isArray(judge_ids) && judge_ids.length > 0) {
-      judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 AND id = ANY($2) ORDER BY id ASC', [project_id, judge_ids]);
+      rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 AND id = ANY($2) ORDER BY id ASC', [project_id, judge_ids]);
     } else {
-      judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
+      rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
     }
+    const judges = (rawJudges || []).map(formatJudgeRecord);
 
     if (!judges || judges.length === 0) {
       return res.status(404).json({ error: 'No judges found for merged PDF.' });
@@ -569,12 +667,13 @@ router.post('/download-zip', async (req, res) => {
     const project_id = await resolveProjectId(req.body.project_id);
     const { judge_ids } = req.body;
 
-    let judges;
+    let rawJudges;
     if (Array.isArray(judge_ids) && judge_ids.length > 0) {
-      judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 AND id = ANY($2) ORDER BY id ASC', [project_id, judge_ids]);
+      rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 AND id = ANY($2) ORDER BY id ASC', [project_id, judge_ids]);
     } else {
-      judges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
+      rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [project_id]);
     }
+    const judges = (rawJudges || []).map(formatJudgeRecord);
 
     const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1', [project_id]);
     const scheduleRows = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1', [project_id]);

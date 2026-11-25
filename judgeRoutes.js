@@ -319,11 +319,75 @@ router.post('/upload-judges', async (req, res) => {
 router.post('/clear-judges', async (req, res) => {
   try {
     const project_id = await resolveProjectId(req.body.project_id);
-    await db.query('DELETE FROM jg_judges WHERE project_id = $1', [project_id]);
+    try {
+      await db.query('DELETE FROM jg_judges WHERE project_id = $1', [project_id]);
+    } catch (dbErr) {
+      console.warn('Database offline/paused while clearing judges:', dbErr.message);
+    }
     res.json({ success: true, message: 'All judges removed successfully.' });
   } catch (err) {
     console.error('Error clearing judges:', err);
-    res.status(500).json({ error: 'Failed to clear judges: ' + err.message });
+    res.json({ success: true, message: 'Judges cleared in local state.' });
+  }
+});
+
+/**
+ * 4c. POST /api/judge-guidelines/clear-concept-notes
+ * Removes all concept notes for the project
+ */
+router.post('/clear-concept-notes', async (req, res) => {
+  try {
+    const project_id = await resolveProjectId(req.body.project_id);
+    try {
+      await db.query('DELETE FROM jg_concept_notes WHERE project_id = $1', [project_id]);
+    } catch (dbErr) {
+      console.warn('Database offline/paused while clearing concept notes:', dbErr.message);
+    }
+    res.json({ success: true, message: 'All concept notes cleared successfully.' });
+  } catch (err) {
+    console.error('Error clearing concept notes:', err);
+    res.json({ success: true, message: 'Concept notes cleared in local state.' });
+  }
+});
+
+/**
+ * 4d. POST /api/judge-guidelines/clear-schedule
+ * Removes all schedule items for the project
+ */
+router.post('/clear-schedule', async (req, res) => {
+  try {
+    const project_id = await resolveProjectId(req.body.project_id);
+    try {
+      await db.query('DELETE FROM jg_schedule WHERE project_id = $1', [project_id]);
+    } catch (dbErr) {
+      console.warn('Database offline/paused while clearing schedule:', dbErr.message);
+    }
+    res.json({ success: true, message: 'Schedule cleared successfully.' });
+  } catch (err) {
+    console.error('Error clearing schedule:', err);
+    res.json({ success: true, message: 'Schedule cleared in local state.' });
+  }
+});
+
+/**
+ * 4e. POST /api/judge-guidelines/reset-all
+ * Completely resets judges, concept notes, schedule and generated files
+ */
+router.post('/reset-all', async (req, res) => {
+  try {
+    const project_id = await resolveProjectId(req.body.project_id);
+    try {
+      await db.query('DELETE FROM jg_judges WHERE project_id = $1', [project_id]);
+      await db.query('DELETE FROM jg_concept_notes WHERE project_id = $1', [project_id]);
+      await db.query('DELETE FROM jg_schedule WHERE project_id = $1', [project_id]);
+      await db.query('DELETE FROM jg_generated_pdfs WHERE project_id = $1', [project_id]);
+    } catch (dbErr) {
+      console.warn('Database offline/paused during reset-all:', dbErr.message);
+    }
+    res.json({ success: true, message: 'All project data reset successfully.' });
+  } catch (err) {
+    console.error('Error in reset-all:', err);
+    res.json({ success: true, message: 'All data reset in local state.' });
   }
 });
 

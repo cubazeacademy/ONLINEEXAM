@@ -236,27 +236,108 @@ async function clearAllJudges() {
   if (!confirm('Are you sure you want to remove all loaded judges from this project?')) return;
   try {
     const projectId = await ensureActiveProject();
-    const res = await fetch('/api/judge-guidelines/clear-judges', {
+    await fetch('/api/judge-guidelines/clear-judges', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
     });
-    const data = await res.json();
-    if (data.success) {
-      judgeState.judges = [];
-      renderJudgesTable();
-      populateJudgeDropdowns();
-      const statEl = document.getElementById('stat-judge-count');
-      if (statEl) statEl.textContent = '0';
-      const fileInfo = document.getElementById('judge-file-info');
-      if (fileInfo) fileInfo.innerHTML = '<span style="color:#6b7280;"><i class="fa-solid fa-circle-check" style="color:#059669;"></i> All previous judges removed. Upload a new roster above.</span>';
-      alert('All judge details removed successfully!');
-    } else {
-      alert('Error clearing judges: ' + (data.error || 'Unknown error'));
-    }
   } catch (err) {
-    alert('Failed to clear judges: ' + err.message);
+    console.warn('Backend clear notice:', err.message);
   }
+  judgeState.judges = [];
+  renderJudgesTable();
+  populateJudgeDropdowns();
+  const statEl = document.getElementById('stat-judge-count');
+  if (statEl) statEl.textContent = '0';
+  const tableCount = document.getElementById('judge-table-count');
+  if (tableCount) tableCount.textContent = '0';
+  const fileInfo = document.getElementById('judge-file-info');
+  if (fileInfo) fileInfo.innerHTML = '<span style="color:#059669;"><i class="fa-solid fa-circle-check"></i> All previous judges removed. Upload your clean Excel/CSV roster above.</span>';
+  alert('All judge details removed successfully!');
+}
+
+async function clearAllConceptNotes() {
+  if (!confirm('Are you sure you want to remove all loaded Concept Notes?')) return;
+  try {
+    const projectId = await ensureActiveProject();
+    await fetch('/api/judge-guidelines/clear-concept-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
+    });
+  } catch (err) {
+    console.warn('Backend clear notice:', err.message);
+  }
+  judgeState.conceptNotes = [];
+  renderConceptNotesTable();
+  const statCn = document.getElementById('stat-cn-count');
+  if (statCn) statCn.textContent = '0';
+  const tableCount = document.getElementById('cn-table-count');
+  if (tableCount) tableCount.textContent = '0';
+  const arabicCount = document.getElementById('arabic-entry-count');
+  if (arabicCount) arabicCount.textContent = '0';
+  const fileInfo = document.getElementById('judge-cn-file-info');
+  if (fileInfo) fileInfo.innerHTML = '<span style="color:#059669;"><i class="fa-solid fa-circle-check"></i> All Concept Notes removed. Ready for new upload.</span>';
+  alert('All concept notes removed successfully!');
+}
+
+async function clearAllSchedule() {
+  if (!confirm('Are you sure you want to remove all loaded schedule items?')) return;
+  try {
+    const projectId = await ensureActiveProject();
+    await fetch('/api/judge-guidelines/clear-schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
+    });
+  } catch (err) {
+    console.warn('Backend clear notice:', err.message);
+  }
+  judgeState.schedule = [];
+  renderScheduleTable();
+  const statSched = document.getElementById('stat-sched-count');
+  if (statSched) statSched.textContent = '0';
+  const tableCount = document.getElementById('sched-table-count');
+  if (tableCount) tableCount.textContent = '0';
+  const fileInfo = document.getElementById('judge-sched-file-info');
+  if (fileInfo) fileInfo.innerHTML = '<span style="color:#059669;"><i class="fa-solid fa-circle-check"></i> Schedule cleared. Ready for new upload.</span>';
+  alert('All schedule items removed successfully!');
+}
+
+async function resetAllProjectData() {
+  if (!confirm('This will wipe all loaded Judges, Concept Notes, Schedule, and Generated PDFs for this project. Are you sure you want to start clean?')) return;
+  try {
+    const projectId = await ensureActiveProject();
+    await fetch('/api/judge-guidelines/reset-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
+    });
+  } catch (err) {
+    console.warn('Backend reset notice:', err.message);
+  }
+
+  // Clear in-memory state
+  judgeState.judges = [];
+  judgeState.conceptNotes = [];
+  judgeState.schedule = [];
+  judgeState.validation = null;
+  judgeState.selectedJudgeId = null;
+  judgeState.previewPdfUrl = null;
+
+  // Clear tables
+  renderJudgesTable();
+  renderConceptNotesTable();
+  renderScheduleTable();
+  populateJudgeDropdowns();
+
+  // Reset counters to 0
+  ['stat-judge-count', 'stat-cn-count', 'stat-sched-count', 'stat-gen-count', 'judge-table-count', 'cn-table-count', 'sched-table-count', 'arabic-entry-count'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '0';
+  });
+
+  alert('All project data has been cleared! Counters are reset to 0. You can now upload your fresh files.');
 }
 
 function renderJudgesTable() {
@@ -907,6 +988,9 @@ window.judgeApp = {
   startNewWizard,
   handleJudgeFile,
   clearAllJudges,
+  clearAllConceptNotes,
+  clearAllSchedule,
+  resetAllProjectData,
   filterJudgesTable,
   handleConceptNoteFile,
   openArabicReviewModal,

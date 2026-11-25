@@ -4918,9 +4918,12 @@
                 <h3 id="judge-active-project-name" style="margin:0; font-size:1.15rem; font-weight:800; color:#1f2937;">SIBAQ 2026 Judge Guidelines</h3>
               </div>
             </div>
-            <div style="display:flex; gap:10px;">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
               <button class="btn-judge-secondary" onclick="judgeApp.showProjectModal()" style="font-size:0.85rem; padding:7px 14px;">
                 <i class="fa-solid fa-plus"></i> New Project
+              </button>
+              <button class="btn" onclick="judgeApp.resetAllProjectData()" style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fecaca; font-size:0.85rem; padding:7px 14px; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                <i class="fa-solid fa-trash-can"></i> Reset All Data
               </button>
               <button class="btn-judge-primary" onclick="judgeApp.refreshDashboard()" style="font-size:0.85rem; padding:7px 14px;">
                 <i class="fa-solid fa-arrows-rotate"></i> Refresh
@@ -4935,7 +4938,7 @@
                 <i class="fa-solid fa-user-tie"></i>
               </div>
               <div class="schedule-stat-info">
-                <span class="schedule-stat-num" id="stat-judge-count" style="color:#d97706;">30</span>
+                <span class="schedule-stat-num" id="stat-judge-count" style="color:#d97706;">0</span>
                 <span class="schedule-stat-label">Total Judges Loaded</span>
               </div>
             </div>
@@ -4944,7 +4947,7 @@
                 <i class="fa-solid fa-book-bookmark"></i>
               </div>
               <div class="schedule-stat-info">
-                <span class="schedule-stat-num" id="stat-cn-count" style="color:#2563eb;">222</span>
+                <span class="schedule-stat-num" id="stat-cn-count" style="color:#2563eb;">0</span>
                 <span class="schedule-stat-label">Concept Notes Parsed</span>
               </div>
             </div>
@@ -4953,7 +4956,7 @@
                 <i class="fa-solid fa-calendar-check"></i>
               </div>
               <div class="schedule-stat-info">
-                <span class="schedule-stat-num" id="stat-sched-count" style="color:#059669;">168</span>
+                <span class="schedule-stat-num" id="stat-sched-count" style="color:#059669;">0</span>
                 <span class="schedule-stat-label">Schedule Slots</span>
               </div>
             </div>
@@ -5257,7 +5260,10 @@
                 </h4>
                 <span style="font-size:0.8rem; color:#6b7280;">Programme rules, portions, categories and time allocations</span>
               </div>
-              <div style="display:flex; gap:12px;">
+              <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <button type="button" onclick="judgeApp.clearAllConceptNotes()" class="btn" style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fecaca; padding:7px 14px; border-radius:8px; font-size:0.84rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Delete all parsed concept notes">
+                  <i class="fa-solid fa-trash-can"></i> Clear Concept Notes
+                </button>
                 <button class="btn-judge-secondary" onclick="switchTab('judge-step1')">
                   <i class="fa-solid fa-arrow-left"></i> Back to Step 1
                 </button>
@@ -5370,7 +5376,10 @@
                 </h4>
                 <span style="font-size:0.8rem; color:#6b7280;">Timing, dates, and venue assignments</span>
               </div>
-              <div style="display:flex; gap:12px;">
+              <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <button type="button" onclick="judgeApp.clearAllSchedule()" class="btn" style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fecaca; padding:7px 14px; border-radius:8px; font-size:0.84rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Delete all loaded schedule items">
+                  <i class="fa-solid fa-trash-can"></i> Clear Schedule
+                </button>
                 <button class="btn-judge-secondary" onclick="switchTab('judge-step2')">
                   <i class="fa-solid fa-arrow-left"></i> Back to Step 2
                 </button>

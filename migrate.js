@@ -768,6 +768,8 @@ async function runMigration() {
       ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_programmes JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_codes TEXT[];
+      ALTER TABLE jg_concept_notes ADD COLUMN IF NOT EXISTS concept_type VARCHAR(50) DEFAULT 'GENERAL';
+      ALTER TABLE jg_concept_notes ADD COLUMN IF NOT EXISTS extra_lines JSONB DEFAULT '[]'::jsonb;
 
       CREATE TABLE IF NOT EXISTS jg_concept_notes (
         id SERIAL PRIMARY KEY,
@@ -782,6 +784,8 @@ async function runMigration() {
         candidates VARCHAR(100),
         has_arabic BOOLEAN DEFAULT FALSE,
         arabic_verified BOOLEAN DEFAULT FALSE,
+        concept_type VARCHAR(50) DEFAULT 'GENERAL',
+        extra_lines JSONB DEFAULT '[]'::jsonb,
         raw_text TEXT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );

@@ -93,11 +93,87 @@ async function ensureJudgeSchema() {
       ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_programmes JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE jg_judges ADD COLUMN IF NOT EXISTS assigned_codes TEXT[];
+      ALTER TABLE jg_concept_notes ADD COLUMN IF NOT EXISTS concept_type VARCHAR(50) DEFAULT 'GENERAL';
+      ALTER TABLE jg_concept_notes ADD COLUMN IF NOT EXISTS extra_lines JSONB DEFAULT '[]'::jsonb;
     `);
     schemaEnsured = true;
   } catch (err) {
     console.warn('ensureJudgeSchema warning:', err.message);
   }
+}
+
+/**
+ * Builds a robust concept notes lookup map keyed by both plain code and code_CONCEPT
+ */
+function buildConceptNotesMap(conceptNotes) {
+  const cnMap = {};
+  (conceptNotes || []).forEach(cn => {
+    const code = String(cn.code || '').trim().toUpperCase();
+    const concept = String(cn.concept_type || 'GENERAL').trim().toUpperCase();
+    if (!cnMap[code] || concept === 'GENERAL') {
+      cnMap[code] = cn;
+    }
+    cnMap[`${code}_${concept}`] = cn;
+  });
+  return cnMap;
+}
+
+/**
+ * Auto-seeds or reloads all 522 official Darul Huda Sibaq'26 concept notes from bundled master JSON
+ */
+async function seedOfficialConceptNotes(projectId) {
+  const jsonPath = path.join(__dirname, 'data', 'sibaq26_master_concept_notes.json');
+  if (!fs.existsSync(jsonPath)) return 0;
+  const masterNotes = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+
+  try {
+    await db.query('DELETE FROM jg_concept_notes WHERE project_id = $1', [projectId]);
+  } catch (e) {
+    console.warn('Could not clear jg_concept_notes before seeding:', e.message);
+  }
+
+  const chunkSize = 50;
+  for (let i = 0; i < masterNotes.length; i += chunkSize) {
+    const chunk = masterNotes.slice(i, i + chunkSize);
+    const valueClauses = [];
+    const params = [];
+    let pIdx = 1;
+
+    for (const e of chunk) {
+      valueClauses.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12}, $${pIdx+13})`);
+      params.push(
+        projectId,
+        e.code,
+        e.name,
+        e.description || '',
+        e.portion_text || '',
+        e.category || '',
+        e.time_allowed || '',
+        e.skill || '',
+        e.candidates || '',
+        JSON.stringify(e.extra_lines || []),
+        Boolean(e.has_arabic),
+        Boolean(e.arabic_verified),
+        e.raw_text || '',
+        (e.concept_type || 'GENERAL').toUpperCase()
+      );
+      pIdx += 14;
+    }
+
+    try {
+      await db.query(`
+        INSERT INTO jg_concept_notes (
+          project_id, code, name, description, portion_text,
+          category, time_allowed, skill, candidates, extra_lines,
+          has_arabic, arabic_verified, raw_text, concept_type
+        ) VALUES ${valueClauses.join(', ')}
+      `, params);
+    } catch (insertErr) {
+      console.warn('Batch insert chunk error during seed:', insertErr.message);
+    }
+  }
+
+  return masterNotes.length;
 }
 
 function formatJudgeRecord(row) {
@@ -215,6 +291,7 @@ router.post('/projects', async (req, res) => {
  */
 router.get('/projects/:id', async (req, res) => {
   try {
+    await ensureJudgeSchema();
     const projectId = parseInt(req.params.id, 10);
     const project = await db.get('SELECT * FROM jg_projects WHERE id = $1', [projectId]);
     if (!project) {
@@ -222,8 +299,19 @@ router.get('/projects/:id', async (req, res) => {
     }
 
     const rawJudges = await db.all('SELECT * FROM jg_judges WHERE project_id = $1 ORDER BY id ASC', [projectId]);
-    const judges = rawJudges.map(formatJudgeRecord);
-    const conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [projectId]);
+    const judges = (rawJudges || []).map(formatJudgeRecord);
+    let conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [projectId]);
+
+    // Auto-seed all 522 official Darul Huda Sibāq'26 concept notes if none exist yet
+    if (!conceptNotes || conceptNotes.length === 0) {
+      try {
+        await seedOfficialConceptNotes(projectId);
+        conceptNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [projectId]);
+      } catch (seedErr) {
+        console.warn('Auto-seed concept notes warning:', seedErr.message);
+      }
+    }
+
     const schedule = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1 ORDER BY id ASC', [projectId]);
     const template = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [projectId]);
 
@@ -231,8 +319,9 @@ router.get('/projects/:id', async (req, res) => {
       success: true,
       project,
       judges,
-      concept_notes_count: conceptNotes.length,
-      schedule_count: schedule.length,
+      conceptNotes: conceptNotes || [],
+      concept_notes_count: (conceptNotes || []).length,
+      schedule_count: (schedule || []).length,
       template: template || { general_rules: getPdfEngine().DEFAULT_RULES }
     });
   } catch (err) {
@@ -392,49 +481,89 @@ router.post('/reset-all', async (req, res) => {
 });
 
 /**
- * 5. POST /api/judge-guidelines/upload-concept-notes
- * Upload Concept Note PDF/DOCX
+ * 5a. POST /api/judge-guidelines/load-official-concept-notes
+ * Load all 522 consolidated official Darul Huda Sibāq'26 concept notes (General, NIICS, Banath)
+ */
+router.post('/load-official-concept-notes', async (req, res) => {
+  try {
+    await ensureJudgeSchema();
+    const project_id = await resolveProjectId(req.body.project_id);
+    const count = await seedOfficialConceptNotes(project_id);
+    const savedNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [project_id]);
+
+    res.json({
+      success: true,
+      project_id: project_id,
+      totalEntries: savedNotes.length,
+      arabicEntriesCount: savedNotes.filter(n => n.has_arabic).length,
+      entries: savedNotes
+    });
+  } catch (err) {
+    console.error('Error loading official concept notes:', err);
+    res.status(500).json({ error: 'Failed to load official concept notes: ' + err.message });
+  }
+});
+
+/**
+ * 5b. POST /api/judge-guidelines/upload-concept-notes
+ * Upload Concept Note PDF/DOCX (Supports General, NIICS, and Banath tracks)
  */
 router.post('/upload-concept-notes', async (req, res) => {
   try {
+    await ensureJudgeSchema();
     const { file_data, file_name } = req.body;
     if (!file_data) return res.status(400).json({ error: 'file_data (base64) is required.' });
     const project_id = await resolveProjectId(req.body.project_id);
 
     const buffer = Buffer.from(file_data, 'base64');
     const parser = getConceptNoteParser();
-    const result = await parser.parseConceptNotes(buffer);
+    const result = await parser.parseConceptNotes(buffer, { fileName: file_name });
 
     if (!result.success || !result.entries || result.entries.length === 0) {
       return res.status(400).json({ error: 'No concept note entries could be parsed from the file.' });
     }
 
-    // Clear previous concept notes for this project
-    await db.query('DELETE FROM jg_concept_notes WHERE project_id = $1', [project_id]);
+    const detectedConcept = (result.concept_type || 'GENERAL').toUpperCase();
 
-    // Insert parsed concept notes
-    for (const e of result.entries) {
+    // Clear only this concept track so other tracks remain safe and intact
+    await db.query('DELETE FROM jg_concept_notes WHERE project_id = $1 AND concept_type = $2', [project_id, detectedConcept]);
+
+    // Insert parsed concept notes in batches of 50
+    const chunkSize = 50;
+    for (let i = 0; i < result.entries.length; i += chunkSize) {
+      const chunk = result.entries.slice(i, i + chunkSize);
+      const valueClauses = [];
+      const params = [];
+      let pIdx = 1;
+
+      for (const e of chunk) {
+        valueClauses.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12}, $${pIdx+13})`);
+        params.push(
+          project_id,
+          e.code,
+          e.name,
+          e.description || '',
+          e.portion_text || '',
+          e.category || '',
+          e.time_allowed || '',
+          e.skill || '',
+          e.candidates || '',
+          JSON.stringify(e.extra_lines || []),
+          Boolean(e.has_arabic),
+          false,
+          e.raw_text || '',
+          (e.concept_type || detectedConcept).toUpperCase()
+        );
+        pIdx += 14;
+      }
+
       await db.query(`
         INSERT INTO jg_concept_notes (
           project_id, code, name, description, portion_text,
           category, time_allowed, skill, candidates, extra_lines,
-          has_arabic, arabic_verified, raw_text
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      `, [
-        project_id,
-        e.code,
-        e.name,
-        e.description || '',
-        e.portion_text || '',
-        e.category || '',
-        e.time_allowed || '',
-        e.skill || '',
-        e.candidates || '',
-        JSON.stringify(e.extra_lines || []),
-        Boolean(e.has_arabic),
-        false,
-        e.raw_text || ''
-      ]);
+          has_arabic, arabic_verified, raw_text, concept_type
+        ) VALUES ${valueClauses.join(', ')}
+      `, params);
     }
 
     const savedNotes = await db.all('SELECT * FROM jg_concept_notes WHERE project_id = $1 ORDER BY code ASC', [project_id]);
@@ -442,6 +571,7 @@ router.post('/upload-concept-notes', async (req, res) => {
     res.json({
       success: true,
       project_id: project_id,
+      concept_type: detectedConcept,
       totalEntries: savedNotes.length,
       arabicEntriesCount: savedNotes.filter(n => n.has_arabic).length,
       entries: savedNotes
@@ -597,10 +727,7 @@ router.post('/generate-single', async (req, res) => {
     const scheduleRows = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1', [project_id]);
     const templateRow = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [project_id]);
 
-    const cnMap = {};
-    conceptNotes.forEach(cn => {
-      cnMap[cn.code] = cn;
-    });
+    const cnMap = buildConceptNotesMap(conceptNotes);
 
     const schedMap = {};
     scheduleRows.forEach(s => {
@@ -671,8 +798,7 @@ router.get('/preview-pdf/:judgeId', async (req, res) => {
       const scheduleRows = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1', [projId]);
       const templateRow = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [projId]);
 
-      const cnMap = {};
-      conceptNotes.forEach(cn => { cnMap[cn.code] = cn; });
+      const cnMap = buildConceptNotesMap(conceptNotes);
       const schedMap = {};
       scheduleRows.forEach(s => { schedMap[s.code] = s; });
 
@@ -724,8 +850,7 @@ router.post('/download-merged', async (req, res) => {
     const scheduleRows = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1', [project_id]);
     const templateRow = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [project_id]);
 
-    const cnMap = {};
-    conceptNotes.forEach(cn => { cnMap[cn.code] = cn; });
+    const cnMap = buildConceptNotesMap(conceptNotes);
     const schedMap = {};
     scheduleRows.forEach(s => { schedMap[s.code] = s; });
 
@@ -783,8 +908,7 @@ router.post('/download-zip', async (req, res) => {
     const scheduleRows = await db.all('SELECT * FROM jg_schedule WHERE project_id = $1', [project_id]);
     const templateRow = await db.get('SELECT * FROM jg_templates WHERE project_id = $1 LIMIT 1', [project_id]);
 
-    const cnMap = {};
-    conceptNotes.forEach(cn => { cnMap[cn.code] = cn; });
+    const cnMap = buildConceptNotesMap(conceptNotes);
     const schedMap = {};
     scheduleRows.forEach(s => { schedMap[s.code] = s; });
 

@@ -9,6 +9,7 @@ const judgeState = {
   projects: [],
   judges: [],
   conceptNotes: [],
+  cnFilter: 'ALL',
   schedule: [],
   validation: null,
   selectedJudgeId: null,
@@ -96,6 +97,7 @@ async function loadProjectDetails(projectId) {
       judgeState.currentProjectId = data.project.id;
       judgeState.projectName = data.project.name;
       judgeState.judges = data.judges || [];
+      judgeState.conceptNotes = data.conceptNotes || [];
 
       // Update UI elements
       const nameEl = document.getElementById('judge-active-project-name');
@@ -105,13 +107,15 @@ async function loadProjectDetails(projectId) {
       if (statJudges) statJudges.textContent = data.judges ? data.judges.length : '0';
 
       const statCn = document.getElementById('stat-cn-count');
-      if (statCn) statCn.textContent = data.concept_notes_count || '0';
+      if (statCn) statCn.textContent = data.concept_notes_count || (data.conceptNotes ? data.conceptNotes.length : '0');
 
       const statSched = document.getElementById('stat-sched-count');
       if (statSched) statSched.textContent = data.schedule_count || '0';
 
       renderJudgesTable();
       populateJudgeDropdowns();
+      renderConceptNotesTable();
+      updateCnFilterCounts();
 
       if (data.template) {
         judgeState.template = data.template;
@@ -270,6 +274,7 @@ async function clearAllConceptNotes() {
   }
   judgeState.conceptNotes = [];
   renderConceptNotesTable();
+  updateCnFilterCounts();
   const statCn = document.getElementById('stat-cn-count');
   if (statCn) statCn.textContent = '0';
   const tableCount = document.getElementById('cn-table-count');
@@ -328,6 +333,7 @@ async function resetAllProjectData() {
   // Clear tables
   renderJudgesTable();
   renderConceptNotesTable();
+  updateCnFilterCounts();
   renderScheduleTable();
   populateJudgeDropdowns();
 
@@ -504,6 +510,7 @@ async function handleConceptNoteFile(file) {
     const statCn = document.getElementById('stat-cn-count');
     if (statCn) statCn.textContent = data.totalEntries;
 
+    updateCnFilterCounts();
     renderConceptNotesTable();
   } catch (err) {
     console.error('Error uploading concept note:', err);
@@ -511,27 +518,139 @@ async function handleConceptNoteFile(file) {
   }
 }
 
+async function loadOfficialConceptNotes() {
+  const infoEl = document.getElementById('judge-cn-file-info');
+  if (infoEl) infoEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading all 522 official Darul Huda Sibāq\'26 Concept Notes (General, NIICS, Banath)...';
+
+  try {
+    const projectId = await ensureActiveProject();
+    const res = await fetch('/api/judge-guidelines/load-official-concept-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      if (infoEl) infoEl.innerHTML = `<span style="color:#dc2626;"><i class="fa-solid fa-circle-exclamation"></i> ${data.error}</span>`;
+      return;
+    }
+
+    judgeState.conceptNotes = data.entries || [];
+    if (infoEl) infoEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Successfully loaded all ${data.totalEntries} official programmes! (${data.arabicEntriesCount} contain Arabic text)`;
+
+    const arabicCountEl = document.getElementById('arabic-entry-count');
+    if (arabicCountEl) arabicCountEl.textContent = data.arabicEntriesCount;
+
+    const statCn = document.getElementById('stat-cn-count');
+    if (statCn) statCn.textContent = data.totalEntries;
+
+    updateCnFilterCounts();
+    renderConceptNotesTable();
+  } catch (err) {
+    console.error('Error loading official concept notes:', err);
+    if (infoEl) infoEl.innerHTML = `<span style="color:#dc2626;"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message}</span>`;
+  }
+}
+
+function updateCnFilterCounts() {
+  const all = judgeState.conceptNotes || [];
+  const genCount = all.filter(c => (c.concept_type || 'GENERAL').toUpperCase() === 'GENERAL').length;
+  const niicsCount = all.filter(c => (c.concept_type || '').toUpperCase() === 'NIICS').length;
+  const banathCount = all.filter(c => (c.concept_type || '').toUpperCase() === 'BANATH').length;
+
+  const elAll = document.getElementById('cn-count-all');
+  if (elAll) elAll.textContent = all.length;
+  const elGen = document.getElementById('cn-count-general');
+  if (elGen) elGen.textContent = genCount;
+  const elNiics = document.getElementById('cn-count-niics');
+  if (elNiics) elNiics.textContent = niicsCount;
+  const elBanath = document.getElementById('cn-count-banath');
+  if (elBanath) elBanath.textContent = banathCount;
+  const tableCount = document.getElementById('cn-table-count');
+  if (tableCount) tableCount.textContent = all.length;
+}
+
+function setCnFilter(filter) {
+  judgeState.cnFilter = filter || 'ALL';
+  const filterBtns = ['ALL', 'GENERAL', 'NIICS', 'BANATH'];
+  filterBtns.forEach(f => {
+    const btn = document.getElementById(`cn-filter-${f}`);
+    if (btn) {
+      if (f === judgeState.cnFilter) {
+        btn.style.background = '#2563eb';
+        btn.style.color = '#fff';
+      } else {
+        btn.style.background = 'transparent';
+        btn.style.color = '#475569';
+      }
+    }
+  });
+  renderConceptNotesTable();
+}
+
+function filterConceptNotesTable() {
+  renderConceptNotesTable();
+}
+
 function renderConceptNotesTable() {
   const tbody = document.getElementById('cn-preview-tbody');
   if (!tbody) return;
 
-  const entries = judgeState.conceptNotes || [];
+  let entries = judgeState.conceptNotes || [];
+
+  // Filter by track (GENERAL, NIICS, BANATH)
+  const trackFilter = judgeState.cnFilter || 'ALL';
+  if (trackFilter !== 'ALL') {
+    entries = entries.filter(e => (e.concept_type || 'GENERAL').toUpperCase() === trackFilter);
+  }
+
+  // Filter by search input
+  const searchInput = document.getElementById('cn-search-input');
+  if (searchInput && searchInput.value.trim()) {
+    const q = searchInput.value.trim().toLowerCase();
+    entries = entries.filter(e =>
+      (e.code && e.code.toLowerCase().includes(q)) ||
+      (e.name && e.name.toLowerCase().includes(q)) ||
+      (e.category && e.category.toLowerCase().includes(q)) ||
+      (e.portion_text && e.portion_text.toLowerCase().includes(q)) ||
+      (e.description && e.description.toLowerCase().includes(q))
+    );
+  }
+
+  const tableCount = document.getElementById('cn-table-count');
+  if (tableCount) tableCount.textContent = entries.length;
+
   if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:#9ca3af;">No concept notes parsed yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:#9ca3af;">No concept notes found matching current filter.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = entries.slice(0, 100).map(e => {
+  tbody.innerHTML = entries.slice(0, 150).map(e => {
+    const track = (e.concept_type || 'GENERAL').toUpperCase();
+    let trackBadge = '';
+    if (track === 'NIICS') {
+      trackBadge = '<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:0.75rem; font-weight:700; padding:2px 7px; border-radius:4px;">NIICS</span>';
+    } else if (track === 'BANATH') {
+      trackBadge = '<span style="background:#faf5ff; color:#7e22ce; border:1px solid #e9d5ff; font-size:0.75rem; font-weight:700; padding:2px 7px; border-radius:4px;">BANATH</span>';
+    } else {
+      trackBadge = '<span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.75rem; font-weight:700; padding:2px 7px; border-radius:4px;">GENERAL</span>';
+    }
+
     const arabicBadge = e.has_arabic
       ? `<span class="badge" style="background:#fef08a; color:#854d0e; font-size:0.75rem;">Arabic Script</span>`
       : `<span style="color:#9ca3af; font-size:0.75rem;">English</span>`;
+
+    const portionDesc = e.portion_text ? `<strong>Portion:</strong> ${e.portion_text}` : (e.description || '');
+
     return `
       <tr style="border-bottom:1px solid #f1f5f9;">
         <td style="padding:8px 12px; font-weight:800; color:#b91c1c;">${e.code}</td>
+        <td style="padding:8px 12px;">${trackBadge}</td>
         <td style="padding:8px 12px; font-weight:700; color:#1f2937;">${e.name}</td>
         <td style="padding:8px 12px; color:#4b5563;">${e.category || ''}</td>
-        <td style="padding:8px 12px; color:#059669;">${e.time_allowed || ''}</td>
-        <td style="padding:8px 12px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#6b7280;">${e.description || e.portion_text || ''}</td>
+        <td style="padding:8px 12px; color:#059669; white-space:nowrap;">${e.time_allowed || ''}</td>
+        <td style="padding:8px 12px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#6b7280;" title="${(e.description || '') + ' ' + (e.portion_text || '')}">${portionDesc}</td>
         <td style="padding:8px 12px; text-align:center;">${arabicBadge}</td>
         <td style="padding:8px 12px; text-align:center;">
           <button class="btn-judge-secondary" onclick="judgeApp.openSingleArabicEditor(${e.id})" style="padding:4px 8px; font-size:0.75rem;">
@@ -1052,6 +1171,9 @@ window.judgeApp = {
   resetAllProjectData,
   filterJudgesTable,
   handleConceptNoteFile,
+  loadOfficialConceptNotes,
+  setCnFilter,
+  filterConceptNotesTable,
   openArabicReviewModal,
   closeArabicReviewModal,
   saveArabicCorrection,

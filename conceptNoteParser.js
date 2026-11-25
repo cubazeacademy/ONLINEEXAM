@@ -25,7 +25,7 @@ function containsArabic(str) {
  * Parses Concept Note from a PDF buffer or raw text
  * @param {Buffer|string} input - PDF buffer or raw text string
  */
-async function parseConceptNotes(input) {
+async function parseConceptNotes(input, options = {}) {
   let fullText = '';
 
   if (Buffer.isBuffer(input) || input instanceof Uint8Array) {
@@ -36,6 +36,16 @@ async function parseConceptNotes(input) {
     fullText = pdfRes.pages.map(p => p.text).join('\n---PAGE_BREAK---\n');
   } else {
     fullText = String(input);
+  }
+
+  // Detect track concept type: NIICS, BANATH, or GENERAL
+  let detectedConcept = 'GENERAL';
+  const textUpper = (fullText || '').toUpperCase();
+  const fileUpper = String(options.fileName || options.file_name || '').toUpperCase();
+  if (fileUpper.includes('NIICS') || textUpper.includes('NIICS CONCEPT NOTE') || textUpper.includes("SIBĀQ'26 NIICS") || textUpper.includes("SIBAQ'26 NIICS")) {
+    detectedConcept = 'NIICS';
+  } else if (fileUpper.includes('BANATH') || textUpper.includes('BANATH CONCEPT NOTE') || textUpper.includes("SIBĀQ'26 BANATH") || textUpper.includes("SIBAQ'26 BANATH")) {
+    detectedConcept = 'BANATH';
   }
 
   const rawLines = fullText.split('\n');
@@ -181,7 +191,8 @@ async function parseConceptNotes(input) {
       extra_lines: extraLines,
       has_arabic: hasArabicText,
       arabic_verified: false,
-      raw_text: lines.filter(x => x !== '---PAGE_BREAK---').join('\n')
+      raw_text: lines.filter(x => x !== '---PAGE_BREAK---').join('\n'),
+      concept_type: detectedConcept
     });
   }
 
@@ -224,6 +235,7 @@ async function parseConceptNotes(input) {
 
   return {
     success: true,
+    concept_type: detectedConcept,
     totalEntries: entries.length,
     entries: entries,
     entriesByCode: entriesByCode,

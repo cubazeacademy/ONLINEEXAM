@@ -197,7 +197,11 @@ function levenshtein(a, b) {
 function crossValidateAll(judges = [], conceptNotes = [], scheduleList = []) {
   const cnByCode = new Map();
   conceptNotes.forEach(cn => {
-    cnByCode.set(normalizeCode(cn.code), cn);
+    const code = normalizeCode(cn.code);
+    cnByCode.set(code, cn);
+    if (cn.concept_type) {
+      cnByCode.set(`${code}_${String(cn.concept_type).toUpperCase()}`, cn);
+    }
   });
 
   const schedByCode = new Map();
@@ -226,11 +230,21 @@ function crossValidateAll(judges = [], conceptNotes = [], scheduleList = []) {
       });
     }
 
-    assigned.forEach(c => {
-      const code = normalizeCode(c);
+    const progs = Array.isArray(j.assigned_programmes) ? j.assigned_programmes : [];
+    assigned.forEach((c, idx) => {
+      const code = normalizeCode(typeof c === 'string' ? c : (c && c.code));
+      const progObj = progs[idx] || (typeof c === 'object' ? c : {});
+      const concept = String(progObj.concept_type || progObj.pool || '').toUpperCase();
 
       // Check Concept Notes
-      if (!cnByCode.has(code)) {
+      let hasCn = false;
+      if (concept && cnByCode.has(`${code}_${concept}`)) {
+        hasCn = true;
+      } else if (cnByCode.has(code)) {
+        hasCn = true;
+      }
+
+      if (!hasCn) {
         missingFromCn.add(code);
         // Look for typo fix suggestion
         for (const validCode of allCnCodes) {
@@ -333,18 +347,30 @@ function buildJudgeDossier(judge, conceptNotesInput, scheduleInput) {
 
   for (const prog of assigned) {
     const code = normalizeCode(prog.code);
-    const cn = getItem(conceptNotesInput, code) || {
-      code: code,
-      name: prog.name || 'Programme ' + code,
-      paragraphs: ['Programme guidelines will be clarified by the controllers.'],
-      extraLines: [],
-      meta: {
-        category: 'S (Stage programmes held at pool level)',
-        time: '5 minutes',
-        skill: 'Presentation',
-        candidates: '1'
-      }
-    };
+    const concept = String(prog.concept_type || prog.pool || '').toUpperCase();
+
+    // Prefer exact track match (e.g. BS1_NIICS or BS1_BANATH or BS1_GENERAL), then fallback to code
+    let cn = null;
+    if (concept) {
+      cn = getItem(conceptNotesInput, `${code}_${concept}`);
+    }
+    if (!cn) {
+      cn = getItem(conceptNotesInput, code);
+    }
+    if (!cn) {
+      cn = {
+        code: code,
+        name: prog.name || 'Programme ' + code,
+        paragraphs: ['Programme guidelines will be clarified by the controllers.'],
+        extraLines: [],
+        meta: {
+          category: prog.category || 'General',
+          time: prog.time || '5 minutes',
+          skill: 'Presentation',
+          candidates: '1'
+        }
+      };
+    }
 
     const sched = getItem(scheduleInput, code) || {};
 

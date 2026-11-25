@@ -5125,8 +5125,11 @@
                 </h4>
                 <span style="font-size:0.8rem; color:#6b7280;">Auto-detected and ready for programme matching</span>
               </div>
-              <div style="display:flex; gap:12px;">
+              <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                 <input type="text" id="judge-search-input" placeholder="Search judge or code..." oninput="judgeApp.filterJudgesTable()" style="padding:7px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:0.85rem;">
+                <button type="button" onclick="judgeApp.clearAllJudges()" class="btn" style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fecaca; padding:7px 14px; border-radius:8px; font-size:0.84rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Remove all judges currently loaded in this project">
+                  <i class="fa-solid fa-trash-can"></i> Clear All Judges
+                </button>
                 <button class="btn-judge-primary" onclick="switchTab('judge-step2')">
                   Next: Upload Concept Note <i class="fa-solid fa-arrow-right"></i>
                 </button>

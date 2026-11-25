@@ -313,6 +313,21 @@ router.post('/upload-judges', async (req, res) => {
 });
 
 /**
+ * 4b. POST /api/judge-guidelines/clear-judges
+ * Removes all judge details for the project
+ */
+router.post('/clear-judges', async (req, res) => {
+  try {
+    const project_id = await resolveProjectId(req.body.project_id);
+    await db.query('DELETE FROM jg_judges WHERE project_id = $1', [project_id]);
+    res.json({ success: true, message: 'All judges removed successfully.' });
+  } catch (err) {
+    console.error('Error clearing judges:', err);
+    res.status(500).json({ error: 'Failed to clear judges: ' + err.message });
+  }
+});
+
+/**
  * 5. POST /api/judge-guidelines/upload-concept-notes
  * Upload Concept Note PDF/DOCX
  */

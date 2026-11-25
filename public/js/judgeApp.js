@@ -232,6 +232,33 @@ async function handleJudgeFile(file) {
   }
 }
 
+async function clearAllJudges() {
+  if (!confirm('Are you sure you want to remove all loaded judges from this project?')) return;
+  try {
+    const projectId = await ensureActiveProject();
+    const res = await fetch('/api/judge-guidelines/clear-judges', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId || judgeState.currentProjectId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      judgeState.judges = [];
+      renderJudgesTable();
+      populateJudgeDropdowns();
+      const statEl = document.getElementById('stat-judge-count');
+      if (statEl) statEl.textContent = '0';
+      const fileInfo = document.getElementById('judge-file-info');
+      if (fileInfo) fileInfo.innerHTML = '<span style="color:#6b7280;"><i class="fa-solid fa-circle-check" style="color:#059669;"></i> All previous judges removed. Upload a new roster above.</span>';
+      alert('All judge details removed successfully!');
+    } else {
+      alert('Error clearing judges: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Failed to clear judges: ' + err.message);
+  }
+}
+
 function renderJudgesTable() {
   const tbody = document.getElementById('judge-preview-tbody');
   const countEl = document.getElementById('judge-table-count');
@@ -879,6 +906,7 @@ window.judgeApp = {
   refreshDashboard,
   startNewWizard,
   handleJudgeFile,
+  clearAllJudges,
   filterJudgesTable,
   handleConceptNoteFile,
   openArabicReviewModal,

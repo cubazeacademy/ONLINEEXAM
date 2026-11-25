@@ -361,6 +361,8 @@ function buildJudgeDossier(judge, conceptNotesInput, scheduleInput) {
       to: prog.to_time || sched.to_time || '',
       venue: prog.venue || sched.venue || 'Venue 1',
       category: prog.category || sched.category || (cn.meta && cn.meta.category) || 'General',
+      pool: prog.pool || sched.pool || '',
+      concept_type: prog.concept_type || sched.concept_type || '',
       startMinutes: timeToMinutes(prog.from_time || sched.from_time || rawTime.split('-')[0])
     });
   }

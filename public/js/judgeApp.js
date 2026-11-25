@@ -355,13 +355,72 @@ function renderJudgesTable() {
 
   tbody.innerHTML = judges.map(j => {
     const progs = Array.isArray(j.assigned_programmes) ? j.assigned_programmes : [];
-    const progsBadge = progs.map(p => `<span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.75rem; margin-right:4px;">${p.code}</span>`).join('');
+
+    // Concept & Pool badges
+    const conceptsFound = new Set();
+    const poolsFound = new Set();
+    progs.forEach(p => {
+      if (p.concept_type) conceptsFound.add(p.concept_type.toUpperCase());
+      if (p.pool) poolsFound.add(p.pool);
+    });
+
+    let conceptBadgesHtml = '';
+    if (conceptsFound.size > 0 || poolsFound.size > 0) {
+      conceptBadgesHtml = Array.from(conceptsFound).map(c => {
+        if (c === 'GENERAL') {
+          const generalPools = Array.from(poolsFound).filter(p => !p.toUpperCase().includes('NIICS') && !p.toUpperCase().includes('BANATH'));
+          const poolSuffix = generalPools.length > 0 ? ` (${generalPools.join(', ')})` : '';
+          return `<span class="badge" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; font-size:0.75rem; padding:2px 8px; border-radius:12px; margin:1px 3px 1px 0; font-weight:700;"><i class="fa-solid fa-layer-group"></i> GENERAL${poolSuffix}</span>`;
+        } else if (c === 'NIICS') {
+          return `<span class="badge" style="background:#faf5ff; color:#6b21a8; border:1px solid #e9d5ff; font-size:0.75rem; padding:2px 8px; border-radius:12px; margin:1px 3px 1px 0; font-weight:700;"><i class="fa-solid fa-graduation-cap"></i> NIICS</span>`;
+        } else if (c === 'BANATH') {
+          return `<span class="badge" style="background:#fdf2f8; color:#9d174d; border:1px solid #fbcfe8; font-size:0.75rem; padding:2px 8px; border-radius:12px; margin:1px 3px 1px 0; font-weight:700;"><i class="fa-solid fa-venus"></i> BANATH</span>`;
+        }
+        return `<span class="badge" style="background:#f1f5f9; color:#334155; font-size:0.75rem; padding:2px 8px; border-radius:12px; margin:1px 3px 1px 0;">${c}</span>`;
+      }).join('');
+    } else {
+      conceptBadgesHtml = `<span style="color:#64748b; font-size:0.85rem;">${j.teams || 'General'}</span>`;
+    }
+
+    // Programme Badges with Pool & Category info
+    const progsBadge = progs.map(p => {
+      let poolBg = '#fef3c7';
+      let poolColor = '#92400e';
+      let poolBorder = '#fde68a';
+      const c = (p.concept_type || '').toUpperCase();
+      if (c === 'GENERAL') {
+        poolBg = '#eff6ff';
+        poolColor = '#1d4ed8';
+        poolBorder = '#bfdbfe';
+      } else if (c === 'NIICS') {
+        poolBg = '#faf5ff';
+        poolColor = '#7e22ce';
+        poolBorder = '#e9d5ff';
+      } else if (c === 'BANATH') {
+        poolBg = '#fdf2f8';
+        poolColor = '#be185d';
+        poolBorder = '#fbcfe8';
+      }
+
+      const poolTag = p.pool ? `<span style="font-size:0.68rem; margin-left:4px; opacity:0.85; padding:0 3px; background:rgba(0,0,0,0.06); border-radius:3px;">${p.pool}</span>` : '';
+      const catTag = p.category ? ` • ${p.category}` : '';
+      const timeTag = p.raw_time ? ` • ${p.raw_time}` : '';
+      const tooltip = `${p.code} - ${p.name || ''}${catTag}${timeTag} (${p.venue || 'Venue'})`;
+
+      return `<span class="badge" title="${tooltip}" style="background:${poolBg}; color:${poolColor}; border:1px solid ${poolBorder}; font-size:0.75rem; padding:3px 7px; border-radius:6px; margin:2px 3px 2px 0; display:inline-flex; align-items:center; font-weight:700; cursor:default;">
+        ${p.code}${poolTag}
+      </span>`;
+    }).join('');
+
     return `
       <tr style="border-bottom:1px solid #f1f5f9;">
         <td style="padding:10px 14px; font-weight:700; color:#d97706;">${j.judge_no || ''}</td>
-        <td style="padding:10px 14px; font-weight:700; color:#1f2937;">${j.judge_name || ''}</td>
-        <td style="padding:10px 14px; color:#4b5563;">${j.teams || 'Team 1'}</td>
-        <td style="padding:10px 14px; color:#059669; font-weight:600;">${j.total_hours || 'N/A'}</td>
+        <td style="padding:10px 14px; font-weight:700; color:#1f2937;">
+          ${j.judge_name || ''}
+          <div style="font-size:0.76rem; color:#6b7280; font-weight:400; margin-top:2px;">${progs.length} programme${progs.length === 1 ? '' : 's'} assigned</div>
+        </td>
+        <td style="padding:10px 14px;">${conceptBadgesHtml}</td>
+        <td style="padding:10px 14px; color:#059669; font-weight:700; white-space:nowrap;">${j.total_hours || 'N/A'}</td>
         <td style="padding:10px 14px;">${progsBadge || '<span style="color:#9ca3af;">None</span>'}</td>
       </tr>
     `;

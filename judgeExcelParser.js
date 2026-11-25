@@ -11,10 +11,116 @@ function normalizeHeader(str) {
 }
 
 /**
+ * Formats Excel date values (Date objects, serial numbers, strings) to YYYY-MM-DD
+ */
+function formatCellDate(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    const yyyy = val.getFullYear();
+    const mm = String(val.getMonth() + 1).padStart(2, '0');
+    const dd = String(val.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (typeof val === 'number' && val > 30000 && val < 60000) {
+    const dateObj = XLSX.SSF.parse_date_code(val);
+    if (dateObj) {
+      const yyyy = dateObj.y;
+      const mm = String(dateObj.m).padStart(2, '0');
+      const dd = String(dateObj.d).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
+  return String(val).trim();
+}
+
+/**
+ * Helper to parse time string like "09:10 AM" into minutes from midnight
+ */
+function parseTimeToMinutes(timeStr) {
+  if (!timeStr) return null;
+  const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const meridiem = (match[3] || '').toUpperCase();
+  if (meridiem === 'PM' && h < 12) h += 12;
+  if (meridiem === 'AM' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+/**
+ * Calculates duration in minutes from time range like "09:10 AM - 09:55 AM"
+ */
+function calculateSlotDurationMinutes(timeStr) {
+  if (!timeStr || !timeStr.includes('-')) return 0;
+  const [startPart, endPart] = timeStr.split('-').map(t => t.trim());
+  const startM = parseTimeToMinutes(startPart);
+  const endM = parseTimeToMinutes(endPart);
+  if (startM !== null && endM !== null) {
+    let diff = endM - startM;
+    if (diff < 0) diff += 24 * 60;
+    return diff;
+  }
+  return 0;
+}
+
+/**
+ * Classifies programme into one of the 3 concept types: GENERAL, NIICS, BANATH
+ * Concept rules:
+ * - POOL A, POOL B, POOL C are from GENERAL
+ * - NIICS is from NIICS
+ * - BANATH is from BANATH
+ */
+function classifyPoolAndConcept(poolVal = '', categoryVal = '', codeVal = '') {
+  const p = String(poolVal || '').trim();
+  const c = String(categoryVal || '').trim();
+  const code = String(codeVal || '').trim().toUpperCase();
+
+  const pUpper = p.toUpperCase();
+  const cUpper = c.toUpperCase();
+
+  let conceptType = 'GENERAL';
+  let poolName = p;
+
+  if (pUpper.includes('NIICS') || cUpper.includes('NIICS') || pUpper.startsWith('NIIC')) {
+    conceptType = 'NIICS';
+    poolName = p || 'NIICS';
+  } else if (pUpper.includes('BANATH') || cUpper.includes('BANATH') || pUpper.startsWith('BAN')) {
+    conceptType = 'BANATH';
+    poolName = p || 'BANATH';
+  } else if (/POOL\s*[A-Z0-9]/i.test(pUpper) || pUpper.startsWith('POOL') || pUpper.includes('GENERAL')) {
+    conceptType = 'GENERAL';
+    poolName = p || 'GENERAL';
+  } else if (p) {
+    if (/^[A-C]$/i.test(p)) {
+      conceptType = 'GENERAL';
+      poolName = `POOL ${pUpper}`;
+    } else {
+      conceptType = 'GENERAL';
+      poolName = p;
+    }
+  } else {
+    // If pool column is blank, infer from code or category
+    if (code.includes('NIICS') || /^[A-Z]{1,2}N\d+/i.test(code)) {
+      conceptType = 'NIICS';
+      poolName = 'NIICS';
+    } else if (code.includes('BANATH') || /BANATH/i.test(cUpper)) {
+      conceptType = 'BANATH';
+      poolName = 'BANATH';
+    } else {
+      conceptType = 'GENERAL';
+      poolName = 'POOL A';
+    }
+  }
+
+  return {
+    concept_type: conceptType,
+    pool: poolName
+  };
+}
+
+/**
  * Parses judge roster from Excel, CSV or PDF buffer
- * @param {Buffer} buffer - File buffer
- * @param {string} fileName - File name to determine type
- * @param {Object} options - Manual column mappings or overrides
  */
 async function parseJudgeRoster(buffer, fileName = '', options = {}) {
   const isPdf = (fileName || '').toLowerCase().endsWith('.pdf') || (buffer[0] === 0x25 && buffer[1] === 0x50);
@@ -29,9 +135,10 @@ async function parseJudgeRoster(buffer, fileName = '', options = {}) {
 /**
  * Parses Judge Roster from Excel / CSV workbook
  * Supports:
- * 1. Composite / multi-table sheets (e.g. Summary table on top, Detailed programme schedule below)
- * 2. Multi-sheet workbooks (Sheet 1 = Summary, Sheet 2 = Detailed schedule)
- * 3. Flat single table sheets (every row has judge info + programme info)
+ * 1. Exact new format: Judge's Name | Program Code | Program Name | Category / Pool | POOL | Date | Time | Venue
+ * 2. Merged/blank cells under Judge's Name (carries judge forward to subsequent rows)
+ * 3. Composite / multi-table sheets (Summary table on top, detailed schedule below)
+ * 4. Multi-sheet workbooks
  */
 function parseJudgeRosterFromExcel(buffer, options = {}) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -51,6 +158,7 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
     if (!rawData || rawData.length === 0) continue;
 
     let activeColMap = null;
+    let lastActiveJudgeNo = null;
 
     for (let r = 0; r < rawData.length; r++) {
       const row = rawData[r];
@@ -59,14 +167,15 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
       const normCells = row.map(c => normalizeHeader(c));
 
       // Check if this row is a header row
-      const hasJudgeName = normCells.some(c => c.includes('judgename') || c === 'name' || (c.includes('judge') && !c.includes('no') && !c.includes('time')));
-      const hasCode = normCells.some(c => c === 'code' || c.includes('progcode') || c.includes('programcode'));
+      const hasJudgeName = normCells.some(c => c.includes('judgename') || c.includes('judgesname') || c === 'name' || (c.includes('judge') && !c.includes('no') && !c.includes('time')));
+      const hasCode = normCells.some(c => c === 'code' || c.includes('progcode') || c.includes('programcode') || c.includes('code'));
+      const hasCategory = normCells.some(c => c.includes('category') || c.includes('pool'));
       const hasBlock = normCells.some(c => c.includes('block') || c.includes('team'));
       const hasVenue = normCells.some(c => c.includes('venue'));
       const hasTime = normCells.some(c => c.includes('time') || c.includes('hours') || c.includes('duration'));
       const hasNo = normCells.some(c => c === 'no' || c === 'sl' || c === 'slno' || c === 'srno' || c.includes('judgeno') || c.includes('jno'));
 
-      if ((hasJudgeName || hasNo) && (hasCode || hasBlock || hasVenue || hasTime)) {
+      if ((hasJudgeName || hasNo) && (hasCode || hasBlock || hasVenue || hasTime || hasCategory)) {
         // Build column map for this table section
         const colMap = {
           no: -1,
@@ -75,6 +184,8 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
           date: -1,
           code: -1,
           progName: -1,
+          category: -1,
+          pool: -1,
           venue: -1,
           time: -1,
           hours: -1
@@ -83,7 +194,7 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
         normCells.forEach((cell, cIdx) => {
           if (cell === 'no' || cell === 'sl' || cell === 'slno' || cell === 'srno' || cell.includes('judgeno') || cell.includes('jno')) {
             colMap.no = cIdx;
-          } else if (cell.includes('judgename') || cell === 'name' || (cell.includes('judge') && !cell.includes('no') && !cell.includes('time'))) {
+          } else if (cell.includes('judgename') || cell.includes('judgesname') || cell === 'name' || (cell.includes('judge') && !cell.includes('no') && !cell.includes('time'))) {
             colMap.name = cIdx;
           } else if (cell.includes('block') || cell.includes('team')) {
             colMap.team = cIdx;
@@ -91,8 +202,12 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
             colMap.date = cIdx;
           } else if (cell === 'code' || cell.includes('progcode') || cell.includes('programcode')) {
             colMap.code = cIdx;
-          } else if (cell.includes('prog') || cell.includes('programmename') || cell.includes('event')) {
+          } else if (cell.includes('progname') || cell.includes('programname') || cell.includes('event') || (cell.includes('program') && !cell.includes('code')) || (cell.includes('prog') && !cell.includes('code'))) {
             colMap.progName = cIdx;
+          } else if (cell === 'categorypool' || cell.includes('category') || cell === 'cat') {
+            colMap.category = cIdx;
+          } else if (cell === 'pool' || (cell.includes('pool') && !cell.includes('category'))) {
+            colMap.pool = cIdx;
           } else if (cell.includes('venue') || cell.includes('stage')) {
             colMap.venue = cIdx;
           } else if (cell.includes('totalhours') || cell.includes('hours') || cell.includes('duration')) {
@@ -104,22 +219,24 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
 
         activeColMap = colMap;
         if (!detectedHeaders) detectedHeaders = colMap;
-        if (firstSampleRows.length === 0) firstSampleRows = rawData.slice(r, r + 6);
+        if (firstSampleRows.length === 0) firstSampleRows = rawData.slice(r, r + 8);
         continue;
       }
 
       // If no active header was found in this sheet yet, attempt fallback defaults for row 0
       if (!activeColMap && r === 0) {
         activeColMap = {
-          no: 0,
-          name: 1,
-          team: 2,
-          date: 3,
-          code: 4,
-          progName: 5,
-          venue: 6,
-          time: 7,
-          hours: 8
+          no: -1,
+          name: 0,
+          code: 1,
+          progName: 2,
+          category: 3,
+          pool: 4,
+          date: 5,
+          time: 6,
+          venue: 7,
+          team: -1,
+          hours: -1
         };
         detectedHeaders = activeColMap;
       }
@@ -132,9 +249,11 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
       const noVal = getVal(activeColMap.no);
       const nameVal = getVal(activeColMap.name);
       const teamVal = getVal(activeColMap.team);
-      const dateVal = getVal(activeColMap.date);
+      const dateVal = formatCellDate(activeColMap.date !== -1 ? row[activeColMap.date] : '');
       const codeVal = getVal(activeColMap.code).toUpperCase();
       const progVal = getVal(activeColMap.progName);
+      const categoryVal = getVal(activeColMap.category);
+      const poolVal = getVal(activeColMap.pool);
       const venueVal = getVal(activeColMap.venue);
       const timeVal = getVal(activeColMap.time);
       const hoursVal = getVal(activeColMap.hours);
@@ -142,16 +261,28 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
       // Skip row if neither judge identifier nor programme code is present
       if (!noVal && !nameVal && !codeVal) continue;
       // Skip repeated header text in data rows
-      if (normalizeHeader(noVal) === 'no' || normalizeHeader(nameVal) === 'judgename') continue;
+      if (normalizeHeader(noVal) === 'no' || normalizeHeader(nameVal) === 'judgename' || normalizeHeader(nameVal) === 'judgesname') continue;
 
       // Resolve clean judge number (2-digit padded e.g. "01")
       let cleanNo = '';
       if (noVal && /\d+/.test(noVal)) {
         cleanNo = String(parseInt(noVal.replace(/[^0-9]/g, ''), 10)).padStart(2, '0');
-      } else if (nameVal && nameToNoMap.has(normalizeHeader(nameVal))) {
-        cleanNo = nameToNoMap.get(normalizeHeader(nameVal));
+        lastActiveJudgeNo = cleanNo;
+      } else if (nameVal) {
+        const normName = normalizeHeader(nameVal);
+        if (nameToNoMap.has(normName)) {
+          cleanNo = nameToNoMap.get(normName);
+        } else {
+          cleanNo = String(judgesMap.size + 1).padStart(2, '0');
+          nameToNoMap.set(normName, cleanNo);
+        }
+        lastActiveJudgeNo = cleanNo;
+      } else if (lastActiveJudgeNo && codeVal) {
+        // Cells under Judge's Name are blank/merged: associate with the last active judge
+        cleanNo = lastActiveJudgeNo;
       } else {
         cleanNo = String(judgesMap.size + 1).padStart(2, '0');
+        lastActiveJudgeNo = cleanNo;
       }
 
       // Retrieve or instantiate Judge record
@@ -192,10 +323,15 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
           fromTime = timeVal;
         }
 
+        const poolClassification = classifyPoolAndConcept(poolVal, categoryVal, codeVal);
+
         judge.assigned_programmes.push({
           date: dateVal,
           code: codeVal,
           name: progVal,
+          category: categoryVal,
+          pool: poolClassification.pool,
+          concept_type: poolClassification.concept_type,
           venue: venueVal,
           from_time: fromTime,
           to_time: toTime,
@@ -211,6 +347,39 @@ function parseJudgeRosterFromExcel(buffer, options = {}) {
 
   if (judgesMap.size === 0) {
     throw new Error('No judges could be parsed from the uploaded spreadsheet. Please check the column headers.');
+  }
+
+  // Post-process judges: calculate total hours and pool/team badges if not provided
+  for (const judge of judgesMap.values()) {
+    // 1. Calculate total judging hours from slot durations if missing
+    let totalMinutes = 0;
+    judge.assigned_programmes.forEach(p => {
+      const dur = calculateSlotDurationMinutes(p.raw_time || `${p.from_time} - ${p.to_time}`);
+      totalMinutes += dur;
+    });
+
+    if (!judge.total_hours && totalMinutes > 0) {
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      judge.total_hours = `${h}h ${m}m (${totalMinutes}m)`;
+    }
+
+    // 2. Derive teams / blocks from pools if missing
+    if (!judge.teams || !judge.teams_blocks) {
+      const poolsSet = new Set();
+      judge.assigned_programmes.forEach(p => {
+        if (p.pool) poolsSet.add(p.pool);
+      });
+      const poolsArr = Array.from(poolsSet);
+      if (poolsArr.length > 0) {
+        const poolSummary = poolsArr.join(', ');
+        judge.teams = poolSummary;
+        judge.teams_blocks = poolSummary;
+      } else {
+        judge.teams = 'Team 1';
+        judge.teams_blocks = 'Team 1';
+      }
+    }
   }
 
   const judgesList = Array.from(judgesMap.values()).sort((a, b) =>
@@ -278,10 +447,15 @@ async function parseJudgeRosterFromPdf(buffer) {
       const fromTime = timeParts[0] || '';
       const toTime = timeParts[1] || '';
 
+      const poolClassification = classifyPoolAndConcept('', '', pCode);
+
       currentJudge.assigned_programmes.push({
         date: pDate,
         code: pCode,
         name: pName,
+        category: '',
+        pool: poolClassification.pool,
+        concept_type: poolClassification.concept_type,
         venue: pVenue,
         from_time: fromTime,
         to_time: toTime,
@@ -316,6 +490,7 @@ async function parseJudgeRosterFromPdf(buffer) {
 module.exports = {
   parseJudgeRoster,
   parseJudgeRosterFromExcel,
-  parseJudgeRosterFromPdf
+  parseJudgeRosterFromPdf,
+  classifyPoolAndConcept,
+  calculateSlotDurationMinutes
 };
-

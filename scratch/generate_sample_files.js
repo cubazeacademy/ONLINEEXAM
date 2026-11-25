@@ -1,0 +1,80 @@
+const fs = require('fs');
+const path = require('path');
+const XLSX = require('xlsx');
+
+const samplesDir = path.join(__dirname, '..', 'public', 'samples');
+if (!fs.existsSync(samplesDir)) {
+  fs.mkdirSync(samplesDir, { recursive: true });
+}
+
+// 1. Data array representing the exact format from media_1795632908139_af7d9e8e.png
+// Columns: Judge's Name | Program Code | Program Name | Category / Pool | POOL | Date | Time | Venue
+// Concept types covered:
+// - GENERAL: POOL A, POOL B, POOL C
+// - NIICS: NIICS
+// - BANATH: BANATH
+const sampleRows = [
+  ["Judge's Name", "Program Code", "Program Name", "Category / Pool", "POOL", "Date", "Time", "Venue"],
+  
+  // Judge 1: ABDURRAHMAN KUNNATH (as in user screenshot)
+  ["ABDURRAHMAN KUNNATH", "BNS25", "NASHID ARB", "BIDAYAH", "NIICS", "2026-11-26", "09:10 AM - 09:55 AM", "Venue 1"],
+  ["", "TWS12", "NASHID ARB", "THANAWIYYAH", "POOL A", "2026-11-26", "11:00 AM - 11:40 AM", "Venue 1"],
+  ["", "UNS30", "NASHID ARB", "ULA", "NIICS", "2026-11-26", "12:10 PM - 12:55 PM", "Venue 3"],
+  ["", "TWS12", "NASHID ARB", "THANAWIYYAH", "POOL B", "2026-11-26", "02:00 PM - 02:40 PM", "Venue 3"],
+  ["", "TWS12", "NASHID ARB", "THANAWIYYAH", "POOL C", "2026-11-26", "03:00 PM - 03:40 PM", "Venue 2"],
+  ["", "TNS22", "NASHID ARB", "THANAWIYYAH", "NIICS", "2026-11-26", "07:00 PM - 07:40 PM", "Venue 3"],
+  ["", "KS1B", "HADHRA", "KULLIYYAH SENIOR", "POOL B", "2026-11-26", "07:55 PM - 09:35 PM", "Venue 1"],
+
+  // Judge 2: DR. ABDUL LATHEEF (Demonstrating BANATH Concept)
+  ["DR. ABDUL LATHEEF", "BN10", "QIRA'AH", "BIDAYAH", "BANATH", "2026-11-26", "09:00 AM - 09:45 AM", "Venue 4"],
+  ["", "TN14", "SPEECH ENG", "THANAWIYYAH", "BANATH", "2026-11-26", "10:15 AM - 11:00 AM", "Venue 4"],
+  ["", "UN08", "ESSAY MAL", "ULA", "BANATH", "2026-11-26", "11:30 AM - 12:30 PM", "Venue 4"],
+
+  // Judge 3: MUHAMMAD MUSTHAFA HUDAWI (Demonstrating GENERAL Pools & NIICS)
+  ["MUHAMMAD MUSTHAFA HUDAWI", "BS1", "QIRA'AH", "BIDAYAH", "POOL A", "2026-11-26", "08:30 AM - 09:15 AM", "Venue 1"],
+  ["", "TS2", "WA'Z", "THANAWIYYAH", "POOL B", "2026-11-26", "10:00 AM - 10:45 AM", "Venue 2"],
+  ["", "US4", "SPEECH ARB", "ULA", "POOL C", "2026-11-26", "11:30 AM - 12:15 PM", "Venue 3"],
+  ["", "NKS5", "CALLIGRAPHY", "KULLIYYAH", "NIICS", "2026-11-26", "02:30 PM - 03:30 PM", "Venue 1"]
+];
+
+// 2. Generate CSV
+const csvContent = sampleRows.map(row => 
+  row.map(cell => {
+    const str = String(cell || '');
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }).join(',')
+).join('\n');
+
+const csvPath = path.join(samplesDir, 'judge_roster_sample.csv');
+fs.writeFileSync(csvPath, csvContent, 'utf8');
+console.log('Successfully written sample CSV to:', csvPath);
+
+// 3. Generate Excel (.xlsx)
+const wb = XLSX.utils.book_new();
+const ws = XLSX.utils.aoa_to_sheet(sampleRows);
+
+// Set column widths matching design
+ws['!cols'] = [
+  { wch: 28 }, // Judge's Name
+  { wch: 16 }, // Program Code
+  { wch: 22 }, // Program Name
+  { wch: 20 }, // Category / Pool
+  { wch: 14 }, // POOL
+  { wch: 14 }, // Date
+  { wch: 24 }, // Time
+  { wch: 14 }  // Venue
+];
+
+// Set row height for header
+ws['!rows'] = [
+  { hpt: 26 } // Header row height
+];
+
+XLSX.utils.book_append_sheet(wb, ws, 'Judges_Roster');
+
+const xlsxPath = path.join(samplesDir, 'judge_roster_sample.xlsx');
+XLSX.writeFile(wb, xlsxPath);
+console.log('Successfully written sample Excel to:', xlsxPath);
